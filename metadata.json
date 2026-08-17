@@ -1,0 +1,6 @@
+{
+  "name": "DIGIWANGI 3",
+  "description": "Aplikasi Presensi Siswa SDN 3 Karamatwangi berbasis Scan Barcode & Notifikasi WhatsApp Otomatis",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

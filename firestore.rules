@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Standalone entity validator helpers
+    function isValidSiswa(data) {
+      return data.keys().hasAll(['id', 'nis', 'nama', 'kelas', 'jenisKelamin', 'waOrangTua']) 
+        && data.id is string && data.id.size() <= 128
+        && data.nis is string && data.nis.size() <= 32
+        && data.nama is string && data.nama.size() <= 200
+        && data.kelas is string && data.kelas.size() <= 64
+        && (data.jenisKelamin == 'L' || data.jenisKelamin == 'P')
+        && data.waOrangTua is string && data.waOrangTua.size() <= 30
+        && (!('tempatLahir' in data) || (data.tempatLahir is string && data.tempatLahir.size() <= 100))
+        && (!('tanggalLahir' in data) || (data.tanggalLahir is string && data.tanggalLahir.size() <= 50));
+    }
+
+    function isValidPresensi(data) {
+      return data.keys().hasAll(['id', 'siswaId', 'nis', 'nama', 'kelas', 'tanggal', 'waktu', 'status', 'waStatus', 'operator'])
+        && data.id is string && data.id.size() <= 128
+        && data.siswaId is string && data.siswaId.size() <= 128
+        && data.nis is string && data.nis.size() <= 32
+        && data.nama is string && data.nama.size() <= 200
+        && data.kelas is string && data.kelas.size() <= 64
+        && data.tanggal is string && data.tanggal.size() <= 20
+        && data.waktu is string && data.waktu.size() <= 20
+        && (data.status == 'Hadir' || data.status == 'Sakit' || data.status == 'Izin' || data.status == 'Alfa' || data.status == 'Terlambat')
+        && (data.waStatus == 'Pending' || data.waStatus == 'Terkirim' || data.waStatus == 'Gagal')
+        && data.operator is string && data.operator.size() <= 200;
+    }
+
+    function isValidUserAccount(data) {
+      return data.keys().hasAll(['id', 'username', 'namaLengkap', 'role', 'pin'])
+        && data.id is string && data.id.size() <= 128
+        && data.username is string && data.username.size() <= 64
+        && data.namaLengkap is string && data.namaLengkap.size() <= 200
+        && (data.role == 'admin' || data.role == 'kepsek' || data.role == 'guru' || data.role == 'piket')
+        && data.pin is string && data.pin.size() <= 16
+        && (!('kelasSpesifik' in data) || data.kelasSpesifik is string && data.kelasSpesifik.size() <= 64);
+    }
+
+    function isValidSystemSettings(data) {
+      return data.keys().hasAll(['jamMasuk', 'jamToleransi', 'templatePesan', 'googleSpreadsheetId', 'googleDriveFolderId', 'isGoogleConnected', 'isWhatsAppConnected', 'waApiKey'])
+        && data.jamMasuk is string && data.jamMasuk.size() <= 10
+        && data.jamToleransi is string && data.jamToleransi.size() <= 10
+        && data.templatePesan is string && data.templatePesan.size() <= 2000
+        && data.googleSpreadsheetId is string && data.googleSpreadsheetId.size() <= 200
+        && data.googleDriveFolderId is string && data.googleDriveFolderId.size() <= 200
+        && data.isGoogleConnected is bool
+        && data.isWhatsAppConnected is bool
+        && data.waApiKey is string && data.waApiKey.size() <= 256;
+    }
+
+    function isValidActivityLog(data) {
+      return data.keys().hasAll(['id', 'waktu', 'user', 'role', 'tindakan', 'detail'])
+        && data.keys().size() == 6
+        && data.id is string && data.id.size() <= 128
+        && data.waktu is string && data.waktu.size() <= 64
+        && data.user is string && data.user.size() <= 200
+        && (data.role == 'admin' || data.role == 'kepsek' || data.role == 'guru' || data.role == 'piket')
+        && data.tindakan is string && data.tindakan.size() <= 200
+        && data.detail is string && data.detail.size() <= 2000;
+    }
+
+    // Collection matches
+    match /siswa/{id} {
+      allow read: if true;
+      allow create, update: if isValidId(id) && isValidSiswa(incoming());
+      allow delete: if isValidId(id);
+    }
+
+    match /presensi/{id} {
+      allow read: if true;
+      allow create, update: if isValidId(id) && isValidPresensi(incoming());
+      allow delete: if isValidId(id);
+    }
+
+    match /accounts/{id} {
+      allow read: if true;
+      allow create, update: if isValidId(id) && isValidUserAccount(incoming());
+      allow delete: if isValidId(id);
+    }
+
+    match /settings/{id} {
+      allow read: if true;
+      allow create, update: if isValidId(id) && isValidSystemSettings(incoming());
+      allow delete: if isValidId(id);
+    }
+
+    match /activityLogs/{id} {
+      allow read: if true;
+      allow create, update: if isValidId(id) && isValidActivityLog(incoming());
+      allow delete: if isValidId(id);
+    }
+  }
+}

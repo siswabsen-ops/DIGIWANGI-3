@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "Siswa": {
+      "title": "Siswa",
+      "description": "Data identitas rill siswa sekolah",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nis": { "type": "string" },
+        "nama": { "type": "string" },
+        "kelas": { "type": "string" },
+        "jenisKelamin": { "type": "string", "enum": ["L", "P"] },
+        "waOrangTua": { "type": "string" },
+        "tempatLahir": { "type": "string" },
+        "tanggalLahir": { "type": "string" }
+      },
+      "required": ["id", "nis", "nama", "kelas", "jenisKelamin", "waOrangTua"]
+    },
+    "Presensi": {
+      "title": "Presensi",
+      "description": "Catatan kehadiran siswa harian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "nis": { "type": "string" },
+        "nama": { "type": "string" },
+        "kelas": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "waktu": { "type": "string" },
+        "status": { "type": "string", "enum": ["Hadir", "Sakit", "Izin", "Alfa", "Terlambat"] },
+        "waStatus": { "type": "string", "enum": ["Pending", "Terkirim", "Gagal"] },
+        "pesanTerkirim": { "type": "string" },
+        "operator": { "type": "string" }
+      },
+      "required": ["id", "siswaId", "nis", "nama", "kelas", "tanggal", "waktu", "status", "waStatus", "operator"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Akun kredensial login staf & administrator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "namaLengkap": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "kepsek", "guru", "piket"] },
+        "kelasSpesifik": { "type": "string" },
+        "pin": { "type": "string" }
+      },
+      "required": ["id", "username", "namaLengkap", "role", "pin"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "Kombinasi pengaturan jam sekolah dan integrasi",
+      "type": "object",
+      "properties": {
+        "jamMasuk": { "type": "string" },
+        "jamToleransi": { "type": "string" },
+        "templatePesan": { "type": "string" },
+        "googleSpreadsheetId": { "type": "string" },
+        "googleDriveFolderId": { "type": "string" },
+        "isGoogleConnected": { "type": "boolean" },
+        "isWhatsAppConnected": { "type": "boolean" },
+        "waApiKey": { "type": "string" }
+      },
+      "required": ["jamMasuk", "jamToleransi", "templatePesan", "googleSpreadsheetId", "googleDriveFolderId", "isGoogleConnected", "isWhatsAppConnected", "waApiKey"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Log riwayat aktivitas perubahan sistem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "waktu": { "type": "string" },
+        "user": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "kepsek", "guru", "piket"] },
+        "tindakan": { "type": "string" },
+        "detail": { "type": "string" }
+      },
+      "required": ["id", "waktu", "user", "role", "tindakan", "detail"]
+    }
+  },
+  "firestore": {
+    "/siswa/{id}": {
+      "schema": "Siswa",
+      "description": "Daftar index seluruh siswa SDN 3"
+    },
+    "/presensi/{id}": {
+      "schema": "Presensi",
+      "description": "Log kehadiran harian siswa"
+    },
+    "/accounts/{id}": {
+      "schema": "UserAccount",
+      "description": "Daftar akun operator sistem absensi"
+    },
+    "/settings/system": {
+      "schema": "SystemSettings",
+      "description": "Satu dokumen tunggal untuk system settings"
+    },
+    "/activityLogs/{id}": {
+      "schema": "ActivityLog",
+      "description": "Log operasional sistem untuk audit trail"
+    }
+  }
+}
