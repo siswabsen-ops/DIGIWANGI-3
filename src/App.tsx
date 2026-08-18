@@ -7,6 +7,7 @@ import {
   USER_DEMO_ACCOUNTS
 } from './lib/demoData';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User } from './types';
+import { isPresensiDateMatch, isPresensiMatchSiswa } from './lib/attendanceUtils';
 import Header from './components/Header';
 import { 
   db,
@@ -583,7 +584,8 @@ export default function App() {
       const idx = prev.findIndex(
         (p) =>
           p.id === newPresensi.id ||
-          ((p.siswaId === newPresensi.siswaId || p.nis === newPresensi.nis) && p.tanggal === newPresensi.tanggal)
+          ((p.siswaId === newPresensi.siswaId || p.nis === newPresensi.nis || (p.nama === newPresensi.nama && p.kelas === newPresensi.kelas)) &&
+           isPresensiDateMatch(p.tanggal, newPresensi.tanggal))
       );
       if (idx >= 0) {
         const copy = [...prev];

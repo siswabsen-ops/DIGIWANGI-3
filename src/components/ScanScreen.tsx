@@ -537,10 +537,10 @@ export default function ScanScreen({
           {/* Interactive Virtual Students Card Matrix */}
           <div className="space-y-2 max-h-[304px] overflow-y-auto pr-1">
             {siswaList.map((siswa) => {
-              // Check if already present today
-              const todayDate = new Date().toISOString().split('T')[0];
+              // Check if already present today with reliable timezone & date matching
+              const todayDate = getLocalDateString();
               const presentToday = recentPresensi.find(
-                (p) => p.nis === siswa.nis && p.tanggal === todayDate
+                (p) => isPresensiMatchSiswa(p, siswa) && isPresensiDateMatch(p.tanggal, todayDate)
               );
 
               return (
@@ -548,7 +548,15 @@ export default function ScanScreen({
                   key={siswa.id}
                   className={`p-2.5 rounded-2xl border transition-all flex items-center justify-between gap-3 group relative overflow-hidden text-left ${
                     presentToday
-                      ? 'bg-emerald-50 border-emerald-250 hover:bg-emerald-100'
+                      ? presentToday.status === 'Hadir'
+                        ? 'bg-emerald-50 border-emerald-250 hover:bg-emerald-100'
+                        : presentToday.status === 'Sakit'
+                        ? 'bg-indigo-50 border-indigo-250 hover:bg-indigo-100'
+                        : presentToday.status === 'Izin'
+                        ? 'bg-amber-50 border-amber-250 hover:bg-amber-100'
+                        : presentToday.status === 'Alfa'
+                        ? 'bg-rose-50 border-rose-250 hover:bg-rose-100'
+                        : 'bg-orange-50 border-orange-250 hover:bg-orange-100'
                       : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
                   }`}
                 >
@@ -593,7 +601,7 @@ export default function ScanScreen({
                       </div>
                     </div>
 
-                    {/* Quick Trigger Preset Action Button popup menu */}
+                    {/* Quick Trigger Preset Action Button */}
                     <div className="flex flex-col gap-1 font-sans">
                       <button
                         type="button"
@@ -601,7 +609,15 @@ export default function ScanScreen({
                         onClick={() => handleVirtualScan(siswa)}
                         className={`text-[9px] font-extrabold py-1 px-2.5 rounded-lg cursor-pointer transition-all ${
                           presentToday
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            ? presentToday.status === 'Hadir'
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : presentToday.status === 'Sakit'
+                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                              : presentToday.status === 'Izin'
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                              : presentToday.status === 'Alfa'
+                              ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                              : 'bg-orange-600 hover:bg-orange-700 text-white'
                             : 'bg-blue-700 hover:bg-blue-800 text-white shadow-sm'
                         }`}
                         title="Simulasikan Scan QR Code otomatis untuk murid ini"

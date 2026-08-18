@@ -30,7 +30,11 @@ import {
   isPresensiDateMatch,
   calculateAllRombelSummaryList,
   calculateClassAttendanceStats,
-  calculateSchoolAttendanceStats
+  calculateSchoolAttendanceStats,
+  isSameClass,
+  buildDailyAttendanceIndex,
+  getAttendanceFromIndex,
+  normalizeDateKey,
 } from '../lib/attendanceUtils';
 
 interface ReportPanelProps {
@@ -140,25 +144,30 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   // Common filtered list of students
   const filteredStudents = useMemo(() => {
     return siswaList.filter(s => {
-      const matchKelas = selectedKelas === 'Semua Kelas' || s.kelas === selectedKelas;
+      const matchKelas = selectedKelas === 'Semua Kelas' || isSameClass(s.kelas, selectedKelas);
       const matchQuery = s.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          s.nis.includes(searchQuery);
       return matchKelas && matchQuery;
     });
   }, [siswaList, selectedKelas, searchQuery]);
 
+  // Daily index memoized for instant O(1) student matching
+  const harianDailyIndex = useMemo(() => {
+    return buildDailyAttendanceIndex(presensiList, harianDate);
+  }, [presensiList, harianDate]);
+
   // HARIAN: Calculate attendance state per student for the selected date
   const harianReportDataRaw = useMemo(() => {
     return filteredStudents.map(siswa => {
-      const record = getLatestAttendanceForStudent(siswa, presensiList, harianDate);
+      const record = getAttendanceFromIndex(siswa, harianDailyIndex);
       return {
         siswa,
         record: record || null,
-        status: record ? record.status : 'Belum Absen' as StatusKehadiran | 'Belum Absen',
+        status: record ? record.status : ('Belum Absen' as StatusKehadiran | 'Belum Absen'),
         hasPresensi: !!record
       };
     });
-  }, [filteredStudents, presensiList, harianDate]);
+  }, [filteredStudents, harianDailyIndex]);
 
   // Apply Status Filter
   const harianReportData = useMemo(() => {
@@ -199,18 +208,24 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
     return { total, hadir, terlambat, sakit, izin, alfa, belumAbsen, percentage };
   }, [harianReportDataRaw]);
 
-  // MINGGUAN: Calculate student matrix for Monday - Friday
+  // MINGGUAN: Calculate student matrix for Monday - Friday (Instant indexed execution)
   const mingguanReportData = useMemo(() => {
+    if (activeTab !== 'mingguan') return [];
+
+    const weekIndexes = weekDates.map(wd => ({
+      dateStr: wd.dateStr,
+      index: buildDailyAttendanceIndex(presensiList, wd.dateStr)
+    }));
+
     return filteredStudents.map(siswa => {
-      const recordsByDay = weekDates.map(wd => {
-        const found = getLatestAttendanceForStudent(siswa, presensiList, wd.dateStr);
+      const recordsByDay = weekIndexes.map(item => {
+        const found = getAttendanceFromIndex(siswa, item.index);
         return {
-          dateStr: wd.dateStr,
-          status: found ? found.status : '-' // dash indicates no record
+          dateStr: item.dateStr,
+          status: found ? found.status : '-'
         };
       });
 
-      // Sum metrics
       const hadir = recordsByDay.filter(r => r.status === 'Hadir').length;
       const terlambat = recordsByDay.filter(r => r.status === 'Terlambat').length;
       const sakit = recordsByDay.filter(r => r.status === 'Sakit').length;
@@ -224,18 +239,25 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
         summary: { hadir, terlambat, sakit, izin, alfa, unmarked }
       };
     });
-  }, [filteredStudents, presensiList, weekDates]);
+  }, [filteredStudents, presensiList, weekDates, activeTab]);
 
-  // BULANAN: Aggregates for the whole month
+  // BULANAN: Aggregates for the whole month (Optimized)
   const bulananReportData = useMemo(() => {
+    if (activeTab !== 'bulanan') return [];
+
+    const monthRecords = presensiList.filter(p => p.tanggal && normalizeDateKey(p.tanggal).startsWith(bulananMonth));
+    const uniqueDaysWithAttendance = Array.from(new Set(monthRecords.map(p => normalizeDateKey(p.tanggal)))).length;
+    const totalSchoolDays = Math.max(uniqueDaysWithAttendance, 1);
+
     return filteredStudents.map(siswa => {
-      const studentMonthRecords = presensiList.filter(p => isPresensiMatchSiswa(p, siswa) && p.tanggal.startsWith(bulananMonth));
+      const studentMonthRecords = monthRecords.filter(p => isPresensiMatchSiswa(p, siswa));
       
       const dateMap = new Map<string, Presensi>();
       studentMonthRecords.forEach(r => {
-        const existing = dateMap.get(r.tanggal);
+        const dKey = normalizeDateKey(r.tanggal);
+        const existing = dateMap.get(dKey);
         if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
-          dateMap.set(r.tanggal, r);
+          dateMap.set(dKey, r);
         }
       });
 
@@ -257,13 +279,6 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
         }
       });
 
-      const uniqueDaysWithAttendance = Array.from(new Set(
-        presensiList
-          .filter(p => p.tanggal.startsWith(bulananMonth))
-          .map(p => p.tanggal)
-      )).length;
-
-      const totalSchoolDays = Math.max(uniqueDaysWithAttendance, 1);
       const computedAlfa = Math.max(0, totalSchoolDays - (hadir + terlambat + sakit + izin));
       const presentCount = hadir + terlambat;
       const percentage = totalSchoolDays > 0 ? Math.round((presentCount / totalSchoolDays) * 100) : 0;
@@ -282,7 +297,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
         }
       };
     });
-  }, [filteredStudents, presensiList, bulananMonth]);
+  }, [filteredStudents, presensiList, bulananMonth, activeTab]);
 
   // Bulanan stats overall
   const bulananStats = useMemo(() => {

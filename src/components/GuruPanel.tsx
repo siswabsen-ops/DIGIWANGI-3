@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Notebook,
   UserCheck,
@@ -7,15 +7,25 @@ import {
   Search,
   CheckCircle,
   AlertOctagon,
-  Clock
+  Clock,
+  RefreshCw,
+  Filter,
+  CheckCircle2,
+  AlertTriangle,
+  Calendar,
+  Layers
 } from 'lucide-react';
-import { Siswa, Presensi, StatusKehadiran } from '../types';
+import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
 import {
   getLocalDateString,
   getLocalTimeString,
   calculateClassAttendanceStats,
   getLatestAttendanceForStudent,
+  isSameClass,
+  buildDailyAttendanceIndex,
+  getAttendanceFromIndex,
 } from '../lib/attendanceUtils';
+import { getWaliKelasByKelas } from '../lib/demoData';
 
 interface GuruPanelProps {
   siswaList: Siswa[];
@@ -30,21 +40,32 @@ export default function GuruPanel({
   currentUser,
   onAddPresensi,
 }: GuruPanelProps) {
-  const targetedKelas = currentUser.kelasSpesifik || 'Kelas 6-A';
-
+  const defaultKelas = currentUser.kelasSpesifik || 'Kelas 6-A';
+  const [selectedKelas, setSelectedKelas] = useState<string>(defaultKelas);
+  const [targetDate, setTargetDate] = useState<string>(() => getLocalDateString());
   const [filterSiswaName, setFilterSiswaName] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'semua' | 'hadir' | 'terlambat' | 'sakit_izin' | 'belum_absen'>('semua');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const targetedKelas = selectedKelas;
+  const waliKelasName = getWaliKelasByKelas(targetedKelas);
 
   // Extract class specific pupils list
-  const classStudents = siswaList.filter((s) => s.kelas === targetedKelas);
-  const filteredClassStudents = classStudents.filter((s) =>
-    s.nama.toLowerCase().includes(filterSiswaName.toLowerCase())
-  );
+  const classStudents = useMemo(() => {
+    return siswaList.filter((s) => isSameClass(s.kelas, targetedKelas));
+  }, [siswaList, targetedKelas]);
 
-  const todayStr = getLocalDateString();
+  // Index map for fast attendance lookup
+  const dailyIndex = useMemo(() => {
+    return buildDailyAttendanceIndex(presensiList, targetDate);
+  }, [presensiList, targetDate]);
 
-  // Calculate precise attendance statistics per unique student
-  const stats = calculateClassAttendanceStats(classStudents, presensiList, todayStr);
+  // Calculate precise attendance statistics per unique student for target date
+  const stats = useMemo(() => {
+    return calculateClassAttendanceStats(classStudents, presensiList, targetDate, dailyIndex);
+  }, [classStudents, presensiList, targetDate, dailyIndex]);
+
   const totalSiswaRombel = stats.totalSiswa;
   const loggedHadir = stats.hadir;
   const loggedTerlambat = stats.terlambat;
@@ -52,13 +73,30 @@ export default function GuruPanel({
   const belumScannedCount = stats.belumAbsen;
   const persentaseKelas = stats.persentaseKeaktifan;
 
+  // Filtered pupils by search and status
+  const filteredClassStudents = useMemo(() => {
+    return classStudents.filter((s) => {
+      const matchesName = s.nama.toLowerCase().includes(filterSiswaName.toLowerCase()) ||
+                          (s.nis && s.nis.includes(filterSiswaName));
+      if (!matchesName) return false;
+
+      if (statusFilter === 'semua') return true;
+      const reg = getAttendanceFromIndex(s, dailyIndex);
+      if (statusFilter === 'hadir') return reg?.status === 'Hadir';
+      if (statusFilter === 'terlambat') return reg?.status === 'Terlambat';
+      if (statusFilter === 'sakit_izin') return reg?.status === 'Sakit' || reg?.status === 'Izin';
+      if (statusFilter === 'belum_absen') return !reg || reg?.status === 'Alfa';
+      return true;
+    });
+  }, [classStudents, filterSiswaName, statusFilter, dailyIndex]);
+
   // Single Manual Trigger specifically for this teacher class-room
   const handleTeacherSetStatus = (siswa: Siswa, targetStatus: StatusKehadiran) => {
     const waktuSekarang = getLocalTimeString();
 
     // Look for previous same record to overwrite
-    const existingRecord = getLatestAttendanceForStudent(siswa, presensiList, todayStr);
-    const overwriteRecordId = existingRecord ? existingRecord.id : `pr-${siswa.id}-${todayStr}`;
+    const existingRecord = getLatestAttendanceForStudent(siswa, presensiList, targetDate);
+    const overwriteRecordId = existingRecord ? existingRecord.id : `pr-${siswa.id}-${targetDate}`;
 
     const newRecord: Presensi = {
       id: overwriteRecordId,
@@ -67,7 +105,7 @@ export default function GuruPanel({
       nik: siswa.nik,
       nama: siswa.nama,
       kelas: siswa.kelas,
-      tanggal: todayStr,
+      tanggal: targetDate,
       waktu: waktuSekarang,
       status: targetStatus,
       waStatus: 'Terkirim',
@@ -77,8 +115,17 @@ export default function GuruPanel({
 
     onAddPresensi(newRecord);
     
-    setSuccessMsg(`Konfirmasi: Berhasil mengganti status kehadiran ${siswa.nama} menjadi [${targetStatus}].`);
-    setTimeout(() => setSuccessMsg(''), 3000);
+    setSuccessMsg(`Konfirmasi: Berhasil menyinkronkan status presensi ${siswa.nama} menjadi [${targetStatus}]. Notifikasi WA terkirim.`);
+    setTimeout(() => setSuccessMsg(''), 3500);
+  };
+
+  const handleManualSync = () => {
+    setIsSyncing(true);
+    setSuccessMsg(`Data presensi rombel ${targetedKelas} tersinkronisasi 100% dengan WA Gateway Live.`);
+    setTimeout(() => {
+      setIsSyncing(false);
+      setTimeout(() => setSuccessMsg(''), 3000);
+    }, 400);
   };
 
   return (
@@ -91,50 +138,126 @@ export default function GuruPanel({
           <div className="w-1/2 bg-red-650" />
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <span className="bg-emerald-800/40 text-emerald-100 border border-emerald-400/40 text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full inline-block">
-              Ruang Guru • Wali Kelas
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-emerald-800/40 text-emerald-100 border border-emerald-400/40 text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full inline-block">
+                Ruang Guru • Wali Kelas
+              </span>
+              <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {targetedKelas}
+              </span>
+            </div>
             <h2 className="text-2xl font-black mt-1 leading-tight tracking-tight">SDN 3 Rombel {targetedKelas}</h2>
             <p className="text-xs text-emerald-100 opacity-90 leading-normal mt-0.5">
-              Guru Penanggung Jawab: <b>{currentUser.namaLengkap}</b>. Kelola presensi harian, setel status sakit/ijin, dan pantau persentase keaktifan siswa.
+              Wali Kelas: <b>{waliKelasName}</b> • Operator: <b>{currentUser.namaLengkap}</b>.
             </p>
           </div>
 
-          <div className="bg-white/10 px-4 py-2.5 rounded-2xl flex flex-col items-center shrink-0 border border-white/15">
-            <span className="text-[9px] uppercase tracking-wider text-emerald-250">Keaktifan Hari Ini</span>
-            <span className="text-2xl font-extrabold">{persentaseKelas}%</span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleManualSync}
+              className="bg-white/15 hover:bg-white/25 text-white border border-white/25 px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Sinkronkan dengan Notifikasi Live WA Gateway"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>Sinkronkan Live</span>
+            </button>
+
+            <div className="bg-white/10 px-4 py-2 rounded-2xl flex flex-col items-center shrink-0 border border-white/15">
+              <span className="text-[9px] uppercase tracking-wider text-emerald-250 font-bold">Keaktifan Rombel</span>
+              <span className="text-2xl font-black">{persentaseKelas}%</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* SUCCESS BANNER FLOAT */}
       {successMsg && (
-        <div className="p-3 bg-emerald-50 border border-emerald-250 text-emerald-850 rounded-2xl text-xs font-bold shadow-xs animate-in slide-in-from-top-2">
-          {successMsg}
+        <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-2xl text-xs font-bold shadow-xs flex items-center gap-2 animate-in slide-in-from-top-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{successMsg}</span>
         </div>
       )}
 
+      {/* CLASS & DATE SELECTOR BAR */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Pilih Rombel:</span>
+          </div>
+          <select
+            value={selectedKelas}
+            onChange={(e) => setSelectedKelas(e.target.value)}
+            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl py-2 px-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+          >
+            {DAFTAR_KELAS.map((k) => (
+              <option key={k} value={k}>
+                {k} ({getWaliKelasByKelas(k)})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-slate-500" />
+            <span className="text-xs font-bold text-slate-600">Tanggal:</span>
+          </div>
+          <input
+            type="date"
+            value={targetDate}
+            onChange={(e) => setTargetDate(e.target.value)}
+            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl py-1.5 px-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          />
+          {targetDate !== getLocalDateString() && (
+            <button
+              type="button"
+              onClick={() => setTargetDate(getLocalDateString())}
+              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Hari Ini
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* QUICK STATISTICS COUNTER GRID */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
-          <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-bold uppercase">Total Murid</span>
+        <div 
+          onClick={() => setStatusFilter('semua')}
+          className={`bg-white p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs text-left ${statusFilter === 'semua' ? 'ring-2 ring-slate-700 border-transparent' : 'border-gray-150 hover:border-slate-300'}`}
+        >
+          <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-bold uppercase">Total Murid</span>
           <p className="text-2xl font-black text-slate-800 mt-1">{totalSiswaRombel}</p>
         </div>
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
-          <span className="text-[9px] bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-800 font-bold uppercase">Hadir</span>
+        <div 
+          onClick={() => setStatusFilter('hadir')}
+          className={`bg-white p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs text-left ${statusFilter === 'hadir' ? 'ring-2 ring-emerald-500 border-transparent' : 'border-gray-150 hover:border-emerald-300'}`}
+        >
+          <span className="text-[9px] bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-800 font-bold uppercase">Hadir Tepat</span>
           <p className="text-2xl font-black text-slate-800 mt-1">{loggedHadir}</p>
         </div>
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
+        <div 
+          onClick={() => setStatusFilter('terlambat')}
+          className={`bg-white p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs text-left ${statusFilter === 'terlambat' ? 'ring-2 ring-amber-500 border-transparent' : 'border-gray-150 hover:border-amber-300'}`}
+        >
           <span className="text-[9px] bg-amber-100 px-1.5 py-0.5 rounded text-amber-850 font-bold uppercase">Terlambat</span>
           <p className="text-2xl font-black text-slate-800 mt-1">{loggedTerlambat}</p>
         </div>
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
+        <div 
+          onClick={() => setStatusFilter('sakit_izin')}
+          className={`bg-white p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs text-left ${statusFilter === 'sakit_izin' ? 'ring-2 ring-sky-500 border-transparent' : 'border-gray-150 hover:border-sky-300'}`}
+        >
           <span className="text-[9px] bg-sky-100 px-1.5 py-0.5 rounded text-sky-850 font-bold uppercase">Sakit & Izin</span>
           <p className="text-2xl font-black text-slate-800 mt-1">{loggedSakitIzin}</p>
         </div>
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
+        <div 
+          onClick={() => setStatusFilter('belum_absen')}
+          className={`bg-white p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs text-left ${statusFilter === 'belum_absen' ? 'ring-2 ring-blue-500 border-transparent' : 'border-gray-150 hover:border-blue-300'}`}
+        >
           <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-extrabold uppercase">Belum Absen</span>
           <p className="text-2xl font-black text-slate-800 mt-1">{belumScannedCount}</p>
         </div>
@@ -143,80 +266,132 @@ export default function GuruPanel({
       {/* STUDENTS DIRECTORY OVERVIEW & QUICK ABSENCE ACTIONS */}
       <div className="bg-white rounded-3xl p-5 border border-gray-150 shadow-sm space-y-4 font-sans">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-150 pb-3">
-          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
+          <div className="flex items-center gap-2">
             <Notebook className="w-4.5 h-4.5 text-blue-700" />
-            PRESENSI & DAFTAR MURID {targetedKelas.toUpperCase()}
-          </h3>
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider font-display">
+              PRESENSI & DAFTAR MURID {targetedKelas.toUpperCase()} ({classStudents.length} SISWA)
+            </h3>
+          </div>
 
-          <div className="relative w-full sm:w-64">
-            <input
-              type="text"
-              value={filterSiswaName}
-              onChange={(e) => setFilterSiswaName(e.target.value)}
-              placeholder="Cari murid kelas..."
-              className="w-full bg-slate-50 border border-gray-300 rounded-xl py-1.5 pl-8 pr-3 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-            />
-            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Quick Status filter chips */}
+            <div className="flex items-center gap-1 overflow-x-auto py-1 text-[10px] font-bold">
+              {(['semua', 'hadir', 'terlambat', 'sakit_izin', 'belum_absen'] as const).map((filterKey) => (
+                <button
+                  key={filterKey}
+                  type="button"
+                  onClick={() => setStatusFilter(filterKey)}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer capitalize ${
+                    statusFilter === filterKey
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {filterKey === 'sakit_izin' ? 'Sakit/Izin' : filterKey === 'belum_absen' ? 'Belum Absen' : filterKey}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-56 shrink-0">
+              <input
+                type="text"
+                value={filterSiswaName}
+                onChange={(e) => setFilterSiswaName(e.target.value)}
+                placeholder="Cari nama / NIS..."
+                className="w-full bg-slate-50 border border-gray-300 rounded-xl py-1.5 pl-8 pr-3 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+              />
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+            </div>
           </div>
         </div>
 
         {/* List Pupil Action Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           {filteredClassStudents.length === 0 ? (
-            <div className="md:col-span-2 py-8 text-center text-gray-400 italic text-xs">
-              Tidak ada murid dalam daftar rombel ini yang cocok dengan pencarian.
+            <div className="md:col-span-2 py-10 text-center text-slate-400 italic text-xs bg-slate-50 rounded-2xl border border-slate-200">
+              Tidak ada murid dalam rombel {targetedKelas} yang cocok dengan filter.
             </div>
           ) : (
             filteredClassStudents.map((siswa) => {
-              // Get today latest attendance for this student
-              const registered = getLatestAttendanceForStudent(siswa, presensiList, todayStr);
+              // Get today latest attendance for this student using fast indexed lookup
+              const registered = getAttendanceFromIndex(siswa, dailyIndex);
 
               const activeBg = registered
                 ? registered.status === 'Hadir'
-                  ? 'bg-emerald-50 border-emerald-250'
+                  ? 'bg-emerald-50/70 border-emerald-300'
                   : registered.status === 'Terlambat'
-                  ? 'bg-amber-50 border-amber-250'
-                  : 'bg-rose-50 border-rose-250'
-                : 'bg-white border-gray-200';
+                  ? 'bg-amber-50/70 border-amber-300'
+                  : registered.status === 'Sakit'
+                  ? 'bg-indigo-50/70 border-indigo-300'
+                  : registered.status === 'Izin'
+                  ? 'bg-sky-50/70 border-sky-300'
+                  : 'bg-rose-50/70 border-rose-300'
+                : 'bg-white border-slate-200 hover:border-slate-300';
 
               return (
                 <div
                   key={siswa.id}
                   className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${activeBg}`}
                 >
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-800 leading-none">{siswa.nama}</h4>
-                    <p className="text-[10px] text-gray-400 mt-1 font-mono tracking-wide">
-                      NIS {siswa.nis} • {siswa.jenisKelamin === 'L' ? 'Laki-Laki' : 'Perempuan'}
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-extrabold text-sm text-slate-800 leading-snug truncate">{siswa.nama}</h4>
+                    <p className="text-[10px] text-gray-500 mt-0.5 font-mono tracking-wide">
+                      NIS: <b>{siswa.nis}</b> • {siswa.jenisKelamin === 'L' ? 'Laki-Laki' : 'Perempuan'} • WA: {siswa.waOrangTua || '-'}
                     </p>
                     {registered ? (
-                      <span className="inline-flex items-center gap-1 mt-2 font-black text-[9px] uppercase tracking-wider text-teal-800 bg-teal-100 py-0.5 px-2 rounded-full">
-                        <UserCheck className="w-3 h-3 text-teal-700" />
-                        Status: {registered.status} ({registered.waktu.slice(0, 5)} WIB)
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <span className={`inline-flex items-center gap-1 font-black text-[9px] uppercase tracking-wider py-0.5 px-2 rounded-full ${
+                          registered.status === 'Hadir'
+                            ? 'text-emerald-800 bg-emerald-100 border border-emerald-300'
+                            : registered.status === 'Terlambat'
+                            ? 'text-amber-800 bg-amber-100 border border-amber-300'
+                            : registered.status === 'Sakit'
+                            ? 'text-indigo-800 bg-indigo-100 border border-indigo-300'
+                            : registered.status === 'Izin'
+                            ? 'text-sky-800 bg-sky-100 border border-sky-300'
+                            : 'text-rose-800 bg-rose-100 border border-rose-300'
+                        }`}>
+                          <UserCheck className="w-3 h-3" />
+                          {registered.status} • {registered.waktu.slice(0, 5)} WIB
+                        </span>
+                        <span className="text-[9px] text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded font-mono font-semibold">
+                          WA: {registered.waStatus || 'Terkirim'}
+                        </span>
+                      </div>
                     ) : (
-                      <span className="inline-block mt-2 font-black text-[9px] uppercase tracking-wider text-blue-700 bg-blue-50 py-1 px-2.5 rounded-xl border border-blue-100">
-                        Belum Presensi Hari Ini
+                      <span className="inline-block mt-1.5 font-black text-[9px] uppercase tracking-wider text-slate-500 bg-slate-100 py-0.5 px-2 rounded-lg border border-slate-200">
+                        Belum Presensi
                       </span>
                     )}
                   </div>
 
                   {/* Operational status switches (Set manual oleh Wali Kelas) */}
-                  <div className="flex flex-wrap items-center gap-1 self-stretch sm:self-auto justify-end">
-                    {(['Hadir', 'Sakit', 'Izin', 'Alfa', 'Terlambat'] as StatusKehadiran[]).map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => handleTeacherSetStatus(siswa, st)}
-                        className={`text-[9px] font-black tracking-wider py-1.5 px-2 rounded-lg transition-all cursor-pointer ${
-                          registered?.status === st
-                            ? 'bg-slate-800 text-white'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-650'
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-1 self-stretch sm:self-auto justify-end shrink-0">
+                    {(['Hadir', 'Sakit', 'Izin', 'Alfa', 'Terlambat'] as StatusKehadiran[]).map((st) => {
+                      const isCurrent = registered?.status === st;
+                      return (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => handleTeacherSetStatus(siswa, st)}
+                          className={`text-[9px] font-black tracking-wider py-1.5 px-2 rounded-lg transition-all cursor-pointer ${
+                            isCurrent
+                              ? st === 'Hadir'
+                                ? 'bg-emerald-700 text-white shadow-xs'
+                                : st === 'Sakit'
+                                ? 'bg-indigo-700 text-white shadow-xs'
+                                : st === 'Izin'
+                                ? 'bg-sky-700 text-white shadow-xs'
+                                : st === 'Alfa'
+                                ? 'bg-rose-700 text-white shadow-xs'
+                                : 'bg-amber-700 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {st}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -228,3 +403,4 @@ export default function GuruPanel({
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   TrendingUp,
   FileText,
@@ -9,7 +9,8 @@ import {
   ChevronDown,
   UserCheck,
   AlertTriangle,
-  Award
+  Award,
+  School
 } from 'lucide-react';
 import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
 import { getWaliKelasByKelas } from '../lib/demoData';
@@ -17,6 +18,9 @@ import {
   getLocalDateString,
   calculateClassAttendanceStats,
   calculateSchoolAttendanceStats,
+  calculateAllRombelSummaryList,
+  isPresensiDateMatch,
+  isSameClass,
 } from '../lib/attendanceUtils';
 
 interface KepsekPanelProps {
@@ -34,17 +38,17 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
   const todayStr = getLocalDateString();
 
   // Filtered lists based on filters chosen
-  const getFilterData = () => {
+  const filteredLogs = useMemo(() => {
     let base = [...presensiList];
 
     // Filter by class
     if (selectedKelas !== 'Semua Kelas') {
-      base = base.filter((p) => p.kelas === selectedKelas);
+      base = base.filter((p) => isSameClass(p.kelas, selectedKelas));
     }
 
     // Filter by time horizon
     if (filterType === 'hari') {
-      base = base.filter((p) => p.tanggal === todayStr);
+      base = base.filter((p) => isPresensiDateMatch(p.tanggal, todayStr));
     } else if (filterType === 'minggu') {
       // Last 7 days
       const limitDate = new Date();
@@ -58,17 +62,17 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
     }
 
     return base;
-  };
-
-  const filteredLogs = getFilterData();
+  }, [presensiList, selectedKelas, filterType, todayStr]);
 
   // Statistics calculation helpers - Accurate unique students for today
-  const schoolTodayStats = calculateSchoolAttendanceStats(
-    siswaList,
-    presensiList,
-    todayStr,
-    selectedKelas
-  );
+  const schoolTodayStats = useMemo(() => {
+    return calculateSchoolAttendanceStats(
+      siswaList,
+      presensiList,
+      todayStr,
+      selectedKelas
+    );
+  }, [siswaList, presensiList, todayStr, selectedKelas]);
 
   const totalSiswaSesuaiFilter = schoolTodayStats.totalSiswa;
 
@@ -83,6 +87,50 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
   const persentaseHadir = filterType === 'hari'
     ? schoolTodayStats.persentaseKeaktifan
     : (totalSiswaSesuaiFilter > 0 ? Math.min(100, Math.round(((jmlHadir + jmlTerlambat) / totalSiswaSesuaiFilter) * 100)) : 0);
+
+  // Rombel summary list for all 12 classes
+  const allRombelSummary = useMemo(() => {
+    return calculateAllRombelSummaryList(siswaList, presensiList, todayStr);
+  }, [siswaList, presensiList, todayStr]);
+
+  const grandTotalSchool = useMemo(() => {
+    let totalSiswa = 0;
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+    let sakitDanIzin = 0;
+    let belumAbsen = 0;
+    let totalHadir = 0;
+
+    allRombelSummary.forEach((r) => {
+      totalSiswa += r.totalSiswa;
+      hadir += r.hadir;
+      terlambat += r.terlambat;
+      sakit += r.sakit;
+      izin += r.izin;
+      alfa += r.alfa;
+      sakitDanIzin += r.sakitDanIzin;
+      belumAbsen += r.belumAbsen;
+      totalHadir += r.totalHadir;
+    });
+
+    const persentase = totalSiswa > 0 ? Math.round((totalHadir / totalSiswa) * 100) : 0;
+
+    return {
+      totalSiswa,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      sakitDanIzin,
+      belumAbsen,
+      totalHadir,
+      persentase
+    };
+  }, [allRombelSummary]);
 
   // CSV Exporter download
   const handleExportCSV = () => {
@@ -269,6 +317,92 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
           <span className="text-[10px] text-gray-400 mt-1 block">Tidak ada keterangan</span>
         </div>
 
+      </div>
+
+      {/* REKAPITULASI ROMBEL KELAS 1-A S/D 6-B TERPADU */}
+      <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4 font-sans">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-2">
+            <School className="w-5 h-5 text-indigo-700" />
+            <div>
+              <h3 className="text-sm font-black text-slate-850 uppercase tracking-wider font-display">
+                REKAPITULASI KEHADIRAN PER ROMBEL KELAS (1-A s/d 6-B)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Data presensi per rombel untuk tanggal <b>{todayStr}</b>. Tersinkronisasi secara real-time.
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-800 px-3 py-1 rounded-xl border border-indigo-200">
+            Total Seluruh: {grandTotalSchool.totalHadir}/{grandTotalSchool.totalSiswa} Siswa ({grandTotalSchool.persentase}%)
+          </span>
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="min-w-full text-xs text-left">
+            <thead className="bg-slate-900 text-white uppercase text-[10px] font-mono tracking-wider">
+              <tr>
+                <th className="py-3 px-3.5">Rombel Kelas</th>
+                <th className="py-3 px-3.5">Wali Kelas</th>
+                <th className="py-3 px-2.5 text-center">Total</th>
+                <th className="py-3 px-2.5 text-center text-emerald-400">Hadir</th>
+                <th className="py-3 px-2.5 text-center text-amber-400">Telat</th>
+                <th className="py-3 px-2.5 text-center text-sky-400">Sakit</th>
+                <th className="py-3 px-2.5 text-center text-sky-400">Izin</th>
+                <th className="py-3 px-2.5 text-center text-rose-400">Alfa</th>
+                <th className="py-3 px-2.5 text-center text-slate-400">Belum</th>
+                <th className="py-3 px-3 text-center">Keaktifan</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {allRombelSummary.map((rombel) => (
+                <tr key={rombel.kelas} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-2.5 px-3.5 font-black text-slate-800">{rombel.kelas}</td>
+                  <td className="py-2.5 px-3.5 text-slate-600">{rombel.waliKelas}</td>
+                  <td className="py-2.5 px-2.5 text-center font-bold text-slate-800">{rombel.totalSiswa}</td>
+                  <td className="py-2.5 px-2.5 text-center font-black text-emerald-700">{rombel.hadir}</td>
+                  <td className="py-2.5 px-2.5 text-center font-bold text-amber-700">{rombel.terlambat}</td>
+                  <td className="py-2.5 px-2.5 text-center text-slate-600">{rombel.sakit}</td>
+                  <td className="py-2.5 px-2.5 text-center text-slate-600">{rombel.izin}</td>
+                  <td className="py-2.5 px-2.5 text-center text-slate-600">{rombel.alfa}</td>
+                  <td className="py-2.5 px-2.5 text-center font-semibold text-slate-400">{rombel.belumAbsen}</td>
+                  <td className="py-2.5 px-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <div className="w-12 bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            rombel.persentase >= 80
+                              ? 'bg-emerald-600'
+                              : rombel.persentase >= 50
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${rombel.persentase}%` }}
+                        />
+                      </div>
+                      <span className="font-mono font-black text-slate-800 text-[11px]">{rombel.persentase}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-900 text-white font-mono text-[11px] font-bold">
+              <tr>
+                <td className="py-3 px-3.5" colSpan={2}>TOTAL KESELURUHAN SEKOLAH</td>
+                <td className="py-3 px-2.5 text-center font-black">{grandTotalSchool.totalSiswa}</td>
+                <td className="py-3 px-2.5 text-center text-emerald-400 font-black">{grandTotalSchool.hadir}</td>
+                <td className="py-3 px-2.5 text-center text-amber-400 font-black">{grandTotalSchool.terlambat}</td>
+                <td className="py-3 px-2.5 text-center text-sky-400">{grandTotalSchool.sakit}</td>
+                <td className="py-3 px-2.5 text-center text-sky-400">{grandTotalSchool.izin}</td>
+                <td className="py-3 px-2.5 text-center text-rose-400">{grandTotalSchool.alfa}</td>
+                <td className="py-3 px-2.5 text-center text-slate-400">{grandTotalSchool.belumAbsen}</td>
+                <td className="py-3 px-3 text-center font-black text-emerald-400">
+                  {grandTotalSchool.persentase}%
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
 
       {/* GRAPHICAL REKAP & HISTORY REPORT TABLE (2 Columns) */}
