@@ -43,7 +43,7 @@ interface ReportPanelProps {
 }
 
 type ActiveTab = 'harian' | 'mingguan' | 'bulanan';
-type StatusFilterType = 'semua' | 'hadir' | 'terlambat' | 'sakit_izin' | 'belum_absen';
+type StatusFilterType = 'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
 
 export default function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('harian');
@@ -111,6 +111,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
     let alfa = 0;
     let sakitDanIzin = 0;
     let belumAbsen = 0;
+    let totalTidakHadir = 0;
     let totalHadir = 0;
 
     allRombelSummary.forEach((r) => {
@@ -122,10 +123,11 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       alfa += r.alfa;
       sakitDanIzin += r.sakitDanIzin;
       belumAbsen += r.belumAbsen;
+      totalTidakHadir += r.totalTidakHadir;
       totalHadir += r.totalHadir;
     });
 
-    const persentase = totalSiswa > 0 ? Math.round((totalHadir / totalSiswa) * 100) : 0;
+    const persentase = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
 
     return {
       totalSiswa,
@@ -136,6 +138,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       alfa,
       sakitDanIzin,
       belumAbsen,
+      totalTidakHadir,
       totalHadir,
       persentase
     };
@@ -172,17 +175,20 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   // Apply Status Filter
   const harianReportData = useMemo(() => {
     if (statusFilter === 'semua') return harianReportDataRaw;
+    if (statusFilter === 'hadir_total') return harianReportDataRaw.filter(r => r.status === 'Hadir' || r.status === 'Terlambat');
     if (statusFilter === 'hadir') return harianReportDataRaw.filter(r => r.status === 'Hadir');
     if (statusFilter === 'terlambat') return harianReportDataRaw.filter(r => r.status === 'Terlambat');
-    if (statusFilter === 'sakit_izin') return harianReportDataRaw.filter(r => r.status === 'Sakit' || r.status === 'Izin');
-    if (statusFilter === 'belum_absen') return harianReportDataRaw.filter(r => r.status === 'Belum Absen' || r.status === 'Alfa');
+    if (statusFilter === 'sakit') return harianReportDataRaw.filter(r => r.status === 'Sakit');
+    if (statusFilter === 'izin') return harianReportDataRaw.filter(r => r.status === 'Izin');
+    if (statusFilter === 'alfa') return harianReportDataRaw.filter(r => r.status === 'Alfa');
+    if (statusFilter === 'belum_absen') return harianReportDataRaw.filter(r => r.status === 'Belum Absen');
     return harianReportDataRaw;
   }, [harianReportDataRaw, statusFilter]);
 
   // Harian Statistics Summary for the active selection
   const harianStats = useMemo(() => {
     const total = harianReportDataRaw.length;
-    if (total === 0) return { total: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alfa: 0, belumAbsen: 0, percentage: 0 };
+    if (total === 0) return { total: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alfa: 0, belumAbsen: 0, totalHadirSemua: 0, totalTidakHadir: 0, percentage: 0 };
     
     let hadir = 0;
     let terlambat = 0;
@@ -202,10 +208,11 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       }
     });
 
-    const activeCount = hadir + terlambat;
-    const percentage = total > 0 ? Math.round((activeCount / total) * 100) : 0;
+    const totalHadirSemua = hadir + terlambat;
+    const totalTidakHadir = sakit + izin + alfa + belumAbsen;
+    const percentage = total > 0 ? Math.min(100, Math.round((totalHadirSemua / total) * 100)) : 0;
 
-    return { total, hadir, terlambat, sakit, izin, alfa, belumAbsen, percentage };
+    return { total, hadir, terlambat, sakit, izin, alfa, belumAbsen, totalHadirSemua, totalTidakHadir, percentage };
   }, [harianReportDataRaw]);
 
   // MINGGUAN: Calculate student matrix for Monday - Friday (Instant indexed execution)
@@ -337,7 +344,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   };
 
   const handleDownloadRekapRombel = () => {
-    const headers = ['No', 'Kelas', 'Wali Kelas', 'Total Siswa', 'Hadir', 'Terlambat', 'Sakit', 'Izin', 'Alfa', 'Belum Absen', 'Total Masuk', 'Persentase (%)'];
+    const headers = ['No', 'Kelas', 'Wali Kelas', 'Total Siswa', 'Hadir Tepat', 'Terlambat', 'Sakit', 'Izin', 'Alfa', 'Belum Absen', 'Total Masuk (Hadir)', 'Pengurang (Tidak Masuk)', 'Keaktifan (%)'];
     const rows = allRombelSummary.map((r, idx) => [
       idx + 1,
       r.kelas,
@@ -350,6 +357,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       r.alfa,
       r.belumAbsen,
       r.totalHadir,
+      r.totalTidakHadir,
       `${r.persentase}%`
     ]);
 
@@ -365,6 +373,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       grandTotalSchool.alfa,
       grandTotalSchool.belumAbsen,
       grandTotalSchool.totalHadir,
+      grandTotalSchool.totalTidakHadir,
       `${grandTotalSchool.persentase}%`
     ]);
 
@@ -613,31 +622,64 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
               </div>
 
               {/* Statistics preview harian */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 w-full lg:w-auto">
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 text-center min-w-[85px]">
-                  <span className="text-[9px] font-black text-slate-500 block uppercase">Total Siswa</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 w-full lg:w-auto">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2 text-center min-w-[75px]">
+                  <span className="text-[9px] font-black text-slate-600 block uppercase">Total Siswa</span>
                   <p className="text-base font-black text-slate-900 mt-0.5">{harianStats.total}</p>
                 </div>
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-2.5 text-center min-w-[85px]">
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-2 text-center min-w-[75px]">
+                  <span className="text-[9px] font-black text-blue-800 block uppercase">Total Masuk</span>
+                  <p className="text-base font-black text-blue-950 mt-0.5">{harianStats.totalHadirSemua}</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-2 text-center min-w-[75px]">
                   <span className="text-[9px] font-black text-emerald-800 block uppercase">Hadir Tepat</span>
                   <p className="text-base font-black text-emerald-950 mt-0.5">{harianStats.hadir}</p>
                 </div>
-                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-2.5 text-center min-w-[85px]">
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-2 text-center min-w-[75px]">
                   <span className="text-[9px] font-black text-amber-800 block uppercase">Terlambat</span>
                   <p className="text-base font-black text-amber-950 mt-0.5">{harianStats.terlambat}</p>
                 </div>
-                <div className="bg-sky-50 border border-sky-100 rounded-2xl p-2.5 text-center min-w-[85px]">
-                  <span className="text-[9px] font-black text-sky-850 block uppercase">Sakit & Izin</span>
-                  <p className="text-base font-black text-sky-950 mt-0.5">{harianStats.izin + harianStats.sakit}</p>
+                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-2 text-center min-w-[75px]">
+                  <span className="text-[9px] font-black text-indigo-800 block uppercase">Sakit</span>
+                  <p className="text-base font-black text-indigo-950 mt-0.5">{harianStats.sakit}</p>
                 </div>
-                <div className="bg-rose-50 border border-rose-100 rounded-2xl p-2.5 text-center min-w-[85px]">
-                  <span className="text-[9px] font-black text-rose-800 block uppercase">Belum / Alfa</span>
-                  <p className="text-base font-black text-rose-950 mt-0.5">{harianStats.belumAbsen + harianStats.alfa}</p>
+                <div className="bg-sky-50 border border-sky-100 rounded-2xl p-2 text-center min-w-[75px]">
+                  <span className="text-[9px] font-black text-sky-850 block uppercase">Izin</span>
+                  <p className="text-base font-black text-sky-950 mt-0.5">{harianStats.izin}</p>
                 </div>
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-2.5 text-center min-w-[85px]">
-                  <span className="text-[9px] font-black text-blue-800 block uppercase">Keaktifan</span>
-                  <p className="text-base font-black text-blue-950 mt-0.5">{harianStats.percentage}%</p>
+                <div className="bg-rose-50 border border-rose-100 rounded-2xl p-2 text-center min-w-[75px]">
+                  <span className="text-[9px] font-black text-rose-800 block uppercase">Alfa</span>
+                  <p className="text-base font-black text-rose-950 mt-0.5">{harianStats.alfa}</p>
                 </div>
+                <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2 text-center min-w-[75px]">
+                  <span className="text-[9px] font-black text-slate-600 block uppercase">Belum Absen</span>
+                  <p className="text-base font-black text-slate-800 mt-0.5">{harianStats.belumAbsen}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* FORMULA REKAPITULASI TRANSPARAN */}
+            <div className="bg-gradient-to-r from-blue-50 via-slate-50 to-emerald-50 border border-blue-200/80 rounded-2xl p-3.5 text-xs text-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="bg-blue-600 text-white p-1.5 rounded-lg">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                </span>
+                <div>
+                  <p className="font-extrabold text-slate-800">
+                    Sinkronisasi Data Presensi ({selectedKelas}):
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Total Siswa ({harianStats.total}) = <b>Hadir Masuk ({harianStats.totalHadirSemua})</b> + <b>Tidak Hadir / Pengurang ({harianStats.totalTidakHadir})</b>
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                  Masuk: {harianStats.hadir} Tepat + {harianStats.terlambat} Telat = {harianStats.totalHadirSemua} Siswa ({harianStats.percentage}%)
+                </span>
+                <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded-md">
+                  Pengurang: {harianStats.sakit} Sakit + {harianStats.izin} Izin + {harianStats.alfa} Alfa + {harianStats.belumAbsen} Belum = {harianStats.totalTidakHadir} Siswa
+                </span>
               </div>
             </div>
 
@@ -669,21 +711,24 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 font-extrabold text-left">
-                      <th className="py-3 px-4 w-12 text-center">No</th>
-                      <th className="py-3 px-4 w-32">Rombel Kelas</th>
-                      <th className="py-3 px-4">Wali Kelas</th>
-                      <th className="py-3 px-3 text-center w-24 bg-slate-200/50">Total Siswa</th>
-                      <th className="py-3 px-3 text-center w-20 bg-green-50 text-green-800">Hadir</th>
-                      <th className="py-3 px-3 text-center w-20 bg-amber-50 text-amber-800">Telat</th>
-                      <th className="py-3 px-3 text-center w-24 bg-sky-50 text-sky-800">Sakit / Izin</th>
-                      <th className="py-3 px-3 text-center w-24 bg-rose-50 text-rose-800">Belum / Alfa</th>
-                      <th className="py-3 px-3 text-center w-24 bg-blue-50 text-blue-800">Total Masuk</th>
-                      <th className="py-3 px-3 text-center w-24">Kehadiran</th>
-                      <th className="py-3 px-3 text-center w-24">Aksi</th>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-black text-left whitespace-nowrap">
+                      <th className="py-3 px-3 w-10 text-center">No</th>
+                      <th className="py-3 px-3 w-28">Rombel</th>
+                      <th className="py-3 px-3">Wali Kelas</th>
+                      <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
+                      <th className="py-3 px-2 text-center bg-emerald-100/60 text-emerald-900">Hadir</th>
+                      <th className="py-3 px-2 text-center bg-amber-100/60 text-amber-900">Telat</th>
+                      <th className="py-3 px-2 text-center bg-indigo-100/60 text-indigo-900">Sakit</th>
+                      <th className="py-3 px-2 text-center bg-sky-100/60 text-sky-900">Izin</th>
+                      <th className="py-3 px-2 text-center bg-rose-100/60 text-rose-900">Alfa</th>
+                      <th className="py-3 px-2 text-center bg-slate-100 text-slate-700">Belum</th>
+                      <th className="py-3 px-2.5 text-center bg-blue-100/70 text-blue-950 font-black">Total Masuk</th>
+                      <th className="py-3 px-2.5 text-center bg-rose-50 text-rose-900 font-black">Pengurang</th>
+                      <th className="py-3 px-2.5 text-center bg-emerald-50 text-emerald-900">% Keaktifan</th>
+                      <th className="py-3 px-2.5 text-center">Aksi</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 whitespace-nowrap">
                     {allRombelSummary.map((rombel, idx) => {
                       const isSelected = selectedKelas === rombel.kelas;
                       let rateColor = 'text-rose-600';
@@ -696,22 +741,25 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
                           className={`hover:bg-blue-50/50 transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/80 font-bold' : ''}`}
                           onClick={() => setSelectedKelas(rombel.kelas)}
                         >
-                          <td className="py-2.5 px-4 text-center text-slate-400 font-bold">{idx + 1}</td>
-                          <td className="py-2.5 px-4 font-black text-slate-800 flex items-center gap-1.5">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-black text-slate-800 flex items-center gap-1.5">
                             <span>{rombel.kelas}</span>
                             {isSelected && (
                               <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-bold">Aktif</span>
                             )}
                           </td>
-                          <td className="py-2.5 px-4 text-slate-600 font-medium">👤 {rombel.waliKelas}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-slate-800 bg-slate-50/70">{rombel.totalSiswa}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-green-700 bg-green-50/30">{rombel.hadir}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-amber-700 bg-amber-50/30">{rombel.terlambat}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-sky-700 bg-sky-50/30">{rombel.sakitDanIzin}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-rose-700 bg-rose-50/30">{rombel.belumAbsen + rombel.alfa}</td>
-                          <td className="py-2.5 px-3 text-center font-black text-blue-800 bg-blue-50/30">{rombel.totalHadir}</td>
-                          <td className={`py-2.5 px-3 text-center font-mono ${rateColor}`}>{rombel.persentase}%</td>
-                          <td className="py-2.5 px-3 text-center">
+                          <td className="py-2.5 px-3 text-slate-600 font-medium">👤 {rombel.waliKelas}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black text-slate-900 bg-slate-50/80">{rombel.totalSiswa}</td>
+                          <td className="py-2.5 px-2 text-center font-bold text-emerald-800 bg-emerald-50/40">{rombel.hadir}</td>
+                          <td className="py-2.5 px-2 text-center font-bold text-amber-800 bg-amber-50/40">{rombel.terlambat}</td>
+                          <td className="py-2.5 px-2 text-center font-bold text-indigo-800 bg-indigo-50/40">{rombel.sakit}</td>
+                          <td className="py-2.5 px-2 text-center font-bold text-sky-800 bg-sky-50/40">{rombel.izin}</td>
+                          <td className="py-2.5 px-2 text-center font-bold text-rose-800 bg-rose-50/40">{rombel.alfa}</td>
+                          <td className="py-2.5 px-2 text-center font-medium text-slate-600 bg-slate-50/40">{rombel.belumAbsen}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black text-blue-900 bg-blue-50/60">{rombel.totalHadir}</td>
+                          <td className="py-2.5 px-2.5 text-center font-bold text-rose-700 bg-rose-50/40">{rombel.totalTidakHadir}</td>
+                          <td className={`py-2.5 px-2.5 text-center font-mono font-black ${rateColor}`}>{rombel.persentase}%</td>
+                          <td className="py-2.5 px-2.5 text-center">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -727,18 +775,21 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
                     })}
 
                     {/* Grand Total Row */}
-                    <tr className="bg-slate-200/80 border-t-2 border-slate-300 font-black text-slate-800">
-                      <td className="py-3 px-4 text-center">Σ</td>
-                      <td className="py-3 px-4">TOTAL SEKOLAH</td>
-                      <td className="py-3 px-4 text-slate-500 font-bold">12 Rombel Kelas</td>
-                      <td className="py-3 px-3 text-center bg-slate-300/60 font-black">{grandTotalSchool.totalSiswa}</td>
-                      <td className="py-3 px-3 text-center text-green-800 font-black">{grandTotalSchool.hadir}</td>
-                      <td className="py-3 px-3 text-center text-amber-800 font-black">{grandTotalSchool.terlambat}</td>
-                      <td className="py-3 px-3 text-center text-sky-800 font-black">{grandTotalSchool.sakitDanIzin}</td>
-                      <td className="py-3 px-3 text-center text-rose-800 font-black">{grandTotalSchool.belumAbsen + grandTotalSchool.alfa}</td>
-                      <td className="py-3 px-3 text-center text-blue-900 font-black">{grandTotalSchool.totalHadir}</td>
-                      <td className="py-3 px-3 text-center text-blue-900 font-mono font-black">{grandTotalSchool.persentase}%</td>
-                      <td className="py-3 px-3 text-center">
+                    <tr className="bg-slate-200/90 border-t-2 border-slate-300 font-black text-slate-900">
+                      <td className="py-3 px-3 text-center">Σ</td>
+                      <td className="py-3 px-3">TOTAL SEKOLAH</td>
+                      <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel Kelas</td>
+                      <td className="py-3 px-2.5 text-center bg-slate-300/70 font-black text-slate-950">{grandTotalSchool.totalSiswa}</td>
+                      <td className="py-3 px-2 text-center text-emerald-900 font-black">{grandTotalSchool.hadir}</td>
+                      <td className="py-3 px-2 text-center text-amber-900 font-black">{grandTotalSchool.terlambat}</td>
+                      <td className="py-3 px-2 text-center text-indigo-900 font-black">{grandTotalSchool.sakit}</td>
+                      <td className="py-3 px-2 text-center text-sky-900 font-black">{grandTotalSchool.izin}</td>
+                      <td className="py-3 px-2 text-center text-rose-900 font-black">{grandTotalSchool.alfa}</td>
+                      <td className="py-3 px-2 text-center text-slate-700 font-black">{grandTotalSchool.belumAbsen}</td>
+                      <td className="py-3 px-2.5 text-center text-blue-950 font-black bg-blue-100/80">{grandTotalSchool.totalHadir}</td>
+                      <td className="py-3 px-2.5 text-center text-rose-900 font-black bg-rose-100/80">{grandTotalSchool.totalTidakHadir}</td>
+                      <td className="py-3 px-2.5 text-center text-blue-950 font-mono font-black">{grandTotalSchool.persentase}%</td>
+                      <td className="py-3 px-2.5 text-center">
                         <button
                           onClick={() => setSelectedKelas('Semua Kelas')}
                           className="text-[10px] font-bold text-slate-700 bg-white px-2 py-1 rounded-lg border border-slate-300 transition-colors cursor-pointer"
@@ -766,46 +817,70 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
 
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Status filter buttons */}
-                  <div className="flex items-center bg-slate-200/60 p-1 rounded-xl gap-1">
+                  <div className="flex flex-wrap items-center bg-slate-200/60 p-1 rounded-xl gap-1">
                     <button
                       onClick={() => setStatusFilter('semua')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        statusFilter === 'semua' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'semua' ? 'bg-slate-800 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
                       Semua ({harianReportDataRaw.length})
                     </button>
                     <button
+                      onClick={() => setStatusFilter('hadir_total')}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'hadir_total' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
+                      }`}
+                    >
+                      Total Masuk ({harianStats.totalHadirSemua})
+                    </button>
+                    <button
                       onClick={() => setStatusFilter('hadir')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        statusFilter === 'hadir' ? 'bg-green-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'hadir' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
                       Hadir ({harianStats.hadir})
                     </button>
                     <button
                       onClick={() => setStatusFilter('terlambat')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        statusFilter === 'terlambat' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'terlambat' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
                       Telat ({harianStats.terlambat})
                     </button>
                     <button
-                      onClick={() => setStatusFilter('sakit_izin')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        statusFilter === 'sakit_izin' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      onClick={() => setStatusFilter('sakit')}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'sakit' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
-                      Sakit/Izin ({harianStats.sakit + harianStats.izin})
+                      Sakit ({harianStats.sakit})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter('izin')}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'izin' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
+                      }`}
+                    >
+                      Izin ({harianStats.izin})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter('alfa')}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'alfa' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
+                      }`}
+                    >
+                      Alfa ({harianStats.alfa})
                     </button>
                     <button
                       onClick={() => setStatusFilter('belum_absen')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        statusFilter === 'belum_absen' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'belum_absen' ? 'bg-slate-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
-                      Belum Absen ({harianStats.belumAbsen + harianStats.alfa})
+                      Belum Presensi ({harianStats.belumAbsen})
                     </button>
                   </div>
 
