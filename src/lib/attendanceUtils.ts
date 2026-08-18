@@ -1,4 +1,5 @@
-import { Siswa, Presensi, StatusKehadiran } from '../types';
+import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
+import { getWaliKelasByKelas } from './demoData';
 
 /**
  * Mendapatkan string tanggal lokal (YYYY-MM-DD) berdasarkan zona waktu lokal peramban.
@@ -29,6 +30,10 @@ export const isPresensiMatchSiswa = (p: Presensi, s: Siswa): boolean => {
   if (p.nis && s.nis && p.nis.trim() === s.nis.trim()) return true;
   if (p.nik && s.nik && p.nik.trim() === s.nik.trim()) return true;
   if (s.nisn && p.nis === s.nisn) return true;
+  // Fallback matching by name and class if NIS is formatted slightly differently
+  if (p.nama && s.nama && p.nama.trim().toLowerCase() === s.nama.trim().toLowerCase() && p.kelas === s.kelas) {
+    return true;
+  }
   return false;
 };
 
@@ -36,8 +41,9 @@ export const isPresensiMatchSiswa = (p: Presensi, s: Siswa): boolean => {
  * Memeriksa apakah tanggal pada catatan presensi sesuai dengan tanggal target
  */
 export const isPresensiDateMatch = (pTanggal: string, targetDateStr: string): boolean => {
-  if (pTanggal === targetDateStr) return true;
-  // Juga toleransi jika salah satu format menggunakan ISO UTC hari yang sama
+  if (!pTanggal || !targetDateStr) return false;
+  if (pTanggal.trim() === targetDateStr.trim()) return true;
+  if (pTanggal.slice(0, 10) === targetDateStr.slice(0, 10)) return true;
   try {
     const d1 = new Date(pTanggal).toLocaleDateString('en-CA');
     const d2 = new Date(targetDateStr).toLocaleDateString('en-CA');
@@ -169,3 +175,48 @@ export const calculateSchoolAttendanceStats = (
 
   return calculateClassAttendanceStats(studentsToEvaluate, presensiList, targetDateStr);
 };
+
+export interface ClassRombelSummary {
+  kelas: string;
+  waliKelas: string;
+  totalSiswa: number;
+  hadir: number;
+  terlambat: number;
+  sakit: number;
+  izin: number;
+  alfa: number;
+  sakitDanIzin: number;
+  belumAbsen: number;
+  totalHadir: number;
+  persentase: number;
+}
+
+/**
+ * Menghitung ringkasan rekapitulasi untuk SEMUA rombel kelas 1-A sampai 6-B
+ */
+export const calculateAllRombelSummaryList = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  targetDateStr: string = getLocalDateString()
+): ClassRombelSummary[] => {
+  return DAFTAR_KELAS.map((namaKelas) => {
+    const classStudents = siswaList.filter((s) => s.kelas === namaKelas);
+    const stats = calculateClassAttendanceStats(classStudents, presensiList, targetDateStr);
+
+    return {
+      kelas: namaKelas,
+      waliKelas: getWaliKelasByKelas(namaKelas),
+      totalSiswa: stats.totalSiswa,
+      hadir: stats.hadir,
+      terlambat: stats.terlambat,
+      sakit: stats.sakit,
+      izin: stats.izin,
+      alfa: stats.alfa,
+      sakitDanIzin: stats.sakitDanIzin,
+      belumAbsen: stats.belumAbsen,
+      totalHadir: stats.totalHadirSemua,
+      persentase: stats.persentaseKeaktifan
+    };
+  });
+};
+
