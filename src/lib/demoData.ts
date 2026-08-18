@@ -160,19 +160,19 @@ Semoga selamat sampai di rumah. Terima kasih.`,
   waApiKey: 'KARA3_WS_GATEWAY_v2'
 };
 
-// Log awal unuk realistis harian
+// Log awal untuk realistis harian
 export const LOGS_INITIAL: ActivityLog[] = [
   {
     id: 'log-001',
-    waktu: '2026-06-01T06:45:00Z',
+    waktu: '2026-08-18T06:30:00Z',
     user: 'Panji Teguh Amarta Surya, S.Pd.I., Gr.',
     role: 'admin',
     tindakan: 'Sistem Dimulai',
-    detail: 'Sistem absensi DIGIWANGI 3 berhasil dimuat pada pagi hari.'
+    detail: 'Sistem presensi DIGIWANGI 3 berhasil dimuat pada pagi hari.'
   },
   {
     id: 'log-002',
-    waktu: '2026-06-01T06:48:12Z',
+    waktu: '2026-08-18T06:35:12Z',
     user: 'Cecep Mulyana',
     role: 'piket',
     tindakan: 'Login Sistem',
@@ -180,78 +180,97 @@ export const LOGS_INITIAL: ActivityLog[] = [
   },
   {
     id: 'log-003',
-    waktu: '2026-06-01T06:50:33Z',
+    waktu: '2026-08-18T06:38:33Z',
     user: 'Cecep Mulyana',
     role: 'piket',
-    tindakan: 'Inisialisasi Kamera',
-    detail: 'Kamera QR Code Scanner berhasil aktif, status siap memindai.'
+    tindakan: 'Inisialisasi Kamera & Scanner',
+    detail: 'Kamera QR Code Scanner aktif, memindai presensi pagi siswa seluruh kelas 1-A s/d 6-B.'
   }
 ];
 
-export const PRESENSI_INITIAL: Presensi[] = [
-  {
-    id: 'pr-001',
-    siswaId: 'sis-001',
-    nis: '30101',
-    nama: 'Aceng Miftah',
-    kelas: 'Kelas 1-B',
-    tanggal: '2026-06-01',
-    waktu: '06:52:10',
-    status: 'Hadir',
-    waStatus: 'Terkirim',
-    pesanTerkirim: 'Terkirim otomatis ke 081324567801',
-    operator: 'Cecep Mulyana'
-  },
-  {
-    id: 'pr-002',
-    siswaId: 'sis-003',
-    nis: '30201',
-    nama: 'Dadan Wildan',
-    kelas: 'Kelas 2-B',
-    tanggal: '2026-06-01',
-    waktu: '06:55:40',
-    status: 'Hadir',
-    waStatus: 'Terkirim',
-    pesanTerkirim: 'Terkirim otomatis ke 082198765432',
-    operator: 'Cecep Mulyana'
-  },
-  {
-    id: 'pr-003',
-    siswaId: 'sis-008',
-    nis: '30402',
-    nama: 'Ayu Lestari',
-    kelas: 'Kelas 4-A',
-    tanggal: '2026-06-01',
-    waktu: '07:05:12',
-    status: 'Hadir',
-    waStatus: 'Terkirim',
-    pesanTerkirim: 'Terkirim otomatis ke 081234567890',
-    operator: 'Cecep Mulyana'
-  },
-  {
-    id: 'pr-004',
-    siswaId: 'sis-010',
-    nis: '30501',
-    nama: 'Iman Sulaeman',
-    kelas: 'Kelas 5-A',
-    tanggal: '2026-06-01',
-    waktu: '07:18:22',
-    status: 'Terlambat',
-    waStatus: 'Terkirim',
-    pesanTerkirim: 'Terkirim otomatis ke 081244556677',
-    operator: 'Cecep Mulyana'
-  },
-  {
-    id: 'pr-005',
-    siswaId: 'sis-013',
-    nis: '30602',
-    nama: 'Dewi Sartika',
-    kelas: 'Kelas 6-B',
-    tanggal: '2026-06-01',
-    waktu: '07:22:05',
-    status: 'Terlambat',
-    waStatus: 'Terkirim',
-    pesanTerkirim: 'Terkirim otomatis ke 085312345678',
-    operator: 'Cecep Mulyana'
+/**
+ * Menghasilkan rekaman presensi lengkap dan realistis untuk seluruh murid di semua 12 rombel kelas (1-A s/d 6-B)
+ * Menjamin kehadiran mencakup seluruh kelas secara menyeluruh sesuai kehadiran riil di sekolah.
+ */
+export const generateRealisticAttendanceForDate = (
+  students: Siswa[],
+  targetDate: string = '2026-08-18'
+): Presensi[] => {
+  return students.map((siswa, idx) => {
+    // Seed deterministik berbasis id + tanggal agar konsisten dan stabil
+    const charCodeSum = (siswa.id || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const dateNum = parseInt(targetDate.replace(/[^0-9]/g, '').slice(-2)) || 18;
+    const seed = (idx * 37 + charCodeSum + dateNum * 13) % 100;
+
+    let status: 'Hadir' | 'Terlambat' | 'Sakit' | 'Izin' | 'Alfa' = 'Hadir';
+    let waktu = '06:45:10';
+    let pesan = '';
+
+    if (seed < 89) {
+      // 89% Hadir Tepat Waktu (06:35 - 06:58)
+      status = 'Hadir';
+      const m = String(35 + (seed % 24)).padStart(2, '0');
+      const s = String((seed * 7) % 60).padStart(2, '0');
+      waktu = `06:${m}:${s}`;
+      pesan = `Tercatat Hadir via QR Code Scanner Gate Utama (WIB)`;
+    } else if (seed < 95) {
+      // 6% Terlambat (07:16 - 07:28)
+      status = 'Terlambat';
+      const m = String(16 + (seed % 12)).padStart(2, '0');
+      const s = String((seed * 11) % 60).padStart(2, '0');
+      waktu = `07:${m}:${s}`;
+      pesan = `Tercatat Terlambat masuk sekolah pukul ${waktu} WIB`;
+    } else if (seed < 97) {
+      // 2% Sakit
+      status = 'Sakit';
+      waktu = '07:05:00';
+      pesan = `Keterangan Sakit diterima dari Orang Tua via WA (${siswa.waOrangTua})`;
+    } else if (seed < 99) {
+      // 2% Izin
+      status = 'Izin';
+      waktu = '07:10:00';
+      pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Kelas`;
+    } else {
+      // 1% Alfa
+      status = 'Alfa';
+      waktu = '07:30:00';
+      pesan = `Tidak hadir tanpa keterangan (Alfa)`;
+    }
+
+    return {
+      id: `pr-${targetDate}-${siswa.id}`,
+      siswaId: siswa.id,
+      nis: siswa.nis,
+      nik: siswa.nik,
+      nama: siswa.nama,
+      kelas: siswa.kelas,
+      tanggal: targetDate,
+      waktu,
+      status,
+      waStatus: 'Terkirim',
+      pesanTerkirim: pesan,
+      operator: 'Cecep Mulyana (Piket)'
+    };
+  });
+};
+
+const getTodayDateStr = (): string => {
+  try {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return '2026-08-18';
   }
+};
+
+const todayDate = getTodayDateStr();
+
+export const PRESENSI_INITIAL: Presensi[] = [
+  ...generateRealisticAttendanceForDate(SISWA_INITIAL, todayDate),
+  ...generateRealisticAttendanceForDate(SISWA_INITIAL, '2026-08-17'),
+  ...generateRealisticAttendanceForDate(SISWA_INITIAL, '2026-08-16'),
+  ...generateRealisticAttendanceForDate(SISWA_INITIAL, '2026-08-15'),
 ];

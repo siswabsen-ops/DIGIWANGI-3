@@ -7,7 +7,7 @@ import {
   USER_DEMO_ACCOUNTS
 } from './lib/demoData';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User } from './types';
-import { isPresensiDateMatch, isPresensiMatchSiswa } from './lib/attendanceUtils';
+import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString } from './lib/attendanceUtils';
 import Header from './components/Header';
 import { 
   db,
@@ -75,8 +75,19 @@ export default function App() {
   });
 
   const [presensiList, setPresensiList] = useState<Presensi[]>(() => {
-    const cached = localStorage.getItem('karapres3_presensi');
-    return cached ? JSON.parse(cached) : PRESENSI_INITIAL;
+    const cached = localStorage.getItem('karapres3_presensi_v5');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const todayStr = getLocalDateString();
+        const todayCount = parsed.filter((p: Presensi) => isPresensiDateMatch(p.tanggal, todayStr)).length;
+        if (todayCount >= 250) {
+          return parsed;
+        }
+      } catch {}
+    }
+    localStorage.setItem('karapres3_presensi_v5', JSON.stringify(PRESENSI_INITIAL));
+    return PRESENSI_INITIAL;
   });
 
   const [settings, setSettings] = useState<SystemSettings>(() => {
@@ -169,7 +180,8 @@ export default function App() {
           SISWA_INITIAL,
           USER_DEMO_ACCOUNTS,
           SETTINGS_INITIAL,
-          LOGS_INITIAL
+          LOGS_INITIAL,
+          PRESENSI_INITIAL
         );
 
         // 1. Subscribe to Siswa directory
@@ -268,7 +280,7 @@ export default function App() {
   }, [siswaList]);
 
   useEffect(() => {
-    localStorage.setItem('karapres3_presensi', JSON.stringify(presensiList));
+    localStorage.setItem('karapres3_presensi_v5', JSON.stringify(presensiList));
   }, [presensiList]);
 
   useEffect(() => {

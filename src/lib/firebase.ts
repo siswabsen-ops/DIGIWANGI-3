@@ -254,7 +254,8 @@ export const seedInitialDataIfDocsEmpty = async (
   siswaSource: Siswa[],
   accountsSource: { user: User; pin: string }[],
   settingsSource: SystemSettings,
-  logsSource: ActivityLog[]
+  logsSource: ActivityLog[],
+  presensiSource?: Presensi[]
 ) => {
   console.log('Validating Database Seeding states on launch...');
   try {
@@ -332,6 +333,24 @@ export const seedInitialDataIfDocsEmpty = async (
       });
       await batch.commit();
       console.log('Seeded Logs to cloud.');
+    }
+
+    // 5. Check Presensi (Ensure all classes have complete scan records)
+    if (presensiSource && presensiSource.length > 0) {
+      const presensiSnap = await getDocs(collection(db, 'presensi'));
+      if (presensiSnap.empty || presensiSnap.size < 100) {
+        console.log(`Seeding complete school attendance (${presensiSource.length} records) across all classes into Firestore...`);
+        const chunkSize = 200;
+        for (let i = 0; i < presensiSource.length; i += chunkSize) {
+          const chunk = presensiSource.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+          chunk.forEach((p) => {
+            batch.set(doc(db, 'presensi', p.id), cleanPresensiForFirestore(p));
+          });
+          await batch.commit();
+        }
+        console.log('Seeded Presensi to cloud.');
+      }
     }
 
   } catch (err) {
