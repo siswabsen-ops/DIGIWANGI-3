@@ -19,6 +19,12 @@ import {
   Award
 } from 'lucide-react';
 import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
+import {
+  getLocalDateString,
+  getLatestAttendanceForStudent,
+  isPresensiMatchSiswa,
+  isPresensiDateMatch
+} from '../lib/attendanceUtils';
 
 interface ReportPanelProps {
   siswaList: Siswa[];
@@ -33,12 +39,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // 1. HARIAN STATE
-  const [harianDate, setHarianDate] = useState<string>(() => {
-    const today = new Date();
-    const tzOffset = today.getTimezoneOffset() * 60000;
-    const localISOTime = (new Date(today.getTime() - tzOffset)).toISOString().slice(0, 10);
-    return localISOTime;
-  });
+  const [harianDate, setHarianDate] = useState<string>(() => getLocalDateString());
 
   // 2. MINGGUAN STATE (Start Monday value)
   const [mingguanDate, setMingguanDate] = useState<string>(() => {
@@ -95,7 +96,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   // HARIAN: Calculate attendance state per student for the selected date
   const harianReportData = useMemo(() => {
     return filteredStudents.map(siswa => {
-      const record = presensiList.find(p => p.siswaId === siswa.id && p.tanggal === harianDate);
+      const record = getLatestAttendanceForStudent(siswa, presensiList, harianDate);
       return {
         siswa,
         record: record || null,
@@ -136,7 +137,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   const mingguanReportData = useMemo(() => {
     return filteredStudents.map(siswa => {
       const recordsByDay = weekDates.map(wd => {
-        const found = presensiList.find(p => p.siswaId === siswa.id && p.tanggal === wd.dateStr);
+        const found = getLatestAttendanceForStudent(siswa, presensiList, wd.dateStr);
         return {
           dateStr: wd.dateStr,
           status: found ? found.status : '-' // dash indicates no record
@@ -162,8 +163,19 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
   // BULANAN: Aggregates for the whole month
   const bulananReportData = useMemo(() => {
     return filteredStudents.map(siswa => {
-      // Find all records of this student within the chosen month YYYY-MM
-      const monthlyRecords = presensiList.filter(p => p.siswaId === siswa.id && p.tanggal.startsWith(bulananMonth));
+      // Find all matching records of this student within the chosen month YYYY-MM
+      const studentMonthRecords = presensiList.filter(p => isPresensiMatchSiswa(p, siswa) && p.tanggal.startsWith(bulananMonth));
+      
+      // Group by date to get unique latest record per day
+      const dateMap = new Map<string, Presensi>();
+      studentMonthRecords.forEach(r => {
+        const existing = dateMap.get(r.tanggal);
+        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+          dateMap.set(r.tanggal, r);
+        }
+      });
+
+      const uniqueMonthlyRecords = Array.from(dateMap.values());
       
       let hadir = 0;
       let terlambat = 0;
@@ -171,7 +183,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       let izin = 0;
       let alfa = 0;
 
-      monthlyRecords.forEach(r => {
+      uniqueMonthlyRecords.forEach(r => {
         switch (r.status) {
           case 'Hadir': hadir++; break;
           case 'Terlambat': terlambat++; break;
@@ -201,7 +213,7 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
       return {
         siswa,
         metrics: {
-          registrasi: monthlyRecords.length,
+          registrasi: uniqueMonthlyRecords.length,
           hadir,
           terlambat,
           sakit,

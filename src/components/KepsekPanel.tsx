@@ -13,6 +13,11 @@ import {
 } from 'lucide-react';
 import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
 import { getWaliKelasByKelas } from '../lib/demoData';
+import {
+  getLocalDateString,
+  calculateClassAttendanceStats,
+  calculateSchoolAttendanceStats,
+} from '../lib/attendanceUtils';
 
 interface KepsekPanelProps {
   siswaList: Siswa[];
@@ -26,7 +31,7 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [exportError, setExportError] = useState('');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   // Filtered lists based on filters chosen
   const getFilterData = () => {
@@ -57,26 +62,27 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
 
   const filteredLogs = getFilterData();
 
-  // Statistics calculation helpers
-  const totalSiswaSesuaiFilter = selectedKelas === 'Semua Kelas' 
-    ? siswaList.length 
-    : siswaList.filter(s => s.kelas === selectedKelas).length;
+  // Statistics calculation helpers - Accurate unique students for today
+  const schoolTodayStats = calculateSchoolAttendanceStats(
+    siswaList,
+    presensiList,
+    todayStr,
+    selectedKelas
+  );
 
-  const countStatus = (status: string) => filteredLogs.filter((p) => p.status === status).length;
+  const totalSiswaSesuaiFilter = schoolTodayStats.totalSiswa;
 
-  const jmlHadir = countStatus('Hadir');
-  const jmlSakit = countStatus('Sakit');
-  const jmlIzin = countStatus('Izin');
-  const jmlAlfa = countStatus('Alfa');
-  const jmlTerlambat = countStatus('Terlambat');
-  
-  // Who is absent / not scanned yet today (Alfa by default if no record on chosen horizon)
-  const totalScanned = filteredLogs.length;
-  const tIdakHadir = Math.max(0, totalSiswaSesuaiFilter - totalScanned);
+  // When filtering today, use exact unique pupil counts. When filtering range (minggu/bulan), use log totals
+  const jmlHadir = filterType === 'hari' ? schoolTodayStats.hadir : filteredLogs.filter(p => p.status === 'Hadir').length;
+  const jmlTerlambat = filterType === 'hari' ? schoolTodayStats.terlambat : filteredLogs.filter(p => p.status === 'Terlambat').length;
+  const jmlSakit = filterType === 'hari' ? schoolTodayStats.sakit : filteredLogs.filter(p => p.status === 'Sakit').length;
+  const jmlIzin = filterType === 'hari' ? schoolTodayStats.izin : filteredLogs.filter(p => p.status === 'Izin').length;
+  const jmlAlfa = filterType === 'hari' ? schoolTodayStats.alfa : filteredLogs.filter(p => p.status === 'Alfa').length;
+  const tIdakHadir = filterType === 'hari' ? schoolTodayStats.belumAbsen : Math.max(0, totalSiswaSesuaiFilter - (jmlHadir + jmlTerlambat + jmlSakit + jmlIzin));
 
-  const persentaseHadir = totalSiswaSesuaiFilter > 0 
-    ? Math.round(((jmlHadir + jmlTerlambat) / totalSiswaSesuaiFilter) * 100) 
-    : 0;
+  const persentaseHadir = filterType === 'hari'
+    ? schoolTodayStats.persentaseKeaktifan
+    : (totalSiswaSesuaiFilter > 0 ? Math.min(100, Math.round(((jmlHadir + jmlTerlambat) / totalSiswaSesuaiFilter) * 100)) : 0);
 
   // CSV Exporter download
   const handleExportCSV = () => {
@@ -277,14 +283,11 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
 
           <div className="space-y-3 pt-2">
             {DAFTAR_KELAS.map((curKelasName) => {
-              const totalPupils = siswaList.filter((s) => s.kelas === curKelasName).length;
-              const hasScannedInKelas = presensiList.filter((p) => p.kelas === curKelasName && p.tanggal === todayStr && (p.status === 'Hadir' || p.status === 'Terlambat')).length;
-
-              // Ratio representation
-              const ratioPercent = totalPupils > 0 
-                ? Math.min(100, Math.round((hasScannedInKelas / totalPupils) * 105)) 
-                : 0;
-              const safePercent = Math.min(100, ratioPercent);
+              const pupilsInKelas = siswaList.filter((s) => s.kelas === curKelasName);
+              const totalPupils = pupilsInKelas.length;
+              const classStats = calculateClassAttendanceStats(pupilsInKelas, presensiList, todayStr);
+              const safePercent = classStats.persentaseKeaktifan;
+              const totalHadirCount = classStats.totalHadirSemua;
 
               return (
                 <div key={curKelasName} className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-150">
@@ -293,7 +296,10 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
                       <span className="font-bold text-slate-800">{curKelasName} ({totalPupils} Siswa)</span>
                       <span className="text-[11px] text-slate-500 block font-medium">👤 {getWaliKelasByKelas(curKelasName)}</span>
                     </div>
-                    <span className="font-mono font-black text-blue-700 shrink-0">{safePercent}% Hadir</span>
+                    <div className="text-right">
+                      <span className="font-mono font-black text-blue-700 block">{safePercent}% Hadir</span>
+                      <span className="text-[10px] text-slate-500 font-medium">{totalHadirCount}/{totalPupils} Anak</span>
+                    </div>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden border border-slate-250 mt-1">
                     <div 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Search, UserCheck, AlertTriangle, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
 import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal } from '../types';
+import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
 import QRCodeRenderer from './QRCodeRenderer';
 // @ts-ignore
 import jsQR from 'jsqr';
@@ -172,10 +173,7 @@ export default function ScanScreen({
 
     // Determine default status based on Arrival time and System Settings / Shift Schedule
     const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const waktuSekarang = `${hours}:${minutes}:${seconds}`;
+    const waktuSekarang = getLocalTimeString(now);
 
     // Lookup dynamic applicable schedule for student's class (e.g., Jadwal Siang Kelas 1-6 vs Pagi)
     const applicableJadwal = getApplicableJadwal(matchedSiswa.kelas, settings, waktuSekarang);
@@ -195,19 +193,20 @@ export default function ScanScreen({
       }
     }
 
-    const todayDate = now.toISOString().split('T')[0];
+    const todayDate = getLocalDateString(now);
 
-    // Check if pupil already scanned today to avoid annoying double triggers
+    // Check if pupil already scanned today to avoid duplicate records
     const alreadyScanned = recentPresensi.find(
-      (p) => (p.siswaId === matchedSiswa.id || p.nis === matchedSiswa.nis) && p.tanggal === todayDate
+      (p) => isPresensiMatchSiswa(p, matchedSiswa) && isPresensiDateMatch(p.tanggal, todayDate)
     );
 
     if (alreadyScanned && !customStatus) {
-      // Allow overriding but warn softly
+      // Allow overriding but inform softly
       setErrorMsg(`Info: ${matchedSiswa.nama} sudah tercatat presensi hari ini pukul ${alreadyScanned.waktu.slice(0,5)}.`);
     }
 
-    const newPresensiId = `pr-${Date.now()}`;
+    // Deterministic unique ID per student per day so Firestore updates in-place
+    const newPresensiId = alreadyScanned ? alreadyScanned.id : `pr-${matchedSiswa.id}-${todayDate}`;
     const newRecord: Presensi = {
       id: newPresensiId,
       siswaId: matchedSiswa.id,

@@ -579,6 +579,19 @@ export default function App() {
   // Record a scanned attendance
   const handleAddPresensi = (newPresensi: Presensi) => {
     savePresensiToFirestore(newPresensi);
+    setPresensiList((prev) => {
+      const idx = prev.findIndex(
+        (p) =>
+          p.id === newPresensi.id ||
+          ((p.siswaId === newPresensi.siswaId || p.nis === newPresensi.nis) && p.tanggal === newPresensi.tanggal)
+      );
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = newPresensi;
+        return copy;
+      }
+      return [newPresensi, ...prev];
+    });
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);
   };
 

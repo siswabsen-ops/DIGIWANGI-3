@@ -10,6 +10,12 @@ import {
   Clock
 } from 'lucide-react';
 import { Siswa, Presensi, StatusKehadiran } from '../types';
+import {
+  getLocalDateString,
+  getLocalTimeString,
+  calculateClassAttendanceStats,
+  getLatestAttendanceForStudent,
+} from '../lib/attendanceUtils';
 
 interface GuruPanelProps {
   siswaList: Siswa[];
@@ -24,7 +30,7 @@ export default function GuruPanel({
   currentUser,
   onAddPresensi,
 }: GuruPanelProps) {
-  const targetedKelas = currentUser.kelasSpesifik || 'Kelas 4-A';
+  const targetedKelas = currentUser.kelasSpesifik || 'Kelas 6-A';
 
   const [filterSiswaName, setFilterSiswaName] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -35,42 +41,30 @@ export default function GuruPanel({
     s.nama.toLowerCase().includes(filterSiswaName.toLowerCase())
   );
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
-  // Specific attendance for today for these class students
-  const classPresensiToday = presensiList.filter(
-    (p) => p.kelas === targetedKelas && p.tanggal === todayStr
-  );
-
-  // Stats
-  const totalSiswaRombel = classStudents.length;
-  const loggedHadir = classPresensiToday.filter((p) => p.status === 'Hadir').length;
-  const loggedTerlambat = classPresensiToday.filter((p) => p.status === 'Terlambat').length;
-  const loggedSakit = classPresensiToday.filter((p) => p.status === 'Sakit').length;
-  const loggedIzin = classPresensiToday.filter((p) => p.status === 'Izin').length;
-  const loggedAlfa = classPresensiToday.filter((p) => p.status === 'Alfa').length;
-  
-  const totalScanned = classPresensiToday.length;
-  const belumScannedCount = Math.max(0, totalSiswaRombel - totalScanned);
-
-  const persentaseKelas = totalSiswaRombel > 0 
-    ? Math.round(((loggedHadir + loggedTerlambat) / totalSiswaRombel) * 100) 
-    : 0;
+  // Calculate precise attendance statistics per unique student
+  const stats = calculateClassAttendanceStats(classStudents, presensiList, todayStr);
+  const totalSiswaRombel = stats.totalSiswa;
+  const loggedHadir = stats.hadir;
+  const loggedTerlambat = stats.terlambat;
+  const loggedSakitIzin = stats.sakitDanIzin;
+  const belumScannedCount = stats.belumAbsen;
+  const persentaseKelas = stats.persentaseKeaktifan;
 
   // Single Manual Trigger specifically for this teacher class-room
   const handleTeacherSetStatus = (siswa: Siswa, targetStatus: StatusKehadiran) => {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const waktuSekarang = `${hours}:${minutes}:${seconds}`;
+    const waktuSekarang = getLocalTimeString();
 
     // Look for previous same record to overwrite
-    const overwriteRecordId = `pr-${Date.now()}`;
+    const existingRecord = getLatestAttendanceForStudent(siswa, presensiList, todayStr);
+    const overwriteRecordId = existingRecord ? existingRecord.id : `pr-${siswa.id}-${todayStr}`;
+
     const newRecord: Presensi = {
       id: overwriteRecordId,
       siswaId: siswa.id,
       nis: siswa.nis,
+      nik: siswa.nik,
       nama: siswa.nama,
       kelas: siswa.kelas,
       tanggal: todayStr,
@@ -138,7 +132,7 @@ export default function GuruPanel({
         </div>
         <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
           <span className="text-[9px] bg-sky-100 px-1.5 py-0.5 rounded text-sky-850 font-bold uppercase">Sakit & Izin</span>
-          <p className="text-2xl font-black text-slate-800 mt-1">{loggedSakit + loggedIzin}</p>
+          <p className="text-2xl font-black text-slate-800 mt-1">{loggedSakitIzin}</p>
         </div>
         <div className="bg-white p-3.5 rounded-2xl border border-gray-150 shadow-xs text-left">
           <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-extrabold uppercase">Belum Absen</span>
@@ -174,8 +168,8 @@ export default function GuruPanel({
             </div>
           ) : (
             filteredClassStudents.map((siswa) => {
-              // Get today attendance if registered
-              const registered = classPresensiToday.find((p) => p.siswaId === siswa.id);
+              // Get today latest attendance for this student
+              const registered = getLatestAttendanceForStudent(siswa, presensiList, todayStr);
 
               const activeBg = registered
                 ? registered.status === 'Hadir'
