@@ -13,7 +13,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   Calendar,
-  Layers
+  Layers,
+  Download,
+  FileArchive,
+  Loader2,
+  QrCode
 } from 'lucide-react';
 import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
 import {
@@ -26,6 +30,7 @@ import {
   getAttendanceFromIndex,
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
+import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
 
 interface GuruPanelProps {
   siswaList: Siswa[];
@@ -47,6 +52,10 @@ export default function GuruPanel({
   const [statusFilter, setStatusFilter] = useState<'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen'>('semua');
   const [successMsg, setSuccessMsg] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // QR Download States
+  const [isDownloadingQR, setIsDownloadingQR] = useState(false);
+  const [qrProgress, setQrProgress] = useState<{ current: number; total: number; name: string } | null>(null);
 
   const targetedKelas = selectedKelas;
   const waliKelasName = getWaliKelasByKelas(targetedKelas);
@@ -134,6 +143,35 @@ export default function GuruPanel({
       setIsSyncing(false);
       setTimeout(() => setSuccessMsg(''), 3000);
     }, 400);
+  };
+
+  const handleDownloadClassQR = async () => {
+    if (classStudents.length === 0 || isDownloadingQR) return;
+    try {
+      setIsDownloadingQR(true);
+      setQrProgress({ current: 0, total: classStudents.length, name: 'Memulai pengemasan...' });
+      await downloadClassQRZip(targetedKelas, classStudents, (current, total, name) => {
+        setQrProgress({ current, total, name });
+      });
+      setSuccessMsg(`Berhasil mengunduh paket ZIP QR Code ${targetedKelas} (${classStudents.length} siswa)!`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      console.error('Gagal mengunduh ZIP QR:', err);
+      alert(`Gagal mengunduh ZIP: ${err.message || 'Terjadi kesalahan'}`);
+    } finally {
+      setIsDownloadingQR(false);
+      setQrProgress(null);
+    }
+  };
+
+  const handleDownloadSingleQR = async (siswa: Siswa) => {
+    try {
+      await downloadSingleStudentQR(siswa);
+      setSuccessMsg(`QR Code ${siswa.nama} berhasil diunduh.`);
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err) {
+      console.error('Gagal unduh QR:', err);
+    }
   };
 
   return (
@@ -346,6 +384,26 @@ export default function GuruPanel({
               ))}
             </div>
 
+            <button
+              type="button"
+              id="btn-guru-download-qr-zip"
+              onClick={handleDownloadClassQR}
+              disabled={classStudents.length === 0 || isDownloadingQR}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
+              title={`Unduh semua kartu QR Code ${targetedKelas} sebagai paket file ZIP gambar PNG`}
+            >
+              {isDownloadingQR ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : (
+                <FileArchive className="w-3.5 h-3.5 text-emerald-200" />
+              )}
+              <span>
+                {isDownloadingQR
+                  ? `Mengemas (${qrProgress?.current || 0}/${classStudents.length})...`
+                  : `📥 Unduh QR ${targetedKelas}`}
+              </span>
+            </button>
+
             <div className="relative w-full sm:w-56 shrink-0">
               <input
                 type="text"
@@ -358,6 +416,30 @@ export default function GuruPanel({
             </div>
           </div>
         </div>
+
+        {/* Progress Bar when Teacher is downloading class QR ZIP */}
+        {isDownloadingQR && qrProgress && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900">
+            <div className="flex items-center justify-between font-bold mb-1">
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                Mengemas Kartu QR: {qrProgress.name}
+              </span>
+              <span>
+                {qrProgress.current} / {qrProgress.total} (
+                {qrProgress.total > 0 ? Math.round((qrProgress.current / qrProgress.total) * 100) : 0}%)
+              </span>
+            </div>
+            <div className="w-full bg-emerald-200 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-emerald-600 h-full transition-all duration-150 rounded-full"
+                style={{
+                  width: `${qrProgress.total > 0 ? (qrProgress.current / qrProgress.total) * 100 : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* List Pupil Action Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -419,8 +501,18 @@ export default function GuruPanel({
                     )}
                   </div>
 
-                  {/* Operational status switches (Set manual oleh Wali Kelas) */}
+                  {/* Operational status switches & Download QR button */}
                   <div className="flex flex-wrap items-center gap-1 self-stretch sm:self-auto justify-end shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadSingleQR(siswa)}
+                      className="text-[9px] font-bold py-1.5 px-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer flex items-center gap-1"
+                      title="Unduh file gambar QR Code siswa (PNG)"
+                    >
+                      <Download className="w-3 h-3 text-emerald-600" />
+                      <span>QR</span>
+                    </button>
+
                     {(['Hadir', 'Sakit', 'Izin', 'Alfa', 'Terlambat'] as StatusKehadiran[]).map((st) => {
                       const isCurrent = registered?.status === st;
                       return (

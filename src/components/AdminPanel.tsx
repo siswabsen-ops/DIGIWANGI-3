@@ -30,12 +30,16 @@ import {
   CheckCircle2,
   X,
   Layers,
-  Calendar
+  Calendar,
+  Download,
+  FileArchive,
+  Loader2
 } from 'lucide-react';
 import { Siswa, SystemSettings, ActivityLog, User, Role, DAFTAR_KELAS, StatusDapodik, QRIdentifierType, getStudentQRIdentifier, JadwalPresensi, normalizeKelasCode } from '../types';
 import { DAFTAR_WALI_KELAS, getWaliKelasByKelas, DEFAULT_JADWAL_PRESENSI } from '../lib/demoData';
 import QRCodeRenderer from './QRCodeRenderer';
 import BatchQRPrintModal from './BatchQRPrintModal';
+import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
 
 interface AdminPanelProps {
   siswaList: Siswa[];
@@ -148,9 +152,52 @@ export default function AdminPanel({
   const [isBatchPrintModalOpen, setIsBatchPrintModalOpen] = useState(false);
   const [batchPrintDefaultKelas, setBatchPrintDefaultKelas] = useState('Semua Kelas');
 
+  // Direct QR ZIP Download states in Admin Directory
+  const [isDownloadingQRZip, setIsDownloadingQRZip] = useState(false);
+  const [qrZipProgress, setQrZipProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [isClassDownloadDropdownOpen, setIsClassDownloadDropdownOpen] = useState(false);
+
   const handleOpenBatchPrint = (targetKelas = 'Semua Kelas') => {
     setBatchPrintDefaultKelas(targetKelas);
     setIsBatchPrintModalOpen(true);
+  };
+
+  const handleDirectDownloadClassQR = async (targetKelas: string) => {
+    setIsClassDownloadDropdownOpen(false);
+    const targetStudents = siswaList.filter(s => {
+      if (targetKelas === 'Semua Kelas' || !targetKelas) return true;
+      return s.kelas.trim().toLowerCase() === targetKelas.trim().toLowerCase();
+    });
+
+    if (targetStudents.length === 0) {
+      displayNotice('err', `Tidak ada siswa terdaftar di ${targetKelas}.`);
+      return;
+    }
+
+    try {
+      setIsDownloadingQRZip(true);
+      setQrZipProgress({ current: 0, total: targetStudents.length, name: 'Memulai pengemasan...' });
+      await downloadClassQRZip(targetKelas, siswaList, (current, total, name) => {
+        setQrZipProgress({ current, total, name });
+      });
+      displayNotice('success', `Berhasil mengunduh paket ZIP QR Code ${targetKelas} (${targetStudents.length} siswa)!`);
+    } catch (err: any) {
+      console.error('Gagal mengunduh ZIP QR kelas:', err);
+      displayNotice('err', `Gagal mengunduh ZIP: ${err.message || 'Terjadi kesalahan'}`);
+    } finally {
+      setIsDownloadingQRZip(false);
+      setQrZipProgress(null);
+    }
+  };
+
+  const handleDownloadSingleStudentQR = async (siswa: Siswa) => {
+    try {
+      await downloadSingleStudentQR(siswa);
+      displayNotice('success', `QR Code ${siswa.nama} berhasil diunduh (PNG).`);
+    } catch (err: any) {
+      console.error('Gagal mengunduh QR siswa:', err);
+      displayNotice('err', 'Gagal mengunduh QR Code.');
+    }
   };
 
   // Local states for Admin / Operator Account Forms
@@ -1093,15 +1140,28 @@ export default function AdminPanel({
                       Kartu sudah siap diprint dan ditempelkan pada wadah lanyard/gantungan siswa.
                     </p>
 
-                    <button
-                      type="button"
-                      id="btn-print-qrcode"
-                      onClick={() => triggerPrintWindow('qrcode-print-canvas-area')}
-                      className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
-                    >
-                      <Printer className="w-4 h-4 text-amber-300" />
-                      Cetak Kartu Siswa & QR Code
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        id="btn-download-single-qrcode"
+                        onClick={() => handleDownloadSingleStudentQR(selectedPrintSiswa)}
+                        className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
+                        title="Unduh file kartu QR Code PNG berkualitas tinggi"
+                      >
+                        <Download className="w-4 h-4 text-emerald-200" />
+                        Unduh Gambar QR (PNG)
+                      </button>
+
+                      <button
+                        type="button"
+                        id="btn-print-qrcode"
+                        onClick={() => triggerPrintWindow('qrcode-print-canvas-area')}
+                        className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4 text-amber-300" />
+                        Cetak Kartu Siswa & QR Code
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 
@@ -1116,20 +1176,101 @@ export default function AdminPanel({
                         </span>
                       </h3>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Kelola data murid, pindah kelas secara instan, dan buat QR Code NIK/NIS.
+                        Kelola data murid, unduh QR Code per kelas (ZIP PNG), dan cetak kartu absensi.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Dropdown / Button Download QR Per Kelas */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          id="btn-download-qr-per-kelas"
+                          onClick={() => setIsClassDownloadDropdownOpen(!isClassDownloadDropdownOpen)}
+                          disabled={isDownloadingQRZip}
+                          className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0 font-sans"
+                          title="Unduh paket ZIP gambar QR Code per kelas"
+                        >
+                          {isDownloadingQRZip ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                          ) : (
+                            <FileArchive className="w-3.5 h-3.5 text-emerald-200" />
+                          )}
+                          <span>
+                            {isDownloadingQRZip
+                              ? `Mengemas (${qrZipProgress?.current || 0}/${qrZipProgress?.total || 0})...`
+                              : '📥 Unduh QR Per Kelas ▼'}
+                          </span>
+                        </button>
+
+                        {/* Dropdown Menu for Class Selection */}
+                        {isClassDownloadDropdownOpen && (
+                          <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+                            <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-extrabold uppercase text-slate-400">
+                              Pilih Kelas untuk Unduh ZIP (PNG)
+                            </div>
+
+                            {filterKelas !== 'Semua Kelas' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDirectDownloadClassQR(filterKelas)}
+                                className="w-full text-left px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 flex items-center justify-between transition-colors cursor-pointer border-b border-emerald-100"
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  <Download className="w-3.5 h-3.5" />
+                                  Unduh {filterKelas} (Aktif)
+                                </span>
+                                <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-mono">
+                                  {siswaList.filter(s => s.kelas === filterKelas).length} Siswa
+                                </span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDirectDownloadClassQR('Semua Kelas')}
+                              className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 flex items-center justify-between transition-colors cursor-pointer border-b border-slate-100"
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                                📦 Semua Kelas (1-A s/d 6-B)
+                              </span>
+                              <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-mono">
+                                {siswaList.length}
+                              </span>
+                            </button>
+
+                            <div className="max-h-52 overflow-y-auto divide-y divide-slate-50 py-1">
+                              {DAFTAR_KELAS.map((k) => {
+                                const count = siswaList.filter((s) => s.kelas === k).length;
+                                return (
+                                  <button
+                                    key={k}
+                                    type="button"
+                                    onClick={() => handleDirectDownloadClassQR(k)}
+                                    className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-between transition-colors cursor-pointer font-medium"
+                                  >
+                                    <span>{k}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {count} Siswa
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       <button
                         type="button"
                         id="btn-open-batch-print-qr"
-                        onClick={() => handleOpenBatchPrint('Semua Kelas')}
+                        onClick={() => handleOpenBatchPrint(filterKelas !== 'Semua Kelas' ? filterKelas : 'Semua Kelas')}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0 font-sans"
-                        title="Cetak kartu QR Code untuk semua siswa atau per kelas"
+                        title="Buka pratinjau kartu & cetak massal"
                       >
                         <Printer className="w-3.5 h-3.5 text-amber-300" />
-                        <span>🖨️ Cetak QR Massal</span>
+                        <span>🖨️ Cetak / Preview QR</span>
                       </button>
 
                       {onSyncFromGoogle && (
@@ -1137,7 +1278,7 @@ export default function AdminPanel({
                           type="button"
                           onClick={onSyncFromGoogle}
                           disabled={isSyncing}
-                          className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0 font-sans"
+                          className="bg-slate-700 hover:bg-slate-800 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0 font-sans"
                           title="Tarik dan perbarui data siswa dari Google Spreadsheet"
                         >
                           <Database className="w-3.5 h-3.5" />
@@ -1146,6 +1287,30 @@ export default function AdminPanel({
                       )}
                     </div>
                   </div>
+
+                  {/* Progress Bar when Admin is downloading class ZIP */}
+                  {isDownloadingQRZip && qrZipProgress && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900">
+                      <div className="flex items-center justify-between font-bold mb-1">
+                        <span className="flex items-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                          Mengemas Kartu QR: {qrZipProgress.name}
+                        </span>
+                        <span>
+                          {qrZipProgress.current} / {qrZipProgress.total} (
+                          {qrZipProgress.total > 0 ? Math.round((qrZipProgress.current / qrZipProgress.total) * 100) : 0}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-emerald-200 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-emerald-600 h-full transition-all duration-150 rounded-full"
+                          style={{
+                            width: `${qrZipProgress.total > 0 ? (qrZipProgress.current / qrZipProgress.total) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Filter & Search Toolbar */}
                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 text-xs">
@@ -1280,6 +1445,17 @@ export default function AdminPanel({
                                 >
                                   <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
                                   <span>Pindah Kelas</span>
+                                </button>
+
+                                {/* Download Single Student QR Button */}
+                                <button
+                                  type="button"
+                                  id={`btn-target-download-siswa-${siswa.nis || siswa.nik || siswa.id}`}
+                                  onClick={() => handleDownloadSingleStudentQR(siswa)}
+                                  className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 p-1.5 rounded-xl transition-colors cursor-pointer"
+                                  title="Unduh file gambar QR Code siswa (PNG)"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
                                 </button>
 
                                 <button
