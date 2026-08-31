@@ -235,14 +235,26 @@ function AdminPanel({
     return filteredSiswa.slice(0, studentPageLimit);
   }, [filteredSiswa, studentPageLimit]);
 
-  // Memoized class student counts for dropdown
+  // Memoized class student counts and list for fast tab rendering
+  const siswaByClassMap = useMemo(() => {
+    const map: Record<string, Siswa[]> = {};
+    for (const k of DAFTAR_KELAS) {
+      map[k] = [];
+    }
+    for (const s of siswaList) {
+      if (!map[s.kelas]) map[s.kelas] = [];
+      map[s.kelas].push(s);
+    }
+    return map;
+  }, [siswaList]);
+
   const classStudentCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const s of siswaList) {
-      counts[s.kelas] = (counts[s.kelas] || 0) + 1;
+    for (const k of Object.keys(siswaByClassMap)) {
+      counts[k] = siswaByClassMap[k].length;
     }
     return counts;
-  }, [siswaList]);
+  }, [siswaByClassMap]);
 
   const displayNotice = (type: 'success' | 'err', msg: string) => {
     if (type === 'success') {
@@ -1537,8 +1549,8 @@ function AdminPanel({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {DAFTAR_KELAS.map((targetKelas) => {
-                  const countSiswa = siswaList.filter((s) => s.kelas === targetKelas).length;
-                  const filterSiswa = siswaList.filter((s) => s.kelas === targetKelas);
+                  const filterSiswa = siswaByClassMap[targetKelas] || [];
+                  const countSiswa = filterSiswa.length;
 
                   return (
                     <div key={targetKelas} className="p-4 bg-slate-50 border border-gray-200 rounded-2xl flex flex-col justify-between">

@@ -255,7 +255,7 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
     });
   }, [filteredStudents, presensiList, weekDates, activeTab]);
 
-  // BULANAN: Aggregates for the whole month (Optimized)
+  // BULANAN: Aggregates for the whole month (Optimized with pre-built student bucket map)
   const bulananReportData = useMemo(() => {
     if (activeTab !== 'bulanan') return [];
 
@@ -263,8 +263,30 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
     const uniqueDaysWithAttendance = Array.from(new Set(monthRecords.map(p => normalizeDateKey(p.tanggal)))).length;
     const totalSchoolDays = Math.max(uniqueDaysWithAttendance, 1);
 
+    // Pre-bucket month records by student ID & NIS for O(1) lookup
+    const recordsByStudentKey = new Map<string, Presensi[]>();
+    for (const r of monthRecords) {
+      if (r.siswaId) {
+        const arr = recordsByStudentKey.get(r.siswaId) || [];
+        arr.push(r);
+        recordsByStudentKey.set(r.siswaId, arr);
+      }
+      if (r.nis) {
+        const cleanNis = r.nis.trim();
+        const arr = recordsByStudentKey.get(`nis:${cleanNis}`) || [];
+        arr.push(r);
+        recordsByStudentKey.set(`nis:${cleanNis}`, arr);
+      }
+    }
+
     return filteredStudents.map(siswa => {
-      const studentMonthRecords = monthRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      let studentMonthRecords = recordsByStudentKey.get(siswa.id);
+      if (!studentMonthRecords && siswa.nis) {
+        studentMonthRecords = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+      }
+      if (!studentMonthRecords) {
+        studentMonthRecords = monthRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      }
       
       const dateMap = new Map<string, Presensi>();
       studentMonthRecords.forEach(r => {

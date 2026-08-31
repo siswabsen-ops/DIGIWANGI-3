@@ -764,9 +764,8 @@ export default function App() {
 
         {/* PRIMARY CONTROLLER PORTAL */}
         <main className="flex-1 min-w-0">
-        {/* VIEW 1: PRENSENSI SCAN */}
-        {currentView === 'scan' && (
-          <div className="py-2">
+          {/* VIEW 1: PRENSENSI SCAN */}
+          <div className={currentView === 'scan' ? 'py-2 block' : 'hidden'}>
             <ScanScreen
               siswaList={siswaList}
               settings={settings}
@@ -776,11 +775,9 @@ export default function App() {
               isActive={currentView === 'scan'}
             />
           </div>
-        )}
 
-        {/* VIEW 2: MANAJEMEN CONSOLE (Depends on login state & Role) */}
-        {currentView === 'manajemen' && (
-          <div className="py-2">
+          {/* VIEW 2: MANAJEMEN CONSOLE (Depends on login state & Role) */}
+          <div className={currentView === 'manajemen' ? 'py-2 block' : 'hidden'}>
             {!currentUser ? (
               <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} />
             ) : (
@@ -837,18 +834,14 @@ export default function App() {
               </>
             )}
           </div>
-        )}
 
-        {/* VIEW 2.5: REKAP LAPORAN */}
-        {currentView === 'laporan' && (
-          <div className="py-2">
+          {/* VIEW 2.5: REKAP LAPORAN */}
+          <div className={currentView === 'laporan' ? 'py-2 block' : 'hidden'}>
             <ReportPanel siswaList={siswaList} presensiList={presensiList} />
           </div>
-        )}
 
-        {/* VIEW 3: BUKU PANDUAN LANGKAH-DEMI-LANGKAH */}
-        {currentView === 'panduan' && (
-          <div className="max-w-4xl mx-auto px-4 py-8">
+          {/* VIEW 3: BUKU PANDUAN LANGKAH-DEMI-LANGKAH */}
+          <div className={currentView === 'panduan' ? 'max-w-4xl mx-auto px-4 py-8 block' : 'hidden'}>
             <div className="bg-white rounded-3xl p-8 border border-gray-150 shadow-sm space-y-8 text-left">
               
               {/* Cover */}
@@ -987,7 +980,6 @@ export default function App() {
 
             </div>
           </div>
-        )}
         </main>
       </div>
 

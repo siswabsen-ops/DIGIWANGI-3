@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, Search, UserCheck, AlertTriangle, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
 import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal } from '../types';
 import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
@@ -31,9 +31,40 @@ function ScanScreen({
   const [manualStatus, setManualStatus] = useState<StatusKehadiran | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [isMirrored, setIsMirrored] = useState(false); // Default to false so rear camera/cards read correctly
+  const [simSearch, setSimSearch] = useState('');
+  const [simLimit, setSimLimit] = useState(25);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanTimeoutRef = useRef<any>(null);
+
+  // Fast O(1) today attendance lookup map
+  const todayAttendanceMap = useMemo(() => {
+    const todayDate = getLocalDateString();
+    const map = new Map<string, Presensi>();
+    recentPresensi.forEach((p) => {
+      if (isPresensiDateMatch(p.tanggal, todayDate)) {
+        if (p.siswaId) map.set(p.siswaId, p);
+        if (p.nis) {
+          const cleanNis = p.nis.trim();
+          map.set(cleanNis, p);
+          map.set(cleanNis.replace(/^0+/, ''), p);
+        }
+      }
+    });
+    return map;
+  }, [recentPresensi]);
+
+  // Fast filtered simulation pupils list
+  const filteredSimSiswa = useMemo(() => {
+    if (!simSearch.trim()) return siswaList;
+    const q = simSearch.toLowerCase().trim();
+    return siswaList.filter(
+      (s) =>
+        s.nama.toLowerCase().includes(q) ||
+        s.nis.includes(q) ||
+        s.kelas.toLowerCase().includes(q)
+    );
+  }, [siswaList, simSearch]);
 
   // Clean-up camera on unmount
   useEffect(() => {
@@ -532,18 +563,40 @@ function ScanScreen({
             </h3>
             <span className="text-[9px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold font-mono uppercase">Interactive Demo</span>
           </div>
-          <p className="text-xs text-gray-500 leading-relaxed mb-4">
+          <p className="text-xs text-gray-500 leading-relaxed mb-3">
             Untuk menguji aliran sistem <b>DIGIWANGI 3</b> tanpa printer scan QR Code fisik, klik salah satu kartu siswa virtual di bawah ini untuk mensimulasikan pemindaian laser QR Code secara otomatis!
           </p>
 
+          {/* Quick Search for Simulation List */}
+          <div className="mb-3">
+            <div className="relative">
+              <input
+                type="text"
+                value={simSearch}
+                onChange={(e) => setSimSearch(e.target.value)}
+                placeholder="Cari murid simulasi (Nama / NIS / Kelas)..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+              {simSearch && (
+                <button
+                  type="button"
+                  onClick={() => setSimSearch('')}
+                  className="text-[10px] text-slate-400 hover:text-slate-700 absolute right-2.5 top-2 cursor-pointer font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Interactive Virtual Students Card Matrix */}
           <div className="space-y-2 max-h-[304px] overflow-y-auto pr-1">
-            {siswaList.map((siswa) => {
-              // Check if already present today with reliable timezone & date matching
-              const todayDate = getLocalDateString();
-              const presentToday = recentPresensi.find(
-                (p) => isPresensiMatchSiswa(p, siswa) && isPresensiDateMatch(p.tanggal, todayDate)
-              );
+            {filteredSimSiswa.slice(0, simLimit).map((siswa) => {
+              // Fast O(1) check using memoized todayAttendanceMap
+              const presentToday = todayAttendanceMap.get(siswa.id) || 
+                                   todayAttendanceMap.get(siswa.nis) || 
+                                   todayAttendanceMap.get(siswa.nis.replace(/^0+/, ''));
 
               return (
                 <div
@@ -631,6 +684,18 @@ function ScanScreen({
                 </div>
               );
             })}
+
+            {filteredSimSiswa.length > simLimit && (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setSimLimit(prev => prev + 30)}
+                  className="text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 py-1.5 px-3 rounded-xl transition cursor-pointer"
+                >
+                  Tampilkan Murid Lainnya ({simLimit} dari {filteredSimSiswa.length})
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

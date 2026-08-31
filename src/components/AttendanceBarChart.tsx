@@ -414,12 +414,12 @@ function AttendanceBarChart({
                 iconType="circle"
                 wrapperStyle={{ fontSize: '11px', paddingBottom: '10px', fontWeight: 'bold' }}
               />
-              <Bar dataKey="hadir" name="Hadir Tepat" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="terlambat" name="Terlambat" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="sakit" name="Sakit" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="izin" name="Izin" stackId="a" fill="#0ea5e9" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="alfa" name="Alfa" stackId="a" fill="#f43f5e" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="belumAbsen" name="Belum Presensi" stackId="a" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="hadir" name="Hadir Tepat" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="terlambat" name="Terlambat" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="sakit" name="Sakit" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="izin" name="Izin" stackId="a" fill="#0ea5e9" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="alfa" name="Alfa" stackId="a" fill="#f43f5e" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="belumAbsen" name="Belum Presensi" stackId="a" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -451,12 +451,12 @@ function AttendanceBarChart({
                 iconType="circle"
                 wrapperStyle={{ fontSize: '11px', paddingBottom: '10px', fontWeight: 'bold' }}
               />
-              <Bar dataKey="hadir" name="Hadir Tepat" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="terlambat" name="Terlambat" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="sakit" name="Sakit" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="izin" name="Izin" stackId="a" fill="#0ea5e9" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="alfa" name="Alfa" stackId="a" fill="#f43f5e" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="belumAbsen" name="Belum Presensi" stackId="a" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="hadir" name="Hadir Tepat" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="terlambat" name="Terlambat" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="sakit" name="Sakit" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="izin" name="Izin" stackId="a" fill="#0ea5e9" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="alfa" name="Alfa" stackId="a" fill="#f43f5e" radius={[0, 0, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="belumAbsen" name="Belum Presensi" stackId="a" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -492,7 +492,7 @@ function AttendanceBarChart({
                 formatter={(value: any) => [`${value}% Keaktifan`, 'Tingkat Partisipasi']}
                 labelFormatter={(label: any) => `Kelas ${label}`}
               />
-              <Bar dataKey="persentase" name="% Keaktifan Kehadiran" radius={[6, 6, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="persentase" name="% Keaktifan Kehadiran" radius={[6, 6, 0, 0]}>
                 {rankingKeaktifanData.map((entry, index) => {
                   let fillColor = '#3b82f6';
                   if (entry.persentase >= 90) fillColor = '#10b981';
