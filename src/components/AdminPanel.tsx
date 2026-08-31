@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users,
   Sliders,
@@ -67,7 +67,7 @@ interface AdminPanelProps {
 
 type AdminTab = 'siswa' | 'jadwal' | 'kelas' | 'whatsapp' | 'waktu' | 'google' | 'audit' | 'akun';
 
-export default function AdminPanel({
+function AdminPanel({
   siswaList,
   onAddSiswa,
   onUpdateSiswa,
@@ -208,6 +208,36 @@ export default function AdminPanel({
   const [accountPin, setAccountPin] = useState('');
   const [accountKelasSpesifik, setAccountKelasSpesifik] = useState('');
   const [isAddingNewAccount, setIsAddingNewAccount] = useState(false);
+
+  // Fast memoized student filtering for zero-lag typing and tab switching
+  const filteredSiswa = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return siswaList.filter((s) => {
+      const matchesKelas = filterKelas === 'Semua Kelas' || s.kelas.toLowerCase() === filterKelas.toLowerCase();
+      let matchesDapodik = true;
+      if (filterDapodik === 'sudah') matchesDapodik = s.statusDapodik !== 'Belum Dapodik';
+      if (filterDapodik === 'belum') matchesDapodik = s.statusDapodik === 'Belum Dapodik';
+      
+      if (!q) return matchesKelas && matchesDapodik;
+
+      const matchesSearch = 
+        s.nama.toLowerCase().includes(q) ||
+        s.nis.toLowerCase().includes(q) ||
+        (s.nik && s.nik.toLowerCase().includes(q)) ||
+        (s.nisn && s.nisn.toLowerCase().includes(q));
+
+      return matchesKelas && matchesDapodik && matchesSearch;
+    });
+  }, [siswaList, filterKelas, filterDapodik, searchQuery]);
+
+  // Memoized class student counts for dropdown
+  const classStudentCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of siswaList) {
+      counts[s.kelas] = (counts[s.kelas] || 0) + 1;
+    }
+    return counts;
+  }, [siswaList]);
 
   const displayNotice = (type: 'success' | 'err', msg: string) => {
     if (type === 'success') {
@@ -1242,7 +1272,7 @@ export default function AdminPanel({
 
                             <div className="max-h-52 overflow-y-auto divide-y divide-slate-50 py-1">
                               {DAFTAR_KELAS.map((k) => {
-                                const count = siswaList.filter((s) => s.kelas === k).length;
+                                const count = classStudentCounts[k] || 0;
                                 return (
                                   <button
                                     key={k}
@@ -1350,34 +1380,13 @@ export default function AdminPanel({
                   </div>
 
                   {/* Student Records List */}
-                  {(() => {
-                    const filtered = siswaList.filter((s) => {
-                      const matchesKelas = filterKelas === 'Semua Kelas' || s.kelas.toLowerCase() === filterKelas.toLowerCase();
-                      let matchesDapodik = true;
-                      if (filterDapodik === 'sudah') matchesDapodik = s.statusDapodik !== 'Belum Dapodik';
-                      if (filterDapodik === 'belum') matchesDapodik = s.statusDapodik === 'Belum Dapodik';
-                      
-                      const q = searchQuery.toLowerCase();
-                      const matchesSearch = 
-                        s.nama.toLowerCase().includes(q) ||
-                        s.nis.toLowerCase().includes(q) ||
-                        (s.nik && s.nik.toLowerCase().includes(q)) ||
-                        (s.nisn && s.nisn.toLowerCase().includes(q));
-
-                      return matchesKelas && matchesDapodik && matchesSearch;
-                    });
-
-                    if (filtered.length === 0) {
-                      return (
-                        <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
-                          Tidak ada siswa yang sesuai dengan filter / pencarian.
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
-                        {filtered.map((siswa) => {
+                  {filteredSiswa.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
+                      Tidak ada siswa yang sesuai dengan filter / pencarian.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                      {filteredSiswa.map((siswa) => {
                           const isBelumDapodik = siswa.statusDapodik === 'Belum Dapodik';
                           return (
                             <div
@@ -1492,8 +1501,7 @@ export default function AdminPanel({
                           );
                         })}
                       </div>
-                    );
-                  })()}
+                    )}
                 </div>
               </div>
             </div>
@@ -2852,3 +2860,5 @@ export default function AdminPanel({
     </div>
   );
 }
+
+export default React.memo(AdminPanel);

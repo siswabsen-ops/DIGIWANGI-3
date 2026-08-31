@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import {
   Notebook,
   UserCheck,
@@ -39,7 +39,7 @@ interface GuruPanelProps {
   onAddPresensi: (presensi: Presensi) => void;
 }
 
-export default function GuruPanel({
+function GuruPanel({
   siswaList,
   presensiList,
   currentUser,
@@ -549,4 +549,6 @@ export default function GuruPanel({
     </div>
   );
 }
+
+export default memo(GuruPanel);
 

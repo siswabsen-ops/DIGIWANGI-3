@@ -12,14 +12,16 @@ interface ScanScreenProps {
   currentUser: { namaLengkap: string; role: string };
   onAddPresensi: (presensi: Presensi) => void;
   recentPresensi: Presensi[];
+  isActive?: boolean;
 }
 
-export default function ScanScreen({
+function ScanScreen({
   siswaList,
   settings,
   currentUser,
   onAddPresensi,
   recentPresensi,
+  isActive = true,
 }: ScanScreenProps) {
   const [nisInput, setNisInput] = useState('');
   const [useCamera, setUseCamera] = useState(false);
@@ -59,7 +61,7 @@ export default function ScanScreen({
 
   // Real-time loop to auto-capture frames from key video and decode with jsQR
   useEffect(() => {
-    if (!useCamera || !cameraStream) return;
+    if (!useCamera || !cameraStream || !isActive) return;
 
     let active = true;
     let animFrameId: number;
@@ -685,3 +687,5 @@ export default function ScanScreen({
     </div>
   );
 }
+
+export default React.memo(ScanScreen);

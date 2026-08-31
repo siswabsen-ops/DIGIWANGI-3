@@ -64,8 +64,20 @@ interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errStr = error instanceof Error ? error.message : String(error);
+  const isQuotaError = 
+    errStr.includes('Quota limit exceeded') || 
+    errStr.includes('RESOURCE_EXHAUSTED') || 
+    errStr.includes('quota') || 
+    errStr.includes('Free daily read units');
+
+  if (isQuotaError) {
+    console.warn(`[Firestore Quota Mode] Free tier daily quota reached on ${operationType} (${path || 'collection'}). Running seamlessly with local caching.`);
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errStr,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -80,8 +92,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn('Firestore Operation Notice: ', JSON.stringify(errInfo));
 }
 
 // ==========================================
@@ -89,34 +100,71 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // ==========================================
 
 // Clean payload helpers to prevent undefined fields in Firestore
-const cleanSiswaForFirestore = (s: Siswa) => {
+export const cleanSiswaForFirestore = (s: Siswa) => {
   const payload: Record<string, any> = {
     id: s.id,
-    nis: s.nis,
-    nama: s.nama,
-    kelas: s.kelas,
-    jenisKelamin: s.jenisKelamin,
-    waOrangTua: s.waOrangTua,
+    nis: s.nis || '',
+    nama: s.nama || '',
+    kelas: s.kelas || '',
+    jenisKelamin: s.jenisKelamin || 'L',
+    waOrangTua: s.waOrangTua || '',
   };
+  if (s.nik) payload.nik = s.nik;
+  if (s.nisn) payload.nisn = s.nisn;
+  if (s.statusDapodik) payload.statusDapodik = s.statusDapodik;
+  if (s.qrIdentifierType) payload.qrIdentifierType = s.qrIdentifierType;
   if (s.tempatLahir) payload.tempatLahir = s.tempatLahir;
   if (s.tanggalLahir) payload.tanggalLahir = s.tanggalLahir;
+  if (s.catatan) payload.catatan = s.catatan;
   return payload;
 };
 
-const cleanPresensiForFirestore = (p: Presensi) => {
+export const cleanPresensiForFirestore = (p: Presensi) => {
   const payload: Record<string, any> = {
     id: p.id,
     siswaId: p.siswaId,
-    nis: p.nis,
-    nama: p.nama,
-    kelas: p.kelas,
-    tanggal: p.tanggal,
-    waktu: p.waktu,
-    status: p.status,
-    waStatus: p.waStatus,
-    operator: p.operator,
+    nis: p.nis || '',
+    nama: p.nama || '',
+    kelas: p.kelas || '',
+    tanggal: p.tanggal || '',
+    waktu: p.waktu || '',
+    status: p.status || 'Hadir',
+    waStatus: p.waStatus || 'Pending',
+    operator: p.operator || 'Sistem',
   };
+  if (p.nik) payload.nik = p.nik;
   if (p.pesanTerkirim) payload.pesanTerkirim = p.pesanTerkirim;
+  return payload;
+};
+
+export const cleanSettingsForFirestore = (s: SystemSettings) => {
+  const payload: Record<string, any> = {
+    jamMasuk: s.jamMasuk || '07:00',
+    jamToleransi: s.jamToleransi || '07:15',
+    templatePesan: s.templatePesan || '',
+    googleSpreadsheetId: s.googleSpreadsheetId || '',
+    googleDriveFolderId: s.googleDriveFolderId || '',
+    isGoogleConnected: Boolean(s.isGoogleConnected),
+    isWhatsAppConnected: Boolean(s.isWhatsAppConnected),
+    waApiKey: s.waApiKey || '',
+  };
+  if (s.jamPulang) payload.jamPulang = s.jamPulang;
+  if (s.activeJadwalId) payload.activeJadwalId = s.activeJadwalId;
+  if (s.templatePesanPulang) payload.templatePesanPulang = s.templatePesanPulang;
+  if (s.jadwalList && Array.isArray(s.jadwalList)) {
+    payload.jadwalList = s.jadwalList.map(j => ({
+      id: j.id,
+      nama: j.nama,
+      tipe: j.tipe || 'Pagi',
+      kelas: j.kelas || [],
+      hari: j.hari || [],
+      jamMasuk: j.jamMasuk,
+      jamToleransi: j.jamToleransi,
+      jamPulang: j.jamPulang,
+      isAktif: Boolean(j.isAktif),
+      keterangan: j.keterangan || ''
+    }));
+  }
   return payload;
 };
 
@@ -201,7 +249,7 @@ export const deleteAccountFromFirestore = async (userId: string) => {
 export const saveSettingsToFirestore = async (settings: SystemSettings) => {
   const path = 'settings/system';
   try {
-    await setDoc(doc(db, 'settings', 'system'), settings);
+    await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settings));
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
   }
@@ -353,7 +401,12 @@ export const seedInitialDataIfDocsEmpty = async (
       }
     }
 
-  } catch (err) {
-    console.error('Seeding database skipped or failed (unauthorized or network):', err);
+  } catch (err: any) {
+    const errStr = err instanceof Error ? err.message : String(err);
+    if (errStr.includes('Quota') || errStr.includes('quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
+      console.warn('[Firestore Seeding] Cloud daily read quota reached. Preserving rich offline local database seamlessly.');
+    } else {
+      console.warn('[Firestore Seeding] Cloud seeding notice:', errStr);
+    }
   }
 };

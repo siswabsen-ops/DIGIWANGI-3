@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { 
   Calendar, 
   Download, 
@@ -45,7 +45,7 @@ interface ReportPanelProps {
 type ActiveTab = 'harian' | 'mingguan' | 'bulanan';
 type StatusFilterType = 'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
 
-export default function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
+function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('harian');
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -1266,4 +1266,6 @@ export default function ReportPanel({ siswaList, presensiList }: ReportPanelProp
     </div>
   );
 }
+
+export default memo(ReportPanel);
 

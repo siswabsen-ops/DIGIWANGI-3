@@ -7,12 +7,17 @@
       "properties": {
         "id": { "type": "string" },
         "nis": { "type": "string" },
+        "nisn": { "type": "string" },
+        "nik": { "type": "string" },
+        "statusDapodik": { "type": "string", "enum": ["Sudah Dapodik", "Belum Dapodik"] },
+        "qrIdentifierType": { "type": "string", "enum": ["NIS", "NIK", "NISN"] },
         "nama": { "type": "string" },
         "kelas": { "type": "string" },
         "jenisKelamin": { "type": "string", "enum": ["L", "P"] },
         "waOrangTua": { "type": "string" },
         "tempatLahir": { "type": "string" },
-        "tanggalLahir": { "type": "string" }
+        "tanggalLahir": { "type": "string" },
+        "catatan": { "type": "string" }
       },
       "required": ["id", "nis", "nama", "kelas", "jenisKelamin", "waOrangTua"]
     },
@@ -24,6 +29,7 @@
         "id": { "type": "string" },
         "siswaId": { "type": "string" },
         "nis": { "type": "string" },
+        "nik": { "type": "string" },
         "nama": { "type": "string" },
         "kelas": { "type": "string" },
         "tanggal": { "type": "string" },

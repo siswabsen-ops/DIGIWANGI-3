@@ -33,7 +33,12 @@ service cloud.firestore {
         && (data.jenisKelamin == 'L' || data.jenisKelamin == 'P')
         && data.waOrangTua is string && data.waOrangTua.size() <= 30
         && (!('tempatLahir' in data) || (data.tempatLahir is string && data.tempatLahir.size() <= 100))
-        && (!('tanggalLahir' in data) || (data.tanggalLahir is string && data.tanggalLahir.size() <= 50));
+        && (!('tanggalLahir' in data) || (data.tanggalLahir is string && data.tanggalLahir.size() <= 50))
+        && (!('nik' in data) || (data.nik is string && data.nik.size() <= 32))
+        && (!('nisn' in data) || (data.nisn is string && data.nisn.size() <= 32))
+        && (!('statusDapodik' in data) || (data.statusDapodik in ['Sudah Dapodik', 'Belum Dapodik']))
+        && (!('qrIdentifierType' in data) || (data.qrIdentifierType in ['NIS', 'NIK', 'NISN']))
+        && (!('catatan' in data) || (data.catatan is string && data.catatan.size() <= 500));
     }
 
     function isValidPresensi(data) {
@@ -41,12 +46,14 @@ service cloud.firestore {
         && data.id is string && data.id.size() <= 128
         && data.siswaId is string && data.siswaId.size() <= 128
         && data.nis is string && data.nis.size() <= 32
+        && (!('nik' in data) || (data.nik is string && data.nik.size() <= 32))
         && data.nama is string && data.nama.size() <= 200
         && data.kelas is string && data.kelas.size() <= 64
         && data.tanggal is string && data.tanggal.size() <= 20
         && data.waktu is string && data.waktu.size() <= 20
         && (data.status == 'Hadir' || data.status == 'Sakit' || data.status == 'Izin' || data.status == 'Alfa' || data.status == 'Terlambat')
         && (data.waStatus == 'Pending' || data.waStatus == 'Terkirim' || data.waStatus == 'Gagal')
+        && (!('pesanTerkirim' in data) || (data.pesanTerkirim is string && data.pesanTerkirim.size() <= 2000))
         && data.operator is string && data.operator.size() <= 200;
     }
 
@@ -57,14 +64,18 @@ service cloud.firestore {
         && data.namaLengkap is string && data.namaLengkap.size() <= 200
         && (data.role == 'admin' || data.role == 'kepsek' || data.role == 'guru' || data.role == 'piket')
         && data.pin is string && data.pin.size() <= 16
-        && (!('kelasSpesifik' in data) || data.kelasSpesifik is string && data.kelasSpesifik.size() <= 64);
+        && (!('kelasSpesifik' in data) || (data.kelasSpesifik is string && data.kelasSpesifik.size() <= 64));
     }
 
     function isValidSystemSettings(data) {
       return data.keys().hasAll(['jamMasuk', 'jamToleransi', 'templatePesan', 'googleSpreadsheetId', 'googleDriveFolderId', 'isGoogleConnected', 'isWhatsAppConnected', 'waApiKey'])
         && data.jamMasuk is string && data.jamMasuk.size() <= 10
         && data.jamToleransi is string && data.jamToleransi.size() <= 10
+        && (!('jamPulang' in data) || (data.jamPulang is string && data.jamPulang.size() <= 10))
+        && (!('activeJadwalId' in data) || (data.activeJadwalId is string && data.activeJadwalId.size() <= 64))
+        && (!('jadwalList' in data) || data.jadwalList is list)
         && data.templatePesan is string && data.templatePesan.size() <= 2000
+        && (!('templatePesanPulang' in data) || (data.templatePesanPulang is string && data.templatePesanPulang.size() <= 2000))
         && data.googleSpreadsheetId is string && data.googleSpreadsheetId.size() <= 200
         && data.googleDriveFolderId is string && data.googleDriveFolderId.size() <= 200
         && data.isGoogleConnected is bool

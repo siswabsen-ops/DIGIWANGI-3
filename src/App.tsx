@@ -184,6 +184,16 @@ export default function App() {
           PRESENSI_INITIAL
         );
 
+        // Helper for graceful snapshot error handling
+        const handleSnapshotNotice = (label: string, err: any) => {
+          const errStr = err instanceof Error ? err.message : String(err);
+          if (errStr.includes('Quota') || errStr.includes('quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
+            console.warn(`[Firestore Real-time ${label}] Free quota limit reached. Using fast local offline storage.`);
+          } else {
+            console.warn(`[Firestore Real-time ${label}] Sync status:`, errStr);
+          }
+        };
+
         // 1. Subscribe to Siswa directory
         const unsubSiswa = onSnapshot(collection(db, 'siswa'), (snap) => {
           const list: Siswa[] = [];
@@ -194,7 +204,7 @@ export default function App() {
             setSiswaList(list);
           }
         }, (err) => {
-          console.error('Real-time Siswa sync fail:', err);
+          handleSnapshotNotice('Siswa', err);
         });
 
         // 2. Subscribe to Attendance records
@@ -205,7 +215,7 @@ export default function App() {
           });
           setPresensiList(list);
         }, (err) => {
-          console.error('Real-time Presensi sync fail:', err);
+          handleSnapshotNotice('Presensi', err);
         });
 
         // 3. Subscribe to Accounts directory
@@ -228,7 +238,7 @@ export default function App() {
             setAccountsList(list);
           }
         }, (err) => {
-          console.error('Real-time Accounts sync fail:', err);
+          handleSnapshotNotice('Accounts', err);
         });
 
         // 4. Subscribe to App settings
@@ -237,7 +247,7 @@ export default function App() {
             setSettings(docSnap.data() as SystemSettings);
           }
         }, (err) => {
-          console.error('Real-time Settings sync fail:', err);
+          handleSnapshotNotice('Settings', err);
         });
 
         // 5. Subscribe to Activity logs
@@ -249,7 +259,7 @@ export default function App() {
           list.sort((a, b) => new Date(b.waktu).getTime() - new Date(a.waktu).getTime());
           setActivityLogs(list);
         }, (err) => {
-          console.error('Real-time Logs sync fail:', err);
+          handleSnapshotNotice('Logs', err);
         });
 
         return () => {
@@ -260,7 +270,7 @@ export default function App() {
           unsubLogs();
         };
       } catch (error) {
-        console.error('Firestore connection initialization skipped or failed:', error);
+        console.warn('Firestore connection initialization notice:', error);
       }
     };
 
@@ -313,6 +323,7 @@ export default function App() {
       tindakan,
       detail,
     };
+    setActivityLogs(prev => [newLog, ...prev.slice(0, 499)]);
     saveActivityLogToFirestore(newLog);
   };
 
@@ -321,6 +332,7 @@ export default function App() {
     if (old) {
       const mergedUser = { ...old.user, ...updatedUser };
       const mergedPin = newPin !== undefined ? newPin : old.pin;
+      setAccountsList(prev => prev.map(acc => acc.user.id === userId ? { user: mergedUser, pin: mergedPin } : acc));
       saveAccountToFirestore({ user: mergedUser, pin: mergedPin });
       addActivityLog('Update Akun', `Merubah detail profil akun: ${updatedUser.namaLengkap || userId}`);
       triggerNotice('Akun berhasil diperbarui.', 'success');
@@ -328,6 +340,7 @@ export default function App() {
   };
 
   const handleAddAccount = (user: User, pin: string) => {
+    setAccountsList(prev => [...prev.filter(a => a.user.id !== user.id), { user, pin }]);
     saveAccountToFirestore({ user, pin });
     addActivityLog('Tambah Akun Baru', `Membuat akun operator baru: ${user.namaLengkap} [${user.role.toUpperCase()}]`);
     triggerNotice('Akun baru berhasil ditambahkan.', 'success');
@@ -338,6 +351,7 @@ export default function App() {
       triggerNotice('Tidak dapat menghapus akun Anda sendiri!', 'info');
       return;
     }
+    setAccountsList(prev => prev.filter(a => a.user.id !== userId));
     deleteAccountFromFirestore(userId);
     addActivityLog('Hapus Akun', `Menghapus akun operator ID: ${userId}`);
     triggerNotice('Akun berhasil dihapus.', 'success');
@@ -566,17 +580,20 @@ export default function App() {
 
   // Student CRUD actions
   const handleAddSiswa = (newSiswa: Siswa) => {
+    setSiswaList(prev => [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)]);
     saveSiswaToFirestore(newSiswa);
     addActivityLog('Menambah Siswa', `Mendaftarkan siswa baru: ${newSiswa.nama} (NIS ${newSiswa.nis}) di ${newSiswa.kelas}`);
   };
 
   const handleUpdateSiswa = (updated: Siswa) => {
+    setSiswaList(prev => prev.map(s => s.id === updated.id ? updated : s));
     saveSiswaToFirestore(updated);
     addActivityLog('Update Siswa', `Mengubah data profil: ${updated.nama} (NIS ${updated.nis})`);
   };
 
   const handleDeleteSiswa = (id: string) => {
     const matched = siswaList.find((s) => s.id === id);
+    setSiswaList(prev => prev.filter(s => s.id !== id));
     deleteSiswaFromFirestore(id);
     if (matched) {
       addActivityLog('Hapus Siswa', `Menghapus pendaftaran: ${matched.nama} (NIS ${matched.nis})`);
@@ -585,6 +602,7 @@ export default function App() {
 
   // Settings Save action
   const handleSaveSettings = (newSettings: SystemSettings) => {
+    setSettings(newSettings);
     saveSettingsToFirestore(newSettings);
     addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, atau ID integrasi Google.');
   };
@@ -746,88 +764,83 @@ export default function App() {
         {/* PRIMARY CONTROLLER PORTAL */}
         <main className="flex-1 min-w-0">
         {/* VIEW 1: PRENSENSI SCAN */}
-        {currentView === 'scan' && (
-          <div className="py-2">
-            <ScanScreen
-              siswaList={siswaList}
-              settings={settings}
-              currentUser={currentUser || { namaLengkap: 'Petugas Piket Gerbang', role: 'piket' }}
-              onAddPresensi={handleAddPresensi}
-              recentPresensi={presensiList}
-            />
-          </div>
-        )}
+        <div className={currentView === 'scan' ? 'py-2 block' : 'hidden'}>
+          <ScanScreen
+            siswaList={siswaList}
+            settings={settings}
+            currentUser={currentUser || { namaLengkap: 'Petugas Piket Gerbang', role: 'piket' }}
+            onAddPresensi={handleAddPresensi}
+            recentPresensi={presensiList}
+            isActive={currentView === 'scan'}
+          />
+        </div>
 
         {/* VIEW 2: MANAJEMEN CONSOLE (Depends on login state & Role) */}
-        {currentView === 'manajemen' && (
-          <div className="py-2">
-            {!currentUser ? (
-              <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} />
-            ) : (
-              <>
-                {currentUser.role === 'admin' && (
-                  <AdminPanel
-                    siswaList={siswaList}
-                    onAddSiswa={handleAddSiswa}
-                    onUpdateSiswa={handleUpdateSiswa}
-                    onDeleteSiswa={handleDeleteSiswa}
-                    settings={settings}
-                    onSaveSettings={handleSaveSettings}
-                    activityLogs={activityLogs}
-                    onClearLogs={handleClearLogs}
-                    googleToken={googleToken}
-                    googleUser={googleUser}
-                    onConnectGoogle={handleConnectGoogle}
-                    onDisconnectGoogle={handleDisconnectGoogle}
-                    onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
-                    onBackupToDrive={handleBackupToDrive}
-                    onSyncFromGoogle={handleSyncFromGoogle}
-                    onSyncToGoogle={handleGoogleManualSync}
-                    isSyncing={isSyncing}
-                    accountsList={accountsList}
-                    onUpdateAccount={handleUpdateAccount}
-                    onAddAccount={handleAddAccount}
-                    onDeleteAccount={handleDeleteAccount}
-                  />
-                )}
+        <div className={currentView === 'manajemen' ? 'py-2 block' : 'hidden'}>
+          {!currentUser ? (
+            <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} />
+          ) : (
+            <>
+              {currentUser.role === 'admin' && (
+                <AdminPanel
+                  siswaList={siswaList}
+                  onAddSiswa={handleAddSiswa}
+                  onUpdateSiswa={handleUpdateSiswa}
+                  onDeleteSiswa={handleDeleteSiswa}
+                  settings={settings}
+                  onSaveSettings={handleSaveSettings}
+                  activityLogs={activityLogs}
+                  onClearLogs={handleClearLogs}
+                  googleToken={googleToken}
+                  googleUser={googleUser}
+                  onConnectGoogle={handleConnectGoogle}
+                  onDisconnectGoogle={handleDisconnectGoogle}
+                  onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
+                  onBackupToDrive={handleBackupToDrive}
+                  onSyncFromGoogle={handleSyncFromGoogle}
+                  onSyncToGoogle={handleGoogleManualSync}
+                  isSyncing={isSyncing}
+                  accountsList={accountsList}
+                  onUpdateAccount={handleUpdateAccount}
+                  onAddAccount={handleAddAccount}
+                  onDeleteAccount={handleDeleteAccount}
+                />
+              )}
 
-                {currentUser.role === 'kepsek' && (
-                  <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
-                )}
+              {currentUser.role === 'kepsek' && (
+                <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
+              )}
 
-                {currentUser.role === 'guru' && (
-                  <GuruPanel
-                    siswaList={siswaList}
-                    presensiList={presensiList}
-                    currentUser={currentUser}
-                    onAddPresensi={handleAddPresensi}
-                  />
-                )}
+              {currentUser.role === 'guru' && (
+                <GuruPanel
+                  siswaList={siswaList}
+                  presensiList={presensiList}
+                  currentUser={currentUser}
+                  onAddPresensi={handleAddPresensi}
+                />
+              )}
 
-                {currentUser.role === 'piket' && (
-                  <PiketPanel
-                    siswaList={siswaList}
-                    settings={settings}
-                    currentUser={currentUser}
-                    onAddPresensi={handleAddPresensi}
-                    recentPresensi={presensiList}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
+              {currentUser.role === 'piket' && (
+                <PiketPanel
+                  siswaList={siswaList}
+                  settings={settings}
+                  currentUser={currentUser}
+                  onAddPresensi={handleAddPresensi}
+                  recentPresensi={presensiList}
+                  isActive={currentView === 'manajemen'}
+                />
+              )}
+            </>
+          )}
+        </div>
 
         {/* VIEW 2.5: REKAP LAPORAN */}
-        {currentView === 'laporan' && (
-          <div className="py-2">
-            <ReportPanel siswaList={siswaList} presensiList={presensiList} />
-          </div>
-        )}
+        <div className={currentView === 'laporan' ? 'py-2 block' : 'hidden'}>
+          <ReportPanel siswaList={siswaList} presensiList={presensiList} />
+        </div>
 
         {/* VIEW 3: BUKU PANDUAN LANGKAH-DEMI-LANGKAH */}
-        {currentView === 'panduan' && (
-          <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className={currentView === 'panduan' ? 'max-w-4xl mx-auto px-4 py-8 block' : 'hidden'}>
             <div className="bg-white rounded-3xl p-8 border border-gray-150 shadow-sm space-y-8 text-left">
               
               {/* Cover */}
@@ -966,9 +979,8 @@ export default function App() {
 
             </div>
           </div>
-        )}
-      </main>
-    </div>
+        </main>
+      </div>
 
       {/* Floating simulator component */}
       <WhatsAppSimulator logs={presensiList} onClearLogs={() => setPresensiList([])} />

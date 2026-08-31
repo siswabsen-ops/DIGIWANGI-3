@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import {
   TrendingUp,
   FileText,
@@ -30,7 +30,7 @@ interface KepsekPanelProps {
 
 type LaporanFilterType = 'hari' | 'minggu' | 'bulan';
 
-export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
+function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
   const [filterType, setFilterType] = useState<LaporanFilterType>('hari');
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [exportError, setExportError] = useState('');
@@ -509,3 +509,5 @@ export default function KepsekPanel({ siswaList, presensiList }: KepsekPanelProp
     </div>
   );
 }
+
+export default memo(KepsekPanel);

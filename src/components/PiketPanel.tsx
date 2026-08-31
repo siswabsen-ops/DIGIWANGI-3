@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { ShieldAlert, Sparkles, Smartphone, Eye } from 'lucide-react';
 import { Siswa, Presensi, SystemSettings } from '../types';
 import ScanScreen from './ScanScreen';
@@ -8,14 +9,16 @@ interface PiketPanelProps {
   currentUser: { namaLengkap: string; role: string };
   onAddPresensi: (presensi: Presensi) => void;
   recentPresensi: Presensi[];
+  isActive?: boolean;
 }
 
-export default function PiketPanel({
+function PiketPanel({
   siswaList,
   settings,
   currentUser,
   onAddPresensi,
   recentPresensi,
+  isActive = true,
 }: PiketPanelProps) {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -57,6 +60,7 @@ export default function PiketPanel({
             currentUser={currentUser}
             onAddPresensi={onAddPresensi}
             recentPresensi={recentPresensi}
+            isActive={isActive}
           />
         </div>
       </div>
@@ -64,3 +68,5 @@ export default function PiketPanel({
     </div>
   );
 }
+
+export default memo(PiketPanel);

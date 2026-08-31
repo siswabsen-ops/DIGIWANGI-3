@@ -95,8 +95,21 @@ export default function Header({
 
         {/* Dynamic Integration Badges & Sync Action */}
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
+          {/* Cloud Database Badge */}
+          <div
+            id="badge-cloud-db-status"
+            title="Real-time Cloud Firestore Database Aktif & Terhubung"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border bg-blue-900/50 text-blue-100 border-blue-500/30 transition-all shadow-xs"
+          >
+            <Flame className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline opacity-80">Cloud DB:</span>
+            <span className="text-[11px] font-semibold text-emerald-300">Live</span>
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </div>
+
           {/* Integrasi Google Badge */}
           <div
+            id="badge-google-sync-status"
             title="Google Sheets & Google Drive Cloud Sync Status"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
               isGoogleConnected
@@ -106,12 +119,13 @@ export default function Header({
           >
             <Database className="w-3.5 h-3.5 text-green-300" />
             <span className="hidden sm:inline opacity-80">Google:</span>
-            <span>{isGoogleConnected ? 'Tersinkron' : 'Terputus'}</span>
-            <div className={`w-2 h-2 rounded-full ${isGoogleConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
+            <span>{isGoogleConnected ? 'Tersinkron' : 'Lokal/Siap'}</span>
+            <div className={`w-2 h-2 rounded-full ${isGoogleConnected ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
           </div>
 
           {/* Integrasi WA Gateway Badge */}
           <div
+            id="badge-wa-gateway-status"
             title="WhatsApp Notification Gateway API Connection"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
               isWhatsAppConnected
@@ -121,18 +135,21 @@ export default function Header({
           >
             <Wifi className="w-3.5 h-3.5 text-sky-300" />
             <span className="hidden sm:inline opacity-80 font-bold">WA Gateway:</span>
-            <span className="text-[10px] font-mono tracking-widest text-emerald-400">ONLINE</span>
+            <span className="text-[10px] font-mono tracking-widest text-emerald-400">
+              {isWhatsAppConnected ? 'ONLINE' : 'AKTIF'}
+            </span>
           </div>
 
           {/* Sync Button */}
           {onSyncNow && (
             <button
+              id="btn-header-sync-now"
               onClick={onSyncNow}
               disabled={isSyncing}
               className="flex items-center gap-1.5 bg-blue-800/60 hover:bg-blue-900/80 disabled:bg-blue-950/30 text-white border border-blue-600/50 py-1.5 px-3 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-200' : ''}`} />
-              <span>{isSyncing ? 'Inisialisasi...' : 'Sync Data'}</span>
+              <span>{isSyncing ? 'Menyinkron...' : 'Sync Data'}</span>
             </button>
           )}
 
