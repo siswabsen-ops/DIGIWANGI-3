@@ -6,6 +6,7 @@ import {
   LOGS_INITIAL,
   USER_DEMO_ACCOUNTS
 } from './lib/demoData';
+import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User } from './types';
 import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString } from './lib/attendanceUtils';
 import Header from './components/Header';
@@ -61,7 +62,7 @@ import {
 export default function App() {
   // Real-time local state engine backed by LocalStorage
   const [siswaList, setSiswaList] = useState<Siswa[]>(() => {
-    const cached = localStorage.getItem('karapres3_siswa_v3');
+    const cached = safeGetItem('karapres3_siswa_v3');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -70,12 +71,12 @@ export default function App() {
         }
       } catch {}
     }
-    localStorage.setItem('karapres3_siswa_v3', JSON.stringify(SISWA_INITIAL));
+    safeSetItem('karapres3_siswa_v3', JSON.stringify(SISWA_INITIAL));
     return SISWA_INITIAL;
   });
 
   const [presensiList, setPresensiList] = useState<Presensi[]>(() => {
-    const cached = localStorage.getItem('karapres3_presensi_v5');
+    const cached = safeGetItem('karapres3_presensi_v5');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -86,37 +87,53 @@ export default function App() {
         }
       } catch {}
     }
-    localStorage.setItem('karapres3_presensi_v5', JSON.stringify(PRESENSI_INITIAL));
+    safeSetItem('karapres3_presensi_v5', JSON.stringify(PRESENSI_INITIAL));
     return PRESENSI_INITIAL;
   });
 
   const [settings, setSettings] = useState<SystemSettings>(() => {
-    const cached = localStorage.getItem('karapres3_settings');
+    const cached = safeGetItem('karapres3_settings');
+    const persistentLogo = safeGetItem(APP_LOGO_STORAGE_KEY);
     if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed.googleDriveFolderId === '1tH9Q8u-CPlbN2bksIPh331uE_A8xN8B6') {
-        parsed.googleDriveFolderId = '1RoPgYTYP3GqzcDhLv_xKJshIYRjQisoe';
-        parsed.googleSpreadsheetId = '1V6IomZ0hR_E2N_lF5aK804-Oat_bVzNlW3O0Vj2vExF';
-        localStorage.setItem('karapres3_settings', JSON.stringify(parsed));
+      try {
+        const parsed = JSON.parse(cached);
+        if (persistentLogo && !parsed.appLogoUrl) {
+          parsed.appLogoUrl = persistentLogo;
+        }
+        if (parsed.googleDriveFolderId === '1tH9Q8u-CPlbN2bksIPh331uE_A8xN8B6') {
+          parsed.googleDriveFolderId = '1RoPgYTYP3GqzcDhLv_xKJshIYRjQisoe';
+          parsed.googleSpreadsheetId = '1V6IomZ0hR_E2N_lF5aK804-Oat_bVzNlW3O0Vj2vExF';
+          safeSetItem('karapres3_settings', JSON.stringify(parsed));
+          return parsed;
+        }
         return parsed;
-      }
-      return parsed;
+      } catch {}
     }
-    return SETTINGS_INITIAL;
+    return persistentLogo ? { ...SETTINGS_INITIAL, appLogoUrl: persistentLogo } : SETTINGS_INITIAL;
   });
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
-    const cached = localStorage.getItem('karapres3_logs');
-    return cached ? JSON.parse(cached) : LOGS_INITIAL;
+    const cached = safeGetItem('karapres3_logs');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {}
+    }
+    return LOGS_INITIAL;
   });
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const cached = localStorage.getItem('karapres3_current_user');
-    return cached ? JSON.parse(cached) : null;
+    const cached = safeGetItem('karapres3_current_user');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {}
+    }
+    return null;
   });
 
   const [accountsList, setAccountsList] = useState<{ user: User; pin: string }[]>(() => {
-    const cached = localStorage.getItem('karapres3_accounts_v4');
+    const cached = safeGetItem('karapres3_accounts_v4');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -127,7 +144,7 @@ export default function App() {
         }
       } catch {}
     }
-    localStorage.setItem('karapres3_accounts_v4', JSON.stringify(USER_DEMO_ACCOUNTS));
+    safeSetItem('karapres3_accounts_v4', JSON.stringify(USER_DEMO_ACCOUNTS));
     return USER_DEMO_ACCOUNTS;
   });
 
@@ -244,7 +261,14 @@ export default function App() {
         // 4. Subscribe to App settings
         const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
           if (docSnap.exists()) {
-            setSettings(docSnap.data() as SystemSettings);
+            const data = docSnap.data() as SystemSettings;
+            if (data.appLogoUrl) {
+              safeSetItem(APP_LOGO_STORAGE_KEY, data.appLogoUrl);
+            }
+            setSettings((prev) => {
+              const persistentLogo = data.appLogoUrl || prev.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
+              return { ...data, appLogoUrl: persistentLogo };
+            });
           }
         }, (err) => {
           handleSnapshotNotice('Settings', err);
@@ -275,9 +299,13 @@ export default function App() {
     };
 
     let unsubFuncs: (() => void) | undefined;
-    startRealTimeSync().then((cleaner) => {
-      unsubFuncs = cleaner;
-    });
+    startRealTimeSync()
+      .then((cleaner) => {
+        unsubFuncs = cleaner;
+      })
+      .catch((err) => {
+        console.warn('Real-time database sync initialization notice:', err);
+      });
 
     return () => {
       if (unsubFuncs) unsubFuncs();
@@ -286,30 +314,30 @@ export default function App() {
 
   // Sync state modifications to Web Storage
   useEffect(() => {
-    localStorage.setItem('karapres3_siswa_v3', JSON.stringify(siswaList));
+    safeSetItem('karapres3_siswa_v3', JSON.stringify(siswaList));
   }, [siswaList]);
 
   useEffect(() => {
-    localStorage.setItem('karapres3_presensi_v5', JSON.stringify(presensiList));
+    safeSetItem('karapres3_presensi_v5', JSON.stringify(presensiList));
   }, [presensiList]);
 
   useEffect(() => {
-    localStorage.setItem('karapres3_settings', JSON.stringify(settings));
+    safeSetItem('karapres3_settings', JSON.stringify(settings));
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem('karapres3_logs', JSON.stringify(activityLogs));
+    safeSetItem('karapres3_logs', JSON.stringify(activityLogs));
   }, [activityLogs]);
 
   useEffect(() => {
-    localStorage.setItem('karapres3_accounts_v4', JSON.stringify(accountsList));
+    safeSetItem('karapres3_accounts_v4', JSON.stringify(accountsList));
   }, [accountsList]);
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('karapres3_current_user', JSON.stringify(currentUser));
+      safeSetItem('karapres3_current_user', JSON.stringify(currentUser));
     } else {
-      localStorage.removeItem('karapres3_current_user');
+      safeRemoveItem('karapres3_current_user');
     }
   }, [currentUser]);
 
@@ -480,7 +508,7 @@ export default function App() {
       // Update settings
       setSettings(prev => {
         const updated = { ...prev, googleSpreadsheetId: newId };
-        localStorage.setItem('karapres3_settings', JSON.stringify(updated));
+        safeSetItem('karapres3_settings', JSON.stringify(updated));
         return updated;
       });
 
@@ -557,7 +585,7 @@ export default function App() {
 
       const updatedStudents = res.students;
       setSiswaList(updatedStudents);
-      localStorage.setItem('karapres3_siswa_v3', JSON.stringify(updatedStudents));
+      safeSetItem('karapres3_siswa_v3', JSON.stringify(updatedStudents));
 
       // Batch sync to Firestore cloud database
       await syncAllStudentsToFirestore(updatedStudents);
@@ -603,9 +631,12 @@ export default function App() {
 
   // Settings Save action
   const handleSaveSettings = useCallback((newSettings: SystemSettings) => {
+    if (newSettings.appLogoUrl) {
+      safeSetItem(APP_LOGO_STORAGE_KEY, newSettings.appLogoUrl);
+    }
     setSettings(newSettings);
     saveSettingsToFirestore(newSettings);
-    addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, atau ID integrasi Google.');
+    addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, logo resmi, atau ID integrasi Google.');
   }, [addActivityLog]);
 
   // Record a scanned attendance
@@ -649,6 +680,8 @@ export default function App() {
         isWhatsAppConnected={settings.isWhatsAppConnected}
         onSyncNow={currentUser ? handleGoogleManualSync : undefined}
         isSyncing={isSyncing}
+        settings={settings}
+        onSaveSettings={handleSaveSettings}
       />
 
       {/* Slogan Ticker Bar under Header for Premium Vibe */}
@@ -779,7 +812,7 @@ export default function App() {
           {/* VIEW 2: MANAJEMEN CONSOLE (Depends on login state & Role) */}
           <div className={currentView === 'manajemen' ? 'py-2 block' : 'hidden'}>
             {!currentUser ? (
-              <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} />
+              <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} appLogoUrl={settings?.appLogoUrl} />
             ) : (
               <>
                 {currentUser.role === 'admin' && (

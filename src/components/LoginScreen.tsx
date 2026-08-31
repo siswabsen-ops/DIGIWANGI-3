@@ -12,9 +12,10 @@ import { DIGIWANGI_MASCOT_BASE64 } from '../assets/mascotBase64';
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
   accountsList: { user: User; pin: string }[];
+  appLogoUrl?: string;
 }
 
-export default function LoginScreen({ onLoginSuccess, accountsList }: LoginScreenProps) {
+export default function LoginScreen({ onLoginSuccess, accountsList, appLogoUrl }: LoginScreenProps) {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -118,7 +119,7 @@ export default function LoginScreen({ onLoginSuccess, accountsList }: LoginScree
             <div className="flex items-center gap-3 mb-2">
               <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center p-1 shadow-md border border-white/30 shrink-0 overflow-hidden">
                 <img 
-                  src={digiwangiLogo || DIGIWANGI_LOGO_BASE64 || '/logo.png'} 
+                  src={appLogoUrl || digiwangiLogo || DIGIWANGI_LOGO_BASE64 || '/logo.png'} 
                   alt="Logo DIGIWANGI 3" 
                   referrerPolicy="no-referrer"
                   loading="eager"

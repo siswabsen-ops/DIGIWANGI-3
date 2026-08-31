@@ -1,11 +1,6 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { auth } from './firebase';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { Siswa, Presensi } from '../types';
-
-// Initialize Firebase App
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
 // Request Google Workspace scopes

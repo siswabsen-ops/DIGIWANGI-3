@@ -67,7 +67,10 @@
         "googleDriveFolderId": { "type": "string" },
         "isGoogleConnected": { "type": "boolean" },
         "isWhatsAppConnected": { "type": "boolean" },
-        "waApiKey": { "type": "string" }
+        "waApiKey": { "type": "string" },
+        "appLogoUrl": { "type": "string" },
+        "dinasLogoUrl": { "type": "string" },
+        "garutLogoUrl": { "type": "string" }
       },
       "required": ["jamMasuk", "jamToleransi", "templatePesan", "googleSpreadsheetId", "googleDriveFolderId", "isGoogleConnected", "isWhatsAppConnected", "waApiKey"]
     },

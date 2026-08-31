@@ -79,6 +79,9 @@ export interface SystemSettings {
   isGoogleConnected: boolean;
   isWhatsAppConnected: boolean;
   waApiKey: string;
+  appLogoUrl?: string; // Logo utama DIGIWANGI 3 (Custom/Base64/URL)
+  dinasLogoUrl?: string; // Logo Dinas Pendidikan (Custom/Base64/URL)
+  garutLogoUrl?: string; // Logo Pemerintah Kabupaten Garut (Custom/Base64/URL)
 }
 
 export interface ActivityLog {

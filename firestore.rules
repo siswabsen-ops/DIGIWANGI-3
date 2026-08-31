@@ -74,6 +74,9 @@ service cloud.firestore {
         && (!('jamPulang' in data) || (data.jamPulang is string && data.jamPulang.size() <= 10))
         && (!('activeJadwalId' in data) || (data.activeJadwalId is string && data.activeJadwalId.size() <= 64))
         && (!('jadwalList' in data) || data.jadwalList is list)
+        && (!('appLogoUrl' in data) || (data.appLogoUrl is string && data.appLogoUrl.size() <= 2000000))
+        && (!('dinasLogoUrl' in data) || (data.dinasLogoUrl is string && data.dinasLogoUrl.size() <= 2000000))
+        && (!('garutLogoUrl' in data) || (data.garutLogoUrl is string && data.garutLogoUrl.size() <= 2000000))
         && data.templatePesan is string && data.templatePesan.size() <= 2000
         && (!('templatePesanPulang' in data) || (data.templatePesanPulang is string && data.templatePesanPulang.size() <= 2000))
         && data.googleSpreadsheetId is string && data.googleSpreadsheetId.size() <= 200

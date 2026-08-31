@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Users,
   Sliders,
@@ -33,10 +33,19 @@ import {
   Calendar,
   Download,
   FileArchive,
-  Loader2
+  Loader2,
+  Image as ImageIcon,
+  Upload,
+  RefreshCcw
 } from 'lucide-react';
 import { Siswa, SystemSettings, ActivityLog, User, Role, DAFTAR_KELAS, StatusDapodik, QRIdentifierType, getStudentQRIdentifier, JadwalPresensi, normalizeKelasCode } from '../types';
 import { DAFTAR_WALI_KELAS, getWaliKelasByKelas, DEFAULT_JADWAL_PRESENSI } from '../lib/demoData';
+import { 
+  DEFAULT_DIGIWANGI_LOGO 
+} from '../assets/officialLogos';
+import { DIGIWANGI_LOGO_BASE64 } from '../assets/logoBase64';
+import { optimizeLogoImage } from '../lib/imageOptimization';
+import { APP_LOGO_STORAGE_KEY, safeSetItem, safeRemoveItem } from '../lib/storage';
 import QRCodeRenderer from './QRCodeRenderer';
 import BatchQRPrintModal from './BatchQRPrintModal';
 import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
@@ -65,7 +74,7 @@ interface AdminPanelProps {
   onDeleteAccount: (userId: string) => void;
 }
 
-type AdminTab = 'siswa' | 'jadwal' | 'kelas' | 'whatsapp' | 'waktu' | 'google' | 'audit' | 'akun';
+type AdminTab = 'siswa' | 'jadwal' | 'kelas' | 'whatsapp' | 'logo' | 'google' | 'audit' | 'akun';
 
 function AdminPanel({
   siswaList,
@@ -124,6 +133,10 @@ function AdminPanel({
   const [templatePesan, setTemplatePesan] = useState(settings.templatePesan);
   const [spreadsheetId, setSpreadsheetId] = useState(settings.googleSpreadsheetId);
   const [driveFolderId, setDriveFolderId] = useState(settings.googleDriveFolderId);
+
+  // Logo Customization State (Logo DIGIWANGI 3)
+  const [appLogoInput, setAppLogoInput] = useState(settings.appLogoUrl || '');
+  const appLogoFileInputRef = useRef<HTMLInputElement>(null);
 
   // Jadwal Presensi Multi-Shift States
   const [jadwalList, setJadwalList] = useState<JadwalPresensi[]>(() => {
@@ -836,7 +849,7 @@ function AdminPanel({
               <button
                 onClick={() => setActiveTab('jadwal')}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
-                  activeTab === 'jadwal' || activeTab === 'waktu'
+                  activeTab === 'jadwal'
                     ? 'bg-blue-50 text-blue-700 shadow-xs'
                     : 'text-slate-600 hover:bg-slate-50'
                 }`}
@@ -846,6 +859,21 @@ function AdminPanel({
                   Jadwal Presensi
                 </span>
                 <span className="text-[9px] bg-blue-100 text-blue-700 font-extrabold px-1.5 py-0.5 rounded-md">Pagi / Siang</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('logo')}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === 'logo'
+                    ? 'bg-blue-50 text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <ImageIcon className="w-4 h-4 text-amber-600" />
+                  Identitas & Logo
+                </span>
+                <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1.5 py-0.5 rounded-md">Admin</span>
               </button>
 
               <button
@@ -1650,7 +1678,7 @@ function AdminPanel({
           )}
 
           {/* TAB 4 / JADWAL: PENGATURAN JADWAL PRESENSI (PAGI / SIANG / KELAS 1-6) */}
-          {(activeTab === 'jadwal' || activeTab === 'waktu') && (
+          {activeTab === 'jadwal' && (
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
               {/* Header & Quick Action Buttons */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
@@ -2392,6 +2420,154 @@ function AdminPanel({
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* TAB: IDENTITAS & PENGATURAN LOGO */}
+          {/* TAB 5: PENGATURAN IDENTITAS LOGO RESMI APLIKASI (DIGIWANGI 3 ONLY) */}
+          {activeTab === 'logo' && (
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-6 animate-in fade-in duration-200">
+              <div className="border-b border-gray-150 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-center">
+                      <ImageIcon className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider font-display flex items-center gap-2">
+                        <span>PENGATURAN LOGO APLIKASI DIGIWANGI 3</span>
+                        <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                          KHUSUS ADMIN
+                        </span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-normal">
+                        Kelola Logo Resmi DIGIWANGI 3 untuk SDN 3 Karamatwangi. Logo ini ditampilkan di header utama, banner presensi, dan halaman login.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Focused Card for DIGIWANGI 3 Logo */}
+              <div className="max-w-2xl bg-slate-50 border border-slate-200 rounded-3xl p-6 space-y-5">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  {/* Visual Preview */}
+                  <div className="flex flex-col items-center gap-2 shrink-0">
+                    <div className="w-28 h-28 bg-white rounded-2xl border-2 border-blue-200 p-2.5 flex items-center justify-center shadow-md">
+                      <img 
+                        src={appLogoInput || DEFAULT_DIGIWANGI_LOGO || DIGIWANGI_LOGO_BASE64} 
+                        alt="Logo Digiwangi 3" 
+                        className="w-full h-full object-contain"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = DIGIWANGI_LOGO_BASE64; }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider bg-blue-100 px-2 py-0.5 rounded-full">
+                      Pratinjau Live
+                    </span>
+                  </div>
+
+                  {/* Actions & Description */}
+                  <div className="flex-1 space-y-3 w-full">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">
+                        Logo Resmi DIGIWANGI 3
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Format yang didukung: PNG, JPG, WebP, SVG (Maks. 2 MB).
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <input 
+                        type="file" 
+                        ref={appLogoFileInputRef}
+                        className="hidden"
+                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (file.size > 5 * 1024 * 1024) {
+                              displayNotice('err', 'Ukuran berkas gambar maksimal 5 MB.');
+                              return;
+                            }
+                            try {
+                              const optimizedBase64 = await optimizeLogoImage(file, 512, 512);
+                              setAppLogoInput(optimizedBase64);
+                              safeSetItem(APP_LOGO_STORAGE_KEY, optimizedBase64);
+                              displayNotice('success', 'Gambar Logo DIGIWANGI 3 berhasil dioptimasi & dimuat. Klik "Simpan Logo DIGIWANGI 3" untuk menyimpan.');
+                            } catch (err: any) {
+                              displayNotice('err', `Gagal memproses gambar: ${err.message || 'Kesalahan'}`);
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => appLogoFileInputRef.current?.click()}
+                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2 px-4 text-xs font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>Upload Logo Baru</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAppLogoInput('');
+                          safeRemoveItem(APP_LOGO_STORAGE_KEY);
+                          displayNotice('success', 'Logo DIGIWANGI 3 dikembalikan ke logo bawaan. Klik "Simpan Logo DIGIWANGI 3" untuk menyimpan.');
+                        }}
+                        className="bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <RefreshCcw className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Reset Default</span>
+                      </button>
+                    </div>
+
+                    {/* Direct URL input */}
+                    <div>
+                      <label className="block text-[10.5px] font-bold text-slate-600 uppercase mb-1">
+                        Atau Gunakan Direct URL Logo:
+                      </label>
+                      <input 
+                        type="text"
+                        value={appLogoInput}
+                        onChange={(e) => setAppLogoInput(e.target.value)}
+                        placeholder="https://... atau data:image/..."
+                        className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-3 text-xs focus:ring-2 focus:ring-blue-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button for Logo */}
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-xs text-emerald-900 font-medium">
+                  💡 Perubahan logo akan langsung diterapkan di Header dan seluruh aplikasi secara realtime.
+                </div>
+                <button
+                  type="button"
+                  id="btn-admin-save-all-logos"
+                  onClick={() => {
+                    const finalLogo = appLogoInput.trim() || undefined;
+                    if (finalLogo) {
+                      safeSetItem(APP_LOGO_STORAGE_KEY, finalLogo);
+                    } else {
+                      safeRemoveItem(APP_LOGO_STORAGE_KEY);
+                    }
+                    const updated: SystemSettings = {
+                      ...settings,
+                      appLogoUrl: finalLogo,
+                    };
+                    onSaveSettings(updated);
+                    displayNotice('success', 'Pengaturan Logo DIGIWANGI 3 berhasil disimpan ke database!');
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2.5 px-5 rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer shrink-0"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Logo DIGIWANGI 3</span>
+                </button>
+              </div>
             </div>
           )}
 

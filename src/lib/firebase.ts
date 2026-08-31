@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -15,7 +15,7 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Siswa, Presensi, User, SystemSettings, ActivityLog } from '../types';
 
-const app = initializeApp(firebaseConfig);
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 // As per skill guidelines: db initialization is critical
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
 export const auth = getAuth(app);
@@ -151,6 +151,9 @@ export const cleanSettingsForFirestore = (s: SystemSettings) => {
   if (s.jamPulang) payload.jamPulang = s.jamPulang;
   if (s.activeJadwalId) payload.activeJadwalId = s.activeJadwalId;
   if (s.templatePesanPulang) payload.templatePesanPulang = s.templatePesanPulang;
+  if (s.appLogoUrl) payload.appLogoUrl = s.appLogoUrl;
+  if (s.dinasLogoUrl) payload.dinasLogoUrl = s.dinasLogoUrl;
+  if (s.garutLogoUrl) payload.garutLogoUrl = s.garutLogoUrl;
   if (s.jadwalList && Array.isArray(s.jadwalList)) {
     payload.jadwalList = s.jadwalList.map(j => ({
       id: j.id,
@@ -367,7 +370,7 @@ export const seedInitialDataIfDocsEmpty = async (
     const settingsSnap = await getDocs(collection(db, 'settings'));
     if (settingsSnap.empty) {
       console.log('Seeding settings into Cloud Firestore...');
-      await setDoc(doc(db, 'settings', 'system'), settingsSource);
+      await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settingsSource));
       console.log('Seeded Settings to cloud.');
     }
 
