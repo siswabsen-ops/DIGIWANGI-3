@@ -13,6 +13,7 @@ import {
   School
 } from 'lucide-react';
 import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
+import AttendanceBarChart from './AttendanceBarChart';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import {
   getLocalDateString,
@@ -318,6 +319,15 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
         </div>
 
       </div>
+
+      {/* GRAFIK ANALITIK BATANG (RECHARTS BAR CHART) */}
+      <AttendanceBarChart
+        siswaList={siswaList}
+        presensiList={presensiList}
+        selectedDate={todayStr}
+        selectedKelas={selectedKelas}
+        onSelectKelas={(kelas) => setSelectedKelas(kelas)}
+      />
 
       {/* REKAPITULASI ROMBEL KELAS 1-A S/D 6-B TERPADU */}
       <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4 font-sans">

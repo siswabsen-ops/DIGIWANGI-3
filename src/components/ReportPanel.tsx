@@ -23,6 +23,7 @@ import {
   School
 } from 'lucide-react';
 import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
+import AttendanceBarChart from './AttendanceBarChart';
 import {
   getLocalDateString,
   getLatestAttendanceForStudent,
@@ -688,6 +689,15 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                 </span>
               </div>
             </div>
+
+            {/* GRAFIK ANALITIK BATANG (RECHARTS BAR CHART) */}
+            <AttendanceBarChart
+              siswaList={siswaList}
+              presensiList={presensiList}
+              selectedDate={harianDate}
+              selectedKelas={selectedKelas}
+              onSelectKelas={(kelas) => setSelectedKelas(kelas)}
+            />
 
             {/* SECTION 1: REKAPITULASI ROMBEL SELURUH KELAS 1-A s/d 6-B */}
             <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left">
