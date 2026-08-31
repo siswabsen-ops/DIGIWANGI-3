@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, MessageSquare, ChevronRight, ChevronLeft, Volume2, X, HelpCircle, GraduationCap } from 'lucide-react';
 
 import digiwangiMascot from '../assets/images/mascot_digiwangi_1780544448389.png';
 import { DIGIWANGI_MASCOT_BASE64 } from '../assets/mascotBase64';
 
-export default function MascotPromoAssistant() {
+function MascotPromoAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
   const [showBubble, setShowBubble] = useState(true);
@@ -380,3 +380,5 @@ export default function MascotPromoAssistant() {
     </>
   );
 }
+
+export default memo(MascotPromoAssistant);

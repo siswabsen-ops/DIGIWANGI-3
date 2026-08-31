@@ -208,6 +208,7 @@ function AdminPanel({
   const [accountPin, setAccountPin] = useState('');
   const [accountKelasSpesifik, setAccountKelasSpesifik] = useState('');
   const [isAddingNewAccount, setIsAddingNewAccount] = useState(false);
+  const [studentPageLimit, setStudentPageLimit] = useState(40);
 
   // Fast memoized student filtering for zero-lag typing and tab switching
   const filteredSiswa = useMemo(() => {
@@ -229,6 +230,10 @@ function AdminPanel({
       return matchesKelas && matchesDapodik && matchesSearch;
     });
   }, [siswaList, filterKelas, filterDapodik, searchQuery]);
+
+  const displayedSiswa = useMemo(() => {
+    return filteredSiswa.slice(0, studentPageLimit);
+  }, [filteredSiswa, studentPageLimit]);
 
   // Memoized class student counts for dropdown
   const classStudentCounts = useMemo(() => {
@@ -1386,7 +1391,7 @@ function AdminPanel({
                     </div>
                   ) : (
                     <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
-                      {filteredSiswa.map((siswa) => {
+                      {displayedSiswa.map((siswa) => {
                           const isBelumDapodik = siswa.statusDapodik === 'Belum Dapodik';
                           return (
                             <div
@@ -1500,6 +1505,17 @@ function AdminPanel({
                             </div>
                           );
                         })}
+                        {filteredSiswa.length > studentPageLimit && (
+                          <div className="pt-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setStudentPageLimit(prev => prev + 50)}
+                              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer border border-indigo-200"
+                            >
+                              Tampilkan 50 Siswa Lainnya ({Math.min(studentPageLimit, filteredSiswa.length)} dari {filteredSiswa.length})
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                 </div>

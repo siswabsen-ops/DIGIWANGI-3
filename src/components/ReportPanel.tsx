@@ -173,6 +173,8 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
   }, [filteredStudents, harianDailyIndex]);
 
   // Apply Status Filter
+  const [harianPageLimit, setHarianPageLimit] = useState(40);
+
   const harianReportData = useMemo(() => {
     if (statusFilter === 'semua') return harianReportDataRaw;
     if (statusFilter === 'hadir_total') return harianReportDataRaw.filter(r => r.status === 'Hadir' || r.status === 'Terlambat');
@@ -184,6 +186,10 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
     if (statusFilter === 'belum_absen') return harianReportDataRaw.filter(r => r.status === 'Belum Absen');
     return harianReportDataRaw;
   }, [harianReportDataRaw, statusFilter]);
+
+  const displayedHarianRows = useMemo(() => {
+    return harianReportData.slice(0, harianPageLimit);
+  }, [harianReportData, harianPageLimit]);
 
   // Harian Statistics Summary for the active selection
   const harianStats = useMemo(() => {
@@ -915,7 +921,7 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {harianReportData.map((row, idx) => {
+                      {displayedHarianRows.map((row, idx) => {
                         let statusBadge = (
                           <span className="inline-block py-1 px-2.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
                             Belum Presensi
@@ -983,6 +989,16 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                       })}
                     </tbody>
                   </table>
+                  {harianReportData.length > harianPageLimit && (
+                    <div className="p-3 text-center bg-slate-50 border-t border-slate-100">
+                      <button
+                        onClick={() => setHarianPageLimit(prev => prev + 50)}
+                        className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer border border-slate-200 shadow-2xs"
+                      >
+                        Tampilkan 50 Data Lagi (Menampilkan {displayedHarianRows.length} dari {harianReportData.length} siswa)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

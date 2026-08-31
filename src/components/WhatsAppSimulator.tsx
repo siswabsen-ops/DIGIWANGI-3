@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { MessageSquare, Bell, Smartphone, X, Check, CheckCheck, Minimize2, ChevronUp, Sparkles, Send } from 'lucide-react';
 import { Presensi } from '../types';
 
@@ -7,7 +7,7 @@ interface WhatsAppSimulatorProps {
   onClearLogs: () => void;
 }
 
-export default function WhatsAppSimulator({ logs, onClearLogs }: WhatsAppSimulatorProps) {
+function WhatsAppSimulator({ logs, onClearLogs }: WhatsAppSimulatorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeToast, setActiveToast] = useState<Presensi | null>(null);
   const [hasNewMessage, setHasNewMessage] = useState(false);
@@ -300,3 +300,5 @@ Pesan ini dikirim otomatis melalui Server Utama WA Gateway. Terima kasih atas ke
     </>
   );
 }
+
+export default memo(WhatsAppSimulator);

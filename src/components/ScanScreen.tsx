@@ -126,7 +126,7 @@ function ScanScreen({
         cancelAnimationFrame(animFrameId);
       }
     };
-  }, [useCamera, cameraStream]);
+  }, [useCamera, cameraStream, isActive]);
 
   // Turn on/off real browser camera
   const toggleCamera = async () => {

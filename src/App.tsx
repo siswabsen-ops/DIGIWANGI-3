@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   SISWA_INITIAL,
   PRESENSI_INITIAL,
@@ -314,7 +314,7 @@ export default function App() {
   }, [currentUser]);
 
   // Activity logger helper
-  const addActivityLog = (tindakan: string, detail: string) => {
+  const addActivityLog = useCallback((tindakan: string, detail: string) => {
     const newLog: ActivityLog = {
       id: `log-${Date.now()}`,
       waktu: new Date().toISOString(),
@@ -325,9 +325,9 @@ export default function App() {
     };
     setActivityLogs(prev => [newLog, ...prev.slice(0, 499)]);
     saveActivityLogToFirestore(newLog);
-  };
+  }, [currentUser]);
 
-  const handleUpdateAccount = (userId: string, updatedUser: Partial<User>, newPin?: string) => {
+  const handleUpdateAccount = useCallback((userId: string, updatedUser: Partial<User>, newPin?: string) => {
     const old = accountsList.find(acc => acc.user.id === userId);
     if (old) {
       const mergedUser = { ...old.user, ...updatedUser };
@@ -337,16 +337,16 @@ export default function App() {
       addActivityLog('Update Akun', `Merubah detail profil akun: ${updatedUser.namaLengkap || userId}`);
       triggerNotice('Akun berhasil diperbarui.', 'success');
     }
-  };
+  }, [accountsList, addActivityLog]);
 
-  const handleAddAccount = (user: User, pin: string) => {
+  const handleAddAccount = useCallback((user: User, pin: string) => {
     setAccountsList(prev => [...prev.filter(a => a.user.id !== user.id), { user, pin }]);
     saveAccountToFirestore({ user, pin });
     addActivityLog('Tambah Akun Baru', `Membuat akun operator baru: ${user.namaLengkap} [${user.role.toUpperCase()}]`);
     triggerNotice('Akun baru berhasil ditambahkan.', 'success');
-  };
+  }, [addActivityLog]);
 
-  const handleDeleteAccount = (userId: string) => {
+  const handleDeleteAccount = useCallback((userId: string) => {
     if (currentUser && currentUser.id === userId) {
       triggerNotice('Tidak dapat menghapus akun Anda sendiri!', 'info');
       return;
@@ -355,9 +355,9 @@ export default function App() {
     deleteAccountFromFirestore(userId);
     addActivityLog('Hapus Akun', `Menghapus akun operator ID: ${userId}`);
     triggerNotice('Akun berhasil dihapus.', 'success');
-  };
+  }, [currentUser, addActivityLog]);
 
-  const handleLogin = (user: User) => {
+  const handleLogin = useCallback((user: User) => {
     // Make sure we load the dynamic updated user from our accounts list so details are correct
     const latestAccount = accountsList.find(acc => acc.user.username.toLowerCase() === user.username.toLowerCase());
     const userToLogin = latestAccount ? latestAccount.user : user;
@@ -371,20 +371,19 @@ export default function App() {
     }
     
     // Add audit trail log
-    const pinStringVal = latestAccount ? latestAccount.pin : 'custom';
     addActivityLog('Login Terverifikasi', `Operator: ${userToLogin.namaLengkap} masuk sebagai [${userToLogin.role.toUpperCase()}]`);
-  };
+  }, [accountsList, addActivityLog]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     if (currentUser) {
       addActivityLog('Logout Berhasil', `Operator ${currentUser.namaLengkap} keluar dari sistem.`);
     }
     setCurrentUser(null);
     setCurrentView('scan');
-  };
+  }, [currentUser, addActivityLog]);
 
   // Google connection handlers
-  const handleConnectGoogle = async () => {
+  const handleConnectGoogle = useCallback(async () => {
     try {
       setIsSyncing(true);
       const { user, accessToken } = await googleSignIn();
@@ -404,9 +403,9 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [addActivityLog]);
 
-  const handleDisconnectGoogle = async () => {
+  const handleDisconnectGoogle = useCallback(async () => {
     try {
       await logoutGoogle();
       setGoogleToken(null);
@@ -418,40 +417,9 @@ export default function App() {
       console.error('Logout error:', err);
       triggerNotice('Gagal logout Google.');
     }
-  };
+  }, [addActivityLog]);
 
-  const handleCreateNewSpreadsheet = async (): Promise<string> => {
-    if (!googleToken) {
-      throw new Error('Harap hubungkan akun Google terlebih dahulu.');
-    }
-    setIsSyncing(true);
-    try {
-      const title = `DIGIWANGI 3 SDN 3 Karamatwangi - Database Kehadiran`;
-      const newId = await createNewSpreadsheet(googleToken, title);
-      addActivityLog('Spreadsheet Baru', `Membuat spreadsheet Google baru dengan ID: ${newId}`);
-      
-      // Update settings
-      setSettings(prev => {
-        const updated = { ...prev, googleSpreadsheetId: newId };
-        localStorage.setItem('karapres3_settings', JSON.stringify(updated));
-        return updated;
-      });
-
-      // Sync initial data right away!
-      setTimeout(() => {
-        syncAllDataToGoogle(googleToken, true);
-      }, 500);
-
-      return newId;
-    } catch (err: any) {
-      console.error('Failed to create sheet:', err);
-      throw err;
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const syncAllDataToGoogle = async (token: string, silent = false): Promise<boolean> => {
+  const syncAllDataToGoogle = useCallback(async (token: string, silent = false): Promise<boolean> => {
     try {
       if (!silent) setIsSyncing(true);
       
@@ -497,9 +465,40 @@ export default function App() {
     } finally {
       if (!silent) setIsSyncing(false);
     }
-  };
+  }, [settings.googleSpreadsheetId, siswaList, presensiList, addActivityLog]);
 
-  const handleBackupToDrive = async () => {
+  const handleCreateNewSpreadsheet = useCallback(async (): Promise<string> => {
+    if (!googleToken) {
+      throw new Error('Harap hubungkan akun Google terlebih dahulu.');
+    }
+    setIsSyncing(true);
+    try {
+      const title = `DIGIWANGI 3 SDN 3 Karamatwangi - Database Kehadiran`;
+      const newId = await createNewSpreadsheet(googleToken, title);
+      addActivityLog('Spreadsheet Baru', `Membuat spreadsheet Google baru dengan ID: ${newId}`);
+      
+      // Update settings
+      setSettings(prev => {
+        const updated = { ...prev, googleSpreadsheetId: newId };
+        localStorage.setItem('karapres3_settings', JSON.stringify(updated));
+        return updated;
+      });
+
+      // Sync initial data right away!
+      setTimeout(() => {
+        syncAllDataToGoogle(googleToken, true);
+      }, 500);
+
+      return newId;
+    } catch (err: any) {
+      console.error('Failed to create sheet:', err);
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [googleToken, addActivityLog, syncAllDataToGoogle]);
+
+  const handleBackupToDrive = useCallback(async () => {
     if (!googleToken) {
       triggerNotice('Harap hubungkan akun Google Anda terlebih dahulu.', 'info');
       return;
@@ -529,18 +528,18 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [googleToken, settings.googleDriveFolderId, presensiList, addActivityLog]);
 
-  const handleGoogleManualSync = async (): Promise<boolean> => {
+  const handleGoogleManualSync = useCallback(async (): Promise<boolean> => {
     if (!googleToken) {
       triggerNotice('Hubungkan Akun Google terlebih dahulu di menu Admin > Google Cloud Sync.', 'info');
       setCurrentView('manajemen');
       return false;
     }
     return syncAllDataToGoogle(googleToken, false);
-  };
+  }, [googleToken, syncAllDataToGoogle]);
 
-  const handleSyncFromGoogle = async (): Promise<boolean> => {
+  const handleSyncFromGoogle = useCallback(async (): Promise<boolean> => {
     if (!settings.googleSpreadsheetId) {
       triggerNotice('Google Spreadsheet ID belum dikonfigurasi di menu Admin.', 'info');
       setCurrentView('manajemen');
@@ -576,39 +575,41 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [settings.googleSpreadsheetId, googleToken, addActivityLog]);
 
   // Student CRUD actions
-  const handleAddSiswa = (newSiswa: Siswa) => {
+  const handleAddSiswa = useCallback((newSiswa: Siswa) => {
     setSiswaList(prev => [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)]);
     saveSiswaToFirestore(newSiswa);
     addActivityLog('Menambah Siswa', `Mendaftarkan siswa baru: ${newSiswa.nama} (NIS ${newSiswa.nis}) di ${newSiswa.kelas}`);
-  };
+  }, [addActivityLog]);
 
-  const handleUpdateSiswa = (updated: Siswa) => {
+  const handleUpdateSiswa = useCallback((updated: Siswa) => {
     setSiswaList(prev => prev.map(s => s.id === updated.id ? updated : s));
     saveSiswaToFirestore(updated);
     addActivityLog('Update Siswa', `Mengubah data profil: ${updated.nama} (NIS ${updated.nis})`);
-  };
+  }, [addActivityLog]);
 
-  const handleDeleteSiswa = (id: string) => {
-    const matched = siswaList.find((s) => s.id === id);
-    setSiswaList(prev => prev.filter(s => s.id !== id));
+  const handleDeleteSiswa = useCallback((id: string) => {
+    setSiswaList(prev => {
+      const matched = prev.find((s) => s.id === id);
+      if (matched) {
+        addActivityLog('Hapus Siswa', `Menghapus pendaftaran: ${matched.nama} (NIS ${matched.nis})`);
+      }
+      return prev.filter(s => s.id !== id);
+    });
     deleteSiswaFromFirestore(id);
-    if (matched) {
-      addActivityLog('Hapus Siswa', `Menghapus pendaftaran: ${matched.nama} (NIS ${matched.nis})`);
-    }
-  };
+  }, [addActivityLog]);
 
   // Settings Save action
-  const handleSaveSettings = (newSettings: SystemSettings) => {
+  const handleSaveSettings = useCallback((newSettings: SystemSettings) => {
     setSettings(newSettings);
     saveSettingsToFirestore(newSettings);
     addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, atau ID integrasi Google.');
-  };
+  }, [addActivityLog]);
 
   // Record a scanned attendance
-  const handleAddPresensi = (newPresensi: Presensi) => {
+  const handleAddPresensi = useCallback((newPresensi: Presensi) => {
     savePresensiToFirestore(newPresensi);
     setPresensiList((prev) => {
       const idx = prev.findIndex(
@@ -625,13 +626,13 @@ export default function App() {
       return [newPresensi, ...prev];
     });
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);
-  };
+  }, [addActivityLog]);
 
   // Quick reset logs
-  const handleClearLogs = () => {
+  const handleClearLogs = useCallback(() => {
     clearActivityLogsInFirestore(activityLogs);
     triggerNotice('Log jejak aktivitas audit sistem berhasil dibersihkan.');
-  };
+  }, [activityLogs]);
 
   const handleClearPresensiToday = () => {
     setShowClearPresensiConfirm(true);
@@ -764,83 +765,90 @@ export default function App() {
         {/* PRIMARY CONTROLLER PORTAL */}
         <main className="flex-1 min-w-0">
         {/* VIEW 1: PRENSENSI SCAN */}
-        <div className={currentView === 'scan' ? 'py-2 block' : 'hidden'}>
-          <ScanScreen
-            siswaList={siswaList}
-            settings={settings}
-            currentUser={currentUser || { namaLengkap: 'Petugas Piket Gerbang', role: 'piket' }}
-            onAddPresensi={handleAddPresensi}
-            recentPresensi={presensiList}
-            isActive={currentView === 'scan'}
-          />
-        </div>
+        {currentView === 'scan' && (
+          <div className="py-2">
+            <ScanScreen
+              siswaList={siswaList}
+              settings={settings}
+              currentUser={currentUser || { namaLengkap: 'Petugas Piket Gerbang', role: 'piket' }}
+              onAddPresensi={handleAddPresensi}
+              recentPresensi={presensiList}
+              isActive={currentView === 'scan'}
+            />
+          </div>
+        )}
 
         {/* VIEW 2: MANAJEMEN CONSOLE (Depends on login state & Role) */}
-        <div className={currentView === 'manajemen' ? 'py-2 block' : 'hidden'}>
-          {!currentUser ? (
-            <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} />
-          ) : (
-            <>
-              {currentUser.role === 'admin' && (
-                <AdminPanel
-                  siswaList={siswaList}
-                  onAddSiswa={handleAddSiswa}
-                  onUpdateSiswa={handleUpdateSiswa}
-                  onDeleteSiswa={handleDeleteSiswa}
-                  settings={settings}
-                  onSaveSettings={handleSaveSettings}
-                  activityLogs={activityLogs}
-                  onClearLogs={handleClearLogs}
-                  googleToken={googleToken}
-                  googleUser={googleUser}
-                  onConnectGoogle={handleConnectGoogle}
-                  onDisconnectGoogle={handleDisconnectGoogle}
-                  onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
-                  onBackupToDrive={handleBackupToDrive}
-                  onSyncFromGoogle={handleSyncFromGoogle}
-                  onSyncToGoogle={handleGoogleManualSync}
-                  isSyncing={isSyncing}
-                  accountsList={accountsList}
-                  onUpdateAccount={handleUpdateAccount}
-                  onAddAccount={handleAddAccount}
-                  onDeleteAccount={handleDeleteAccount}
-                />
-              )}
+        {currentView === 'manajemen' && (
+          <div className="py-2">
+            {!currentUser ? (
+              <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} />
+            ) : (
+              <>
+                {currentUser.role === 'admin' && (
+                  <AdminPanel
+                    siswaList={siswaList}
+                    onAddSiswa={handleAddSiswa}
+                    onUpdateSiswa={handleUpdateSiswa}
+                    onDeleteSiswa={handleDeleteSiswa}
+                    settings={settings}
+                    onSaveSettings={handleSaveSettings}
+                    activityLogs={activityLogs}
+                    onClearLogs={handleClearLogs}
+                    googleToken={googleToken}
+                    googleUser={googleUser}
+                    onConnectGoogle={handleConnectGoogle}
+                    onDisconnectGoogle={handleDisconnectGoogle}
+                    onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
+                    onBackupToDrive={handleBackupToDrive}
+                    onSyncFromGoogle={handleSyncFromGoogle}
+                    onSyncToGoogle={handleGoogleManualSync}
+                    isSyncing={isSyncing}
+                    accountsList={accountsList}
+                    onUpdateAccount={handleUpdateAccount}
+                    onAddAccount={handleAddAccount}
+                    onDeleteAccount={handleDeleteAccount}
+                  />
+                )}
 
-              {currentUser.role === 'kepsek' && (
-                <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
-              )}
+                {currentUser.role === 'kepsek' && (
+                  <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
+                )}
 
-              {currentUser.role === 'guru' && (
-                <GuruPanel
-                  siswaList={siswaList}
-                  presensiList={presensiList}
-                  currentUser={currentUser}
-                  onAddPresensi={handleAddPresensi}
-                />
-              )}
+                {currentUser.role === 'guru' && (
+                  <GuruPanel
+                    siswaList={siswaList}
+                    presensiList={presensiList}
+                    currentUser={currentUser}
+                    onAddPresensi={handleAddPresensi}
+                  />
+                )}
 
-              {currentUser.role === 'piket' && (
-                <PiketPanel
-                  siswaList={siswaList}
-                  settings={settings}
-                  currentUser={currentUser}
-                  onAddPresensi={handleAddPresensi}
-                  recentPresensi={presensiList}
-                  isActive={currentView === 'manajemen'}
-                />
-              )}
-            </>
-          )}
-        </div>
+                {currentUser.role === 'piket' && (
+                  <PiketPanel
+                    siswaList={siswaList}
+                    settings={settings}
+                    currentUser={currentUser}
+                    onAddPresensi={handleAddPresensi}
+                    recentPresensi={presensiList}
+                    isActive={currentView === 'manajemen'}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* VIEW 2.5: REKAP LAPORAN */}
-        <div className={currentView === 'laporan' ? 'py-2 block' : 'hidden'}>
-          <ReportPanel siswaList={siswaList} presensiList={presensiList} />
-        </div>
+        {currentView === 'laporan' && (
+          <div className="py-2">
+            <ReportPanel siswaList={siswaList} presensiList={presensiList} />
+          </div>
+        )}
 
         {/* VIEW 3: BUKU PANDUAN LANGKAH-DEMI-LANGKAH */}
-        <div className={currentView === 'panduan' ? 'max-w-4xl mx-auto px-4 py-8 block' : 'hidden'}>
+        {currentView === 'panduan' && (
+          <div className="max-w-4xl mx-auto px-4 py-8">
             <div className="bg-white rounded-3xl p-8 border border-gray-150 shadow-sm space-y-8 text-left">
               
               {/* Cover */}
@@ -979,6 +987,7 @@ export default function App() {
 
             </div>
           </div>
+        )}
         </main>
       </div>
 
