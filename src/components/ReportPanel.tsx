@@ -20,10 +20,13 @@ import {
   Layers,
   ArrowUpDown,
   Sparkles,
-  School
+  School,
+  FileDown
 } from 'lucide-react';
-import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, StatusKehadiran, SystemSettings, DAFTAR_KELAS } from '../types';
 import AttendanceBarChart from './AttendanceBarChart';
+import AttendancePrintModal from './AttendancePrintModal';
+import ClassReportDownloadModal from './ClassReportDownloadModal';
 import {
   getLocalDateString,
   getLatestAttendanceForStudent,
@@ -37,20 +40,39 @@ import {
   getAttendanceFromIndex,
   normalizeDateKey,
 } from '../lib/attendanceUtils';
+import { downloadSingleClassReport } from '../lib/attendanceReportExport';
 
 interface ReportPanelProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
+  settings?: SystemSettings;
 }
 
 type ActiveTab = 'harian' | 'mingguan' | 'bulanan';
 type StatusFilterType = 'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
 
-function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
+function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('harian');
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<StatusFilterType>('semua');
+
+  // Modals state
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printConfig, setPrintConfig] = useState<{
+    type: 'harian' | 'mingguan' | 'bulanan' | 'rombel';
+    kelas: string;
+    date: string;
+    month: string;
+  }>({
+    type: 'harian',
+    kelas: 'Semua Kelas',
+    date: getLocalDateString(),
+    month: new Date().toISOString().slice(0, 7)
+  });
+
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [downloadModalType, setDownloadModalType] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
 
   // 1. HARIAN STATE
   const [harianDate, setHarianDate] = useState<string>(() => getLocalDateString());
@@ -345,166 +367,41 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
     return { avgPersen, totalApresiasi };
   }, [bulananReportData]);
 
-  // -- DOWNLOAD TRIGGERS (CSV Generators) --
+  // -- DOWNLOAD TRIGGERS (Centralized CSV & ZIP Generators) --
 
   const handleDownloadHarian = () => {
-    const headers = ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Tanggal', 'Waktu Scan', 'Status Kehadiran', 'WhatsApp Status', 'Operator Input'];
-    const rows = harianReportData.map((row, idx) => [
-      idx + 1,
-      `'${row.siswa.nis}`,
-      row.siswa.nama,
-      row.siswa.kelas,
-      harianDate,
-      row.record ? row.record.waktu : '-',
-      row.status,
-      row.record ? row.record.waStatus : '-',
-      row.record ? row.record.operator : '-'
-    ]);
-
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(v => `"${(v + '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `DIGIWANGI3_LAPORAN_HARIAN_${selectedKelas.replace(/\s+/g, '_')}_${harianDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadSingleClassReport('harian', selectedKelas, harianDate, siswaList, presensiList);
   };
 
   const handleDownloadRekapRombel = () => {
-    const headers = ['No', 'Kelas', 'Wali Kelas', 'Total Siswa', 'Hadir Tepat', 'Terlambat', 'Sakit', 'Izin', 'Alfa', 'Belum Absen', 'Total Masuk (Hadir)', 'Pengurang (Tidak Masuk)', 'Keaktifan (%)'];
-    const rows = allRombelSummary.map((r, idx) => [
-      idx + 1,
-      r.kelas,
-      r.waliKelas,
-      r.totalSiswa,
-      r.hadir,
-      r.terlambat,
-      r.sakit,
-      r.izin,
-      r.alfa,
-      r.belumAbsen,
-      r.totalHadir,
-      r.totalTidakHadir,
-      `${r.persentase}%`
-    ]);
-
-    rows.push([
-      '',
-      'TOTAL KESELURUHAN SEKOLAH',
-      '-',
-      grandTotalSchool.totalSiswa,
-      grandTotalSchool.hadir,
-      grandTotalSchool.terlambat,
-      grandTotalSchool.sakit,
-      grandTotalSchool.izin,
-      grandTotalSchool.alfa,
-      grandTotalSchool.belumAbsen,
-      grandTotalSchool.totalHadir,
-      grandTotalSchool.totalTidakHadir,
-      `${grandTotalSchool.persentase}%`
-    ]);
-
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(v => `"${(v + '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `DIGIWANGI3_REKAPITULASI_ROMBEL_SELURUH_KELAS_${harianDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadSingleClassReport('harian', 'Semua Kelas', harianDate, siswaList, presensiList);
   };
 
   const handleDownloadMingguan = () => {
-    const headers = [
-      'No', 
-      'NIS', 
-      'Nama Siswa', 
-      'Kelas', 
-      weekDates[0].label, 
-      weekDates[1].label, 
-      weekDates[2].label, 
-      weekDates[3].label, 
-      weekDates[4].label,
-      'Total Hadir',
-      'Total Terlambat',
-      'Total Sakit',
-      'Total Izin',
-      'Total Alfa/Absen'
-    ];
-
-    const rows = mingguanReportData.map((row, idx) => [
-      idx + 1,
-      `'${row.siswa.nis}`,
-      row.siswa.nama,
-      row.siswa.kelas,
-      row.recordsByDay[0].status,
-      row.recordsByDay[1].status,
-      row.recordsByDay[2].status,
-      row.recordsByDay[3].status,
-      row.recordsByDay[4].status,
-      row.summary.hadir,
-      row.summary.terlambat,
-      row.summary.sakit,
-      row.summary.izin,
-      row.summary.alfa + row.summary.unmarked
-    ]);
-
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(v => `"${(v + '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `DIGIWANGI3_LAPORAN_MINGGUAN_${selectedKelas.replace(/\s+/g, '_')}_Mulai_${mingguanDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadSingleClassReport('mingguan', selectedKelas, mingguanDate, siswaList, presensiList);
   };
 
   const handleDownloadBulanan = () => {
-    const headers = [
-      'No',
-      'NIS',
-      'Nama Siswa',
-      'Kelas',
-      'Hari Sekolah Terhitung',
-      'Total Hadir',
-      'Total Terlambat',
-      'Total Sakit',
-      'Total Izin',
-      'Total Alfa/Absen',
-      'Persentase Kehadiran (%)'
-    ];
-
-    const rows = bulananReportData.map((row, idx) => [
-      idx + 1,
-      `'${row.siswa.nis}`,
-      row.siswa.nama,
-      row.siswa.kelas,
-      row.metrics.baseSchoolDays,
-      row.metrics.hadir,
-      row.metrics.terlambat,
-      row.metrics.sakit,
-      row.metrics.izin,
-      row.metrics.alfa,
-      `${row.metrics.persen}%`
-    ]);
-
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(v => `"${(v + '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `DIGIWANGI3_LAPORAN_BULANAN_${selectedKelas.replace(/\s+/g, '_')}_${bulananMonth}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadSingleClassReport('bulanan', selectedKelas, bulananMonth, siswaList, presensiList);
   };
 
-  const handlePrintReport = () => {
-    window.print();
+  const handleOpenPrintModal = (
+    type: 'harian' | 'mingguan' | 'bulanan' | 'rombel' = activeTab, 
+    kelas: string = selectedKelas, 
+    date: string = activeTab === 'mingguan' ? mingguanDate : harianDate
+  ) => {
+    setPrintConfig({
+      type,
+      kelas,
+      date,
+      month: bulananMonth
+    });
+    setIsPrintModalOpen(true);
+  };
+
+  const handleOpenDownloadModal = (type: 'harian' | 'mingguan' | 'bulanan' = activeTab) => {
+    setDownloadModalType(type);
+    setIsDownloadModalOpen(true);
   };
 
   return (
@@ -526,18 +423,30 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
             <span>Pusat Laporan & Rekap Absensi Siswa</span>
           </h2>
           <p className="text-gray-500 text-xs mt-1.5">
-            Hasil rekapitulasi data presensi siswa SDN 3 Karamatwangi secara harian per rombel, mingguan, maupun bulanan. Diperbarui secara riil dan siap diekspor ke format .CSV untuk kelengkapan administrasi sekolah.
+            Hasil rekapitulasi data presensi siswa SDN 3 Karamatwangi secara harian per rombel, mingguan, maupun bulanan. Diperbarui secara riil dan siap diekspor ke format .CSV per kelas atau dicetak langsung dengan format kop surat resmi.
           </p>
         </div>
 
         {/* Global Print / Download shortcut */}
-        <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-auto">
           <button
-            onClick={handlePrintReport}
+            type="button"
+            onClick={() => handleOpenDownloadModal(activeTab)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2.5 px-4 rounded-xl shadow transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500"
+            title="Pusat unduh rekap absensi per kelas"
+          >
+            <Download className="w-4 h-4 text-emerald-100" />
+            <span>Unduh Rekap Per Kelas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenPrintModal(activeTab, selectedKelas)}
             className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow transition-all cursor-pointer flex items-center gap-1.5 border border-slate-800"
+            title="Pratinjau cetak / simpan sebagai PDF"
           >
             <Printer className="w-4 h-4 text-slate-300" />
-            <span>Cetak Halaman</span>
+            <span>Cetak Dokumen Resmi</span>
           </button>
         </div>
       </div>
@@ -723,7 +632,7 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
 
             {/* SECTION 1: REKAPITULASI ROMBEL SELURUH KELAS 1-A s/d 6-B */}
             <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left">
-              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-gradient-to-r from-slate-50 to-blue-50/40">
+              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-blue-50/40">
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 bg-blue-600 text-white rounded-lg">
                     <Layers className="w-4 h-4" />
@@ -737,13 +646,37 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={handleDownloadRekapRombel}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500 shrink-0"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-100" />
-                  <span>Download Rekap Rombel .CSV</span>
-                </button>
+                
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDownloadModal('harian')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500"
+                    title="Pusat unduh rekap per kelas (CSV / ZIP)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                    <span>Unduh Rekap Per Kelas</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadRekapRombel}
+                    className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-teal-500"
+                  >
+                    <Download className="w-3.5 h-3.5 text-teal-100" />
+                    <span>Download Rekap Rombel .CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenPrintModal('rombel', 'Semua Kelas', harianDate)}
+                    className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-slate-700"
+                    title="Cetak format rekapitulasi rombel A4"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Cetak Rombel</span>
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -763,7 +696,7 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                       <th className="py-3 px-2.5 text-center bg-blue-100/70 text-blue-950 font-black">Total Masuk</th>
                       <th className="py-3 px-2.5 text-center bg-rose-50 text-rose-900 font-black">Pengurang</th>
                       <th className="py-3 px-2.5 text-center bg-emerald-50 text-emerald-900">% Keaktifan</th>
-                      <th className="py-3 px-2.5 text-center">Aksi</th>
+                      <th className="py-3 px-2.5 text-center">Aksi / Unduh</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 whitespace-nowrap">
@@ -798,15 +731,44 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                           <td className="py-2.5 px-2.5 text-center font-bold text-rose-700 bg-rose-50/40">{rombel.totalTidakHadir}</td>
                           <td className={`py-2.5 px-2.5 text-center font-mono font-black ${rateColor}`}>{rombel.persentase}%</td>
                           <td className="py-2.5 px-2.5 text-center">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedKelas(rombel.kelas);
-                              }}
-                              className="text-[10px] font-bold text-blue-700 hover:text-blue-800 bg-blue-100/70 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                            >
-                              Filter Kelas
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                title={`Download CSV Kelas ${rombel.kelas}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  downloadSingleClassReport('harian', rombel.kelas, harianDate, siswaList, presensiList);
+                                }}
+                                className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-100/70 hover:bg-emerald-100 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>CSV</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                title={`Cetak Dokumen Kelas ${rombel.kelas}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenPrintModal('harian', rombel.kelas, harianDate);
+                                }}
+                                className="text-[10px] font-bold text-slate-700 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Cetak</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedKelas(rombel.kelas);
+                                }}
+                                className="text-[10px] font-bold text-blue-700 hover:text-blue-800 bg-blue-100/70 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                              >
+                                Detail
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -830,9 +792,9 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                       <td className="py-3 px-2.5 text-center">
                         <button
                           onClick={() => setSelectedKelas('Semua Kelas')}
-                          className="text-[10px] font-bold text-slate-700 bg-white px-2 py-1 rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                          className="text-[10px] font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-300 transition-colors cursor-pointer"
                         >
-                          Semua
+                          Semua Kelas
                         </button>
                       </td>
                     </tr>
@@ -922,14 +884,27 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                     </button>
                   </div>
 
-                  {/* Download CSV button */}
-                  <button
-                    onClick={handleDownloadHarian}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-1.5 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1 border border-emerald-500 shrink-0"
-                  >
-                    <Download className="w-3.5 h-3.5 text-emerald-100" />
-                    <span>Download Siswa .CSV</span>
-                  </button>
+                  {/* Action buttons: Cetak & Download CSV */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPrintModal('harian', selectedKelas, harianDate)}
+                      className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl py-1.5 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1 border border-slate-700"
+                      title="Cetak format daftar presensi siswa"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-slate-300" />
+                      <span>Cetak</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadHarian}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-1.5 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1 border border-emerald-500"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-100" />
+                      <span>Download .CSV</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1060,19 +1035,41 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
               </div>
 
               {/* Informative Range and Download trigger */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-                <div className="bg-slate-50 border border-slate-150 py-2 px-4 rounded-xl text-xs space-y-0.5 text-left w-full sm:w-auto">
-                  <span className="text-[9px] text-slate-400 font-bold block uppercase">Kisaran Tanggal Mingguan</span>
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                <div className="bg-slate-50 border border-slate-150 py-2 px-3 rounded-xl text-xs space-y-0.5 text-left shrink-0">
+                  <span className="text-[9px] text-slate-400 font-bold block uppercase">Kisaran Tanggal</span>
                   <p className="font-bold text-slate-750 text-xs">
                     {weekDates[0].dateStr.split('-').reverse().join('/')} ➔ {weekDates[4].dateStr.split('-').reverse().join('/')}
                   </p>
                 </div>
+
                 <button
-                  onClick={handleDownloadMingguan}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl py-2.5 px-5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500 w-full sm:w-auto"
+                  type="button"
+                  onClick={() => handleOpenDownloadModal('mingguan')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500"
+                  title="Unduh rekap mingguan per kelas (ZIP / CSV)"
                 >
-                  <Download className="w-4 h-4 text-emerald-100" />
-                  <span>Download Jurnal Mingguan .CSV</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                  <span>Unduh Rekap Per Kelas</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenPrintModal('mingguan', selectedKelas, mingguanDate)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-700"
+                  title="Cetak format jurnal mingguan A4 Landscape"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Cetak Jurnal</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadMingguan}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-teal-500"
+                >
+                  <Download className="w-3.5 h-3.5 text-teal-100" />
+                  <span>Download .CSV</span>
                 </button>
               </div>
             </div>
@@ -1200,27 +1197,47 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
                 </div>
               </div>
 
-              {/* Informative statistics of the month */}
-              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-stretch sm:items-center">
-                <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-1.5 px-4 text-center sm:text-left">
-                  <span className="text-[9px] text-blue-800 font-black tracking-tight block uppercase">Rata-Rata Kehadiran Kelas</span>
-                  <p className="text-base font-black text-slate-800">{bulananStats.avgPersen}%</p>
+              {/* Informative statistics of the month and download triggers */}
+              <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-1.5 px-3 text-center sm:text-left">
+                  <span className="text-[9px] text-blue-800 font-black tracking-tight block uppercase">Rata-Rata Kehadiran</span>
+                  <p className="text-sm font-black text-slate-800">{bulananStats.avgPersen}%</p>
                 </div>
-                <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl py-1.5 px-4 text-center sm:text-left flex items-center gap-2">
-                  <Award className="w-4 h-4 text-emerald-600 animate-bounce shrink-0" />
+                <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl py-1.5 px-3 text-center sm:text-left flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-emerald-600 shrink-0" />
                   <div>
-                    <span className="text-[9px] text-emerald-800 font-black tracking-tight block uppercase">Keaktifan Terbaik (≥90%)</span>
-                    <p className="text-base font-black text-slate-800 font-sans">{bulananStats.totalApresiasi} Siswa</p>
+                    <span className="text-[9px] text-emerald-800 font-black tracking-tight block uppercase">Aktif (≥90%)</span>
+                    <p className="text-sm font-black text-slate-800 font-sans">{bulananStats.totalApresiasi} Siswa</p>
                   </div>
                 </div>
                 
-                {/* Download bulanan report */}
                 <button
-                  onClick={handleDownloadBulanan}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl py-2.5 px-5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500 w-full sm:w-auto"
+                  type="button"
+                  onClick={() => handleOpenDownloadModal('bulanan')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500"
+                  title="Unduh rekap bulanan per kelas (ZIP / CSV)"
                 >
-                  <Download className="w-4 h-4 text-emerald-100 text-left" />
-                  <span>Download Rekap Bulanan .CSV</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                  <span>Unduh Rekap Per Kelas</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenPrintModal('bulanan', selectedKelas, bulananMonth)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-700"
+                  title="Cetak format rekapitulasi bulanan A4 Landscape"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Cetak Rekap</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadBulanan}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-teal-500"
+                >
+                  <Download className="w-3.5 h-3.5 text-teal-100 text-left" />
+                  <span>Download .CSV</span>
                 </button>
               </div>
             </div>
@@ -1310,6 +1327,31 @@ function ReportPanel({ siswaList, presensiList }: ReportPanelProps) {
           </div>
         )}
       </div>
+
+      {/* Attendance Print Modal (Official Letterhead, Table, Signatures, PDF/Print support) */}
+      <AttendancePrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        siswaList={siswaList}
+        presensiList={presensiList}
+        settings={settings}
+        defaultType={printConfig.type}
+        defaultKelas={printConfig.kelas}
+        defaultDate={printConfig.date}
+        defaultMonth={printConfig.month}
+      />
+
+      {/* Class Report Download Modal (Per-class CSV downloads & Bulk ZIP archive) */}
+      <ClassReportDownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        siswaList={siswaList}
+        presensiList={presensiList}
+        initialType={downloadModalType}
+        initialDate={activeTab === 'mingguan' ? mingguanDate : harianDate}
+        initialMonth={bulananMonth}
+        onOpenPrintModal={(type, kelas, date) => handleOpenPrintModal(type, kelas, date)}
+      />
 
     </div>
   );

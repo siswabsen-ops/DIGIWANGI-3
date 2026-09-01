@@ -82,6 +82,8 @@ export interface SystemSettings {
   appLogoUrl?: string; // Logo utama DIGIWANGI 3 (Custom/Base64/URL)
   dinasLogoUrl?: string; // Logo Dinas Pendidikan (Custom/Base64/URL)
   garutLogoUrl?: string; // Logo Pemerintah Kabupaten Garut (Custom/Base64/URL)
+  namaKepsek?: string; // Nama Kepala Sekolah untuk Tanda Tangan Laporan
+  nipKepsek?: string; // NIP Kepala Sekolah
 }
 
 export interface ActivityLog {
