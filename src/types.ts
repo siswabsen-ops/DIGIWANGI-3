@@ -241,4 +241,281 @@ export function getApplicableJadwal(
   };
 }
 
+// ==========================================
+// KURIKULUM MERDEKA: PENILAIAN AKHLAK & PROFIL PELAJAR PANCASILA
+// ==========================================
+
+export type SkalaPenilaian = 'B' | 'M' | 'S' | 'K';
+
+export interface SkalaPenilaianInfo {
+  code: SkalaPenilaian;
+  label: string;
+  fullName: string;
+  badgeColor: string;
+  bgLight: string;
+  textColor: string;
+  borderColor: string;
+  description: string;
+  numericScore: number;
+}
+
+export const SKALA_PENILAIAN_MAP: Record<SkalaPenilaian, SkalaPenilaianInfo> = {
+  B: {
+    code: 'B',
+    label: 'Belum',
+    fullName: 'Belum Berkembang (BB)',
+    badgeColor: 'bg-rose-500 text-white',
+    bgLight: 'bg-rose-50 border-rose-200 text-rose-800',
+    textColor: 'text-rose-600',
+    borderColor: 'border-rose-300',
+    description: 'Siswa belum menunjukkan perilaku yang diharapkan dan masih memerlukan bimbingan intensif pendidik.',
+    numericScore: 1
+  },
+  M: {
+    code: 'M',
+    label: 'Mulai',
+    fullName: 'Mulai Berkembang (MB)',
+    badgeColor: 'bg-amber-500 text-slate-950 font-bold',
+    bgLight: 'bg-amber-50 border-amber-200 text-amber-850',
+    textColor: 'text-amber-600',
+    borderColor: 'border-amber-300',
+    description: 'Siswa mulai menampilkan perilaku yang diharapkan namun belum konsisten dan masih perlu diingatkan pendidik.',
+    numericScore: 2
+  },
+  S: {
+    code: 'S',
+    label: 'Sesuai',
+    fullName: 'Berkembang Sesuai Harapan (BSH)',
+    badgeColor: 'bg-blue-600 text-white',
+    bgLight: 'bg-blue-50 border-blue-200 text-blue-850',
+    textColor: 'text-blue-600',
+    borderColor: 'border-blue-300',
+    description: 'Siswa telah menunjukkan perilaku yang diharapkan secara konsisten dan mandiri dalam aktivitas harian.',
+    numericScore: 3
+  },
+  K: {
+    code: 'K',
+    label: 'Berkembang',
+    fullName: 'Sangat Berkembang (SB)',
+    badgeColor: 'bg-emerald-600 text-white',
+    bgLight: 'bg-emerald-50 border-emerald-200 text-emerald-850',
+    textColor: 'text-emerald-600',
+    borderColor: 'border-emerald-300',
+    description: 'Siswa telah mencapai tingkat pemahaman mendalam, konsisten, serta mampu menjadi teladan/mengajak teman sebaya.',
+    numericScore: 4
+  }
+};
+
+export interface DimensiProfilPancasila {
+  id: number;
+  nama: string;
+  icon: string;
+  ringkasan: string;
+  deskripsi: string;
+}
+
+export const DAFTAR_DIMENSI_PROFIL: DimensiProfilPancasila[] = [
+  {
+    id: 1,
+    nama: 'Beriman, Bertakwa kepada Tuhan YME, dan Berakhlak Mulia',
+    icon: '✨',
+    ringkasan: 'Akhlak Beragama & Budi Pekerti',
+    deskripsi: 'Pelajar berakhlak dalam hubungannya dengan Tuhan YME, diri sendiri, sesama manusia, dan alam sekitar.'
+  },
+  {
+    id: 2,
+    nama: 'Berkebinekaan Global',
+    icon: '🌍',
+    ringkasan: 'Menghargai Budaya & Kebinekaan',
+    deskripsi: 'Pelajar mempertahankan budaya luhur, lokalitas, dan identitasnya, serta tetap berpikiran terbuka terhadap budaya lain.'
+  },
+  {
+    id: 3,
+    nama: 'Bergotong Royong',
+    icon: '🤝',
+    ringkasan: 'Kolaborasi & Kepedulian',
+    deskripsi: 'Kemampuan pelajar untuk melakukan kegiatan bersama-sama secara sukarela agar kegiatan berjalan lancar dan ringan.'
+  },
+  {
+    id: 4,
+    nama: 'Mandiri',
+    icon: '🧑‍🎓',
+    ringkasan: 'Inisiatif & Regulasi Diri',
+    deskripsi: 'Pelajar bertanggung jawab atas proses dan hasil belajarnya dengan kesadaran diri dan situasi yang dihadapi.'
+  },
+  {
+    id: 5,
+    nama: 'Bernalar Kritis',
+    icon: '🧠',
+    ringkasan: 'Analisis & Pemecahan Masalah',
+    deskripsi: 'Pelajar mampu secara objektif memproses informasi kualitatif maupun kuantitatif, membangun keterkaitan, dan mengambil keputusan.'
+  },
+  {
+    id: 6,
+    nama: 'Kreatif',
+    icon: '🎨',
+    ringkasan: 'Gagasan & Karya Orisinal',
+    deskripsi: 'Pelajar mampu memodifikasi dan menghasilkan sesuatu yang orisinal, bermakna, bermanfaat, dan berdampak.'
+  }
+];
+
+export const SUB_BIDANG_AKHLAK_DIMENSI_1 = [
+  'Akhlak kepada Tuhan',
+  'Akhlak kepada Sesama',
+  'Akhlak kepada Diri',
+  'Akhlak kepada Lingkungan'
+] as const;
+
+export type SubBidangAkhlak = typeof SUB_BIDANG_AKHLAK_DIMENSI_1[number];
+
+export interface PenilaianAkhlak {
+  id: string; // id_penilaian
+  kunci_siswa: string; // NISN jika ada, kalau kosong gunakan NIK, atau fallback NIS
+  tanggal: string; // Format YYYY-MM-DD
+  dimensi_profil: number; // 1 - 6
+  sub_bidang_akhlak?: string; // Khusus Dimensi 1: Tuhan / Sesama / Diri / Lingkungan
+  nilai_skala: SkalaPenilaian; // B / M / S / K
+  catatan_singkat: string;
+  tahun_ajaran: string; // misal "2024/2025" atau "2025/2026"
+  semester: '1' | '2' | 'Ganjil' | 'Genap';
+  penilai?: string; // Nama guru atau operator
+}
+
+// ==========================================
+// CATATAN ANEKDOT (PERILAKU & PERKEMBANGAN NYATA)
+// ==========================================
+
+export type KategoriAnekdot = 'Akhlak' | 'Sikap' | 'Prestasi' | 'Pelanggaran';
+
+export interface CatatanAnekdot {
+  id: string; // id_anekdot
+  kunci_siswa: string; // NISN jika ada, kalau kosong gunakan NIK
+  tanggal: string; // Format YYYY-MM-DD
+  kategori: KategoriAnekdot;
+  uraian_peristiwa: string; // Deskripsi perilaku nyata yang diamati
+  tindak_lanjut: string; // Bimbingan, penguatan, apresiasi, atau diskusi orang tua
+  tahun_ajaran: string;
+  semester: '1' | '2' | 'Ganjil' | 'Genap';
+  pencatat?: string; // Nama guru pengamat
+}
+
+// ==========================================
+// PROJEK PENGUATAN PROFIL PELAJAR PANCASILA (P5)
+// ==========================================
+
+export const TEMA_P5_SD = [
+  'Gaya Hidup Berkelanjutan',
+  'Kearifan Lokal',
+  'Bhinneka Tunggal Ika',
+  'Bangunlah Jiwa dan Raganya',
+  'Rekayasa dan Teknologi',
+  'Kewirausahaan'
+] as const;
+
+export interface ProyekP5 {
+  id: string; // id_proyek
+  nama_proyek: string; // Contoh: "Gaya Hidup Berkelanjutan: Pengolahan Sampah Organik SDN 3"
+  tema_proyek: string; // Dari TEMA_P5_SD
+  tanggal_mulai: string; // Format YYYY-MM-DD
+  tanggal_selesai: string; // Format YYYY-MM-DD
+  keterangan: string;
+  tahun_ajaran?: string;
+  semester?: '1' | '2' | 'Ganjil' | 'Genap';
+  sasaran_kelas?: string[]; // Array kelas yang mengikuti
+}
+
+export interface AnggotaProyek {
+  id: string; // id_anggota
+  id_proyek: string; // FK ke ProyekP5
+  kunci_siswa: string; // NISN jika ada, kalau kosong gunakan NIK
+  peran_dalam_kelompok: string; // Contoh: "Ketua Kelompok", "Sekretaris", "Koordinator Bahan", "Anggota Aktif"
+  nilai_proses: SkalaPenilaian; // B / M / S / K
+  nilai_hasil: SkalaPenilaian; // B / M / S / K
+  catatan: string; // Catatan observasi guru pembimbing
+}
+
+// ==========================================
+// LAPORAN RAPOR TERPADU (GABUNGAN DATA)
+// ==========================================
+
+export interface CustomRaporNarrative {
+  id: string; // format: `narrative-${kunci_siswa}-${semester}`
+  kunci_siswa: string;
+  semester: '1' | '2' | 'Ganjil' | 'Genap';
+  tahun_ajaran: string;
+  narasiKesimpulan: string;
+  saranOrangTua: string;
+  tanggalCetak?: string;
+}
+
+// ==========================================
+// ATURAN PENGHUBUNGAN KUNCI SISWA (NISN -> NIK -> NIS -> ID)
+// ==========================================
+
+/**
+ * Mendapatkan KUNCI SISWA standar sesuai aturan sistem:
+ * 1. Gunakan NISN jika ada dan tidak kosong
+ * 2. Jika NISN kosong, gunakan NIK
+ * 3. Jika NIK kosong, gunakan NIS
+ * 4. Fallback ke ID
+ */
+export function getStudentKey(siswa: Partial<Siswa> | null | undefined): string {
+  if (!siswa) return '';
+  if (siswa.nisn && siswa.nisn.trim().length > 0) {
+    return siswa.nisn.trim();
+  }
+  if (siswa.nik && siswa.nik.trim().length > 0) {
+    return siswa.nik.trim();
+  }
+  if (siswa.nis && siswa.nis.trim().length > 0) {
+    return siswa.nis.trim();
+  }
+  return siswa.id ? siswa.id.trim() : '';
+}
+
+/**
+ * Mencari data siswa dari daftar siswa berdasarkan KUNCI SISWA
+ * Mendukung pencarian berurutan: NISN -> NIK -> NIS -> ID
+ */
+export function findStudentByKey(siswaList: Siswa[], key: string): Siswa | undefined {
+  if (!key) return undefined;
+  const cleanKey = key.trim();
+  if (!cleanKey) return undefined;
+
+  // 1. Cek kecocokan NISN
+  let found = siswaList.find((s) => s.nisn && s.nisn.trim() === cleanKey);
+  if (found) return found;
+
+  // 2. Cek kecocokan NIK
+  found = siswaList.find((s) => s.nik && s.nik.trim() === cleanKey);
+  if (found) return found;
+
+  // 3. Cek kecocokan NIS
+  found = siswaList.find((s) => s.nis && s.nis.trim() === cleanKey);
+  if (found) return found;
+
+  // 4. Cek kecocokan ID
+  found = siswaList.find((s) => s.id && s.id.trim() === cleanKey);
+  if (found) return found;
+
+  return undefined;
+}
+
+/**
+ * Memastikan apakah catatan terkait (Penilaian Akhlak, Anekdot, Anggota Proyek)
+ * cocok dengan siswa tertentu berdasarkan aturan pencocokan kunci.
+ */
+export function isRecordMatchStudent(kunciRecord: string, siswa: Siswa): boolean {
+  if (!kunciRecord || !siswa) return false;
+  const cleanRecord = kunciRecord.trim();
+  
+  if (siswa.nisn && siswa.nisn.trim() === cleanRecord) return true;
+  if (siswa.nik && siswa.nik.trim() === cleanRecord) return true;
+  if (siswa.nis && siswa.nis.trim() === cleanRecord) return true;
+  if (siswa.id && siswa.id.trim() === cleanRecord) return true;
+
+  return false;
+}
+
+
 

@@ -308,22 +308,12 @@ export const seedInitialDataIfDocsEmpty = async (
   logsSource: ActivityLog[],
   presensiSource?: Presensi[]
 ) => {
-  console.log('Validating Database Seeding states on launch...');
+  console.log('Checking database initial collections...');
   try {
-    // 1. Check Siswa
+    // 1. Check Siswa (Only seed if database is strictly empty)
     const siswaSnap = await getDocs(collection(db, 'siswa'));
-    let needsSiswaSeed = siswaSnap.empty || siswaSnap.size < siswaSource.length;
-    if (!needsSiswaSeed && !siswaSnap.empty) {
-      // Sample check if student class distributions match current updated dataset
-      const sampleDoc = siswaSnap.docs.find(d => d.id === 'sis-001')?.data();
-      const sampleSource = siswaSource.find(s => s.id === 'sis-001');
-      if (sampleDoc && sampleSource && sampleDoc.kelas !== sampleSource.kelas) {
-        needsSiswaSeed = true;
-      }
-    }
-    if (needsSiswaSeed) {
-      console.log(`Seeding/Updating ${siswaSource.length} students into Cloud Firestore...`);
-      // Since there can be up to 400 students, we chunk writeBatch to 200 items max (Firestore writeBatch limit is 500)
+    if (siswaSnap.empty) {
+      console.log(`Seeding initial ${siswaSource.length} students into Cloud Firestore...`);
       const chunkSize = 200;
       for (let i = 0; i < siswaSource.length; i += chunkSize) {
         const chunk = siswaSource.slice(i, i + chunkSize);
@@ -336,21 +326,10 @@ export const seedInitialDataIfDocsEmpty = async (
       console.log('Seeded Students to cloud.');
     }
 
-    // 2. Check Accounts
+    // 2. Check Accounts (Only seed if empty)
     const accountsSnap = await getDocs(collection(db, 'accounts'));
-    let needsAccountsSeed = accountsSnap.empty;
-    if (!needsAccountsSeed) {
-      accountsSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        const matchingSource = accountsSource.find((a) => a.user.id === data.id || a.user.username === data.username);
-        if (matchingSource && matchingSource.pin !== data.pin) {
-          needsAccountsSeed = true;
-        }
-      });
-    }
-
-    if (needsAccountsSeed) {
-      console.log(`Seeding/Updating demo accounts into Cloud Firestore...`);
+    if (accountsSnap.empty) {
+      console.log(`Seeding demo accounts into Cloud Firestore...`);
       const batch = writeBatch(db);
       accountsSource.forEach((acc) => {
         batch.set(doc(db, 'accounts', acc.user.id), {
@@ -363,10 +342,10 @@ export const seedInitialDataIfDocsEmpty = async (
         });
       });
       await batch.commit();
-      console.log('Seeded/Updated Accounts to cloud.');
+      console.log('Seeded Accounts to cloud.');
     }
 
-    // 3. Check Settings
+    // 3. Check Settings (Only seed if empty)
     const settingsSnap = await getDocs(collection(db, 'settings'));
     if (settingsSnap.empty) {
       console.log('Seeding settings into Cloud Firestore...');
@@ -374,7 +353,7 @@ export const seedInitialDataIfDocsEmpty = async (
       console.log('Seeded Settings to cloud.');
     }
 
-    // 4. Check Activity Logs
+    // 4. Check Activity Logs (Only seed if empty)
     const logsSnap = await getDocs(collection(db, 'activityLogs'));
     if (logsSnap.empty) {
       console.log('Seeding initial logs into Cloud Firestore...');
@@ -386,11 +365,11 @@ export const seedInitialDataIfDocsEmpty = async (
       console.log('Seeded Logs to cloud.');
     }
 
-    // 5. Check Presensi (Ensure all classes have complete scan records)
+    // 5. Check Presensi (Only seed if collection is completely empty)
     if (presensiSource && presensiSource.length > 0) {
       const presensiSnap = await getDocs(collection(db, 'presensi'));
-      if (presensiSnap.empty || presensiSnap.size < 100) {
-        console.log(`Seeding complete school attendance (${presensiSource.length} records) across all classes into Firestore...`);
+      if (presensiSnap.empty) {
+        console.log(`Seeding initial demo attendance records into Firestore...`);
         const chunkSize = 200;
         for (let i = 0; i < presensiSource.length; i += chunkSize) {
           const chunk = presensiSource.slice(i, i + chunkSize);

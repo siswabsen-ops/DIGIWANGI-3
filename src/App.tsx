@@ -66,7 +66,7 @@ export default function App() {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (parsed.length === SISWA_INITIAL.length) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       } catch {}
@@ -80,9 +80,7 @@ export default function App() {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        const todayStr = getLocalDateString();
-        const todayCount = parsed.filter((p: Presensi) => isPresensiDateMatch(p.tanggal, todayStr)).length;
-        if (todayCount >= 250) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       } catch {}
@@ -607,15 +605,25 @@ export default function App() {
 
   // Student CRUD actions
   const handleAddSiswa = useCallback((newSiswa: Siswa) => {
-    setSiswaList(prev => [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)]);
+    setSiswaList(prev => {
+      const updated = [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)];
+      safeSetItem('karapres3_siswa_v3', JSON.stringify(updated));
+      return updated;
+    });
     saveSiswaToFirestore(newSiswa);
     addActivityLog('Menambah Siswa', `Mendaftarkan siswa baru: ${newSiswa.nama} (NIS ${newSiswa.nis}) di ${newSiswa.kelas}`);
+    triggerNotice(`Siswa ${newSiswa.nama} (${newSiswa.kelas}) berhasil ditambahkan & disimpan!`, 'success');
   }, [addActivityLog]);
 
   const handleUpdateSiswa = useCallback((updated: Siswa) => {
-    setSiswaList(prev => prev.map(s => s.id === updated.id ? updated : s));
+    setSiswaList(prev => {
+      const newList = prev.map(s => s.id === updated.id ? updated : s);
+      safeSetItem('karapres3_siswa_v3', JSON.stringify(newList));
+      return newList;
+    });
     saveSiswaToFirestore(updated);
-    addActivityLog('Update Siswa', `Mengubah data profil: ${updated.nama} (NIS ${updated.nis})`);
+    addActivityLog('Update Siswa', `Mengubah data/kelas: ${updated.nama} (NIS ${updated.nis}) ➔ ${updated.kelas}`);
+    triggerNotice(`Data/relokasi ${updated.nama} (${updated.kelas}) berhasil disimpan!`, 'success');
   }, [addActivityLog]);
 
   const handleDeleteSiswa = useCallback((id: string) => {
@@ -624,9 +632,12 @@ export default function App() {
       if (matched) {
         addActivityLog('Hapus Siswa', `Menghapus pendaftaran: ${matched.nama} (NIS ${matched.nis})`);
       }
-      return prev.filter(s => s.id !== id);
+      const newList = prev.filter(s => s.id !== id);
+      safeSetItem('karapres3_siswa_v3', JSON.stringify(newList));
+      return newList;
     });
     deleteSiswaFromFirestore(id);
+    triggerNotice('Data siswa berhasil dihapus dari sistem.', 'info');
   }, [addActivityLog]);
 
   // Settings Save action
@@ -635,6 +646,7 @@ export default function App() {
       safeSetItem(APP_LOGO_STORAGE_KEY, newSettings.appLogoUrl);
     }
     setSettings(newSettings);
+    safeSetItem('karapres3_settings', JSON.stringify(newSettings));
     saveSettingsToFirestore(newSettings);
     addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, logo resmi, atau ID integrasi Google.');
   }, [addActivityLog]);
@@ -649,12 +661,15 @@ export default function App() {
           ((p.siswaId === newPresensi.siswaId || p.nis === newPresensi.nis || (p.nama === newPresensi.nama && p.kelas === newPresensi.kelas)) &&
            isPresensiDateMatch(p.tanggal, newPresensi.tanggal))
       );
+      let updated: Presensi[];
       if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = newPresensi;
-        return copy;
+        updated = [...prev];
+        updated[idx] = newPresensi;
+      } else {
+        updated = [newPresensi, ...prev];
       }
-      return [newPresensi, ...prev];
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
+      return updated;
     });
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);
   }, [addActivityLog]);
@@ -1016,8 +1031,13 @@ export default function App() {
         </main>
       </div>
 
-      {/* Floating simulator component */}
-      <WhatsAppSimulator logs={presensiList} onClearLogs={() => setPresensiList([])} />
+      {/* Floating simulator component with real automatic parent WhatsApp dispatch */}
+      <WhatsAppSimulator
+        logs={presensiList}
+        onClearLogs={() => setPresensiList([])}
+        siswaList={siswaList}
+        settings={settings}
+      />
 
       {/* Floating Mascot Promo Companion Assistant */}
       <MascotPromoAssistant />

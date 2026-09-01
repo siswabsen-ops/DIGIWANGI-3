@@ -132,6 +132,7 @@ export interface AttendanceIndex {
   byNisClean: Map<string, Presensi>;
   byNik: Map<string, Presensi>;
   byNameAndClass: Map<string, Presensi>;
+  byNameOnly: Map<string, Presensi>;
 }
 
 /**
@@ -147,6 +148,7 @@ export const buildDailyAttendanceIndex = (
   const byNisClean = new Map<string, Presensi>();
   const byNik = new Map<string, Presensi>();
   const byNameAndClass = new Map<string, Presensi>();
+  const byNameOnly = new Map<string, Presensi>();
 
   for (let i = 0; i < presensiList.length; i++) {
     const p = presensiList[i];
@@ -178,17 +180,22 @@ export const buildDailyAttendanceIndex = (
         byNik.set(nikClean, p);
       }
     }
-    if (p.nama && p.kelas) {
+    if (p.nama) {
       const normName = normalizeStudentName(p.nama);
-      const classKey = normalizeKelasCode(p.kelas);
-      const comboKey = `${normName}__${classKey}`;
-      if (isNewer(byNameAndClass.get(comboKey))) {
-        byNameAndClass.set(comboKey, p);
+      if (isNewer(byNameOnly.get(normName))) {
+        byNameOnly.set(normName, p);
+      }
+      if (p.kelas) {
+        const classKey = normalizeKelasCode(p.kelas);
+        const comboKey = `${normName}__${classKey}`;
+        if (isNewer(byNameAndClass.get(comboKey))) {
+          byNameAndClass.set(comboKey, p);
+        }
       }
     }
   }
 
-  return { bySiswaId, byNis, byNisClean, byNik, byNameAndClass };
+  return { bySiswaId, byNis, byNisClean, byNik, byNameAndClass, byNameOnly };
 };
 
 /**
@@ -210,11 +217,16 @@ export const getAttendanceFromIndex = (
   if (siswa.nik && siswa.nik.trim().length >= 8 && index.byNik.has(siswa.nik.trim())) {
     return index.byNik.get(siswa.nik.trim())!;
   }
-  if (siswa.nama && siswa.kelas) {
+  if (siswa.nama) {
     const normName = normalizeStudentName(siswa.nama);
-    const classKey = normalizeKelasCode(siswa.kelas);
-    const comboKey = `${normName}__${classKey}`;
-    if (index.byNameAndClass.has(comboKey)) return index.byNameAndClass.get(comboKey)!;
+    if (siswa.kelas) {
+      const classKey = normalizeKelasCode(siswa.kelas);
+      const comboKey = `${normName}__${classKey}`;
+      if (index.byNameAndClass.has(comboKey)) return index.byNameAndClass.get(comboKey)!;
+    }
+    if (index.byNameOnly.has(normName)) {
+      return index.byNameOnly.get(normName)!;
+    }
   }
   return null;
 };

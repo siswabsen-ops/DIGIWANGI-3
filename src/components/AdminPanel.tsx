@@ -1629,38 +1629,58 @@ function AdminPanel({
 
           {/* TAB 3: PENGATURAN TEMPLATE PESAN WHATSAPP */}
           {activeTab === 'whatsapp' && (
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
-              <div>
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  <BellRing className="w-5 h-5 text-rose-500 animate-pulse" />
-                  PENGATURAN TEMPLATE NOTIFIKASI WHATSAPP WALI MURID
-                </h3>
-                <p className="text-xs text-gray-500 mt-1 leading-normal">
-                  Tentukan kata-kata pesan WhatsApp yang otomatis dikirim ke nomor telepon orang tua murid.
-                </p>
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-5 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-150 pb-4">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 font-display">
+                    <BellRing className="w-5 h-5 text-emerald-600 animate-pulse" />
+                    PENGATURAN WHATSAPP GATEWAY KE ORANG TUA SISWA
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1 leading-normal font-sans">
+                    Notifikasi otomatis terkirim langsung ke nomor WhatsApp orang tua/wali murid yang terdaftar setiap kali siswa melakukan absensi di gerbang maupun kelas.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-2xl text-xs font-bold shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span>Otomatis Aktif & Terhubung</span>
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3 text-xs text-emerald-950">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold">
+                  WA
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-emerald-900 text-xs">Pengiriman Otomatis Tanpa Perlu Ketik Manual</h4>
+                  <p className="text-[11px] leading-relaxed text-emerald-800">
+                    Sistem secara otomatis membaca nomor WhatsApp orang tua (<code className="font-bold bg-emerald-100 px-1 py-0.2 rounded">waOrangTua</code>) dari data profil masing-masing siswa dan menyusun pesan kehadiran secara instan saat absensi tercatat.
+                  </p>
+                </div>
               </div>
 
               <form onSubmit={handleSaveAllSettings} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-gray-700 uppercase">Isi Pesan Notifikasi:</label>
+                  <label className="block text-xs font-bold text-gray-700 uppercase">Isi Format Pesan Notifikasi:</label>
                   <textarea
                     rows={8}
                     value={templatePesan}
                     onChange={(e) => setTemplatePesan(e.target.value)}
-                    className="w-full bg-white border border-gray-300 rounded-xl p-3.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                    className="w-full bg-white border border-gray-300 rounded-xl p-3.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 leading-relaxed"
                     placeholder="Masukkan template pesan notifikasi..."
                   />
                 </div>
 
                 {/* Legend token parser */}
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-2">
-                  <span className="text-[10px] font-black tracking-wider text-rose-600 uppercase">🏷️ TOKEN PARSER YANG DIDUKUNG SEKETIKA (Dapat Dipakai):</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[10px] text-slate-650">
-                    <div className="bg-white py-1 px-2 border rounded font-semibold"><code>[Nama Lengkap Siswa]</code></div>
-                    <div className="bg-white py-1 px-2 border rounded font-semibold"><code>[Kelas]</code></div>
-                    <div className="bg-white py-1 px-2 border rounded font-semibold"><code>[NIS]</code></div>
-                    <div className="bg-white py-1 px-2 border rounded font-semibold"><code>[Status Kehadiran]</code></div>
-                    <div className="bg-white py-1 px-2 border rounded font-semibold"><code>[Jam:Menit]</code></div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-2.5">
+                  <span className="text-[10px] font-black tracking-wider text-emerald-800 uppercase">🏷️ TOKEN PARSER YANG DIDUKUNG (Otomatis Diganti Sistem):</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[11px]">
+                    <div className="bg-white py-1.5 px-2 border border-slate-200 rounded-lg text-slate-700 font-mono font-bold text-center"><code>&#123;nama&#125;</code></div>
+                    <div className="bg-white py-1.5 px-2 border border-slate-200 rounded-lg text-slate-700 font-mono font-bold text-center"><code>&#123;kelas&#125;</code></div>
+                    <div className="bg-white py-1.5 px-2 border border-slate-200 rounded-lg text-slate-700 font-mono font-bold text-center"><code>&#123;nis&#125;</code></div>
+                    <div className="bg-white py-1.5 px-2 border border-slate-200 rounded-lg text-slate-700 font-mono font-bold text-center"><code>&#123;status&#125;</code></div>
+                    <div className="bg-white py-1.5 px-2 border border-slate-200 rounded-lg text-slate-700 font-mono font-bold text-center"><code>&#123;waktu&#125;</code></div>
+                    <div className="bg-white py-1.5 px-2 border border-slate-200 rounded-lg text-slate-700 font-mono font-bold text-center"><code>&#123;tanggal&#125;</code></div>
                   </div>
                 </div>
 
@@ -1668,7 +1688,7 @@ function AdminPanel({
                   <button
                     type="submit"
                     id="btn-save-whatsapp-settings"
-                    className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl py-2 px-6 font-bold text-xs transition-all shadow cursor-pointer"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 px-6 font-bold text-xs transition-all shadow cursor-pointer font-sans"
                   >
                     Simpan Template Pesan WA Gateway
                   </button>
