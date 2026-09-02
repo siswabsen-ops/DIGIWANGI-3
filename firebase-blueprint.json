@@ -90,6 +90,10 @@
     }
   },
   "firestore": {
+    "/sync/{id}": {
+      "schema": "object",
+      "description": "Dokumen sinkronisasi real-time instan multi-perangkat (PC, Android)"
+    },
     "/siswa/{id}": {
       "schema": "Siswa",
       "description": "Daftar index seluruh siswa SDN 3"

@@ -98,6 +98,11 @@ service cloud.firestore {
     }
 
     // Collection matches
+    match /sync/{id} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(id);
+    }
+
     match /siswa/{id} {
       allow read: if true;
       allow create, update: if isValidId(id) && isValidSiswa(incoming());

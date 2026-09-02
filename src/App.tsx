@@ -24,7 +24,11 @@ import {
   saveActivityLogToFirestore, 
   clearActivityLogsInFirestore,
   seedInitialDataIfDocsEmpty,
-  syncAllStudentsToFirestore
+  syncAllStudentsToFirestore,
+  syncMasterStudentsToCloud,
+  syncMasterPresensiToCloud,
+  syncMasterAccountsToCloud,
+  subscribeToCloudSync
 } from './lib/firebase';
 import { onSnapshot, collection, doc } from 'firebase/firestore';
 import {
@@ -66,7 +70,7 @@ export default function App() {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length === 428) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       } catch {}
@@ -184,13 +188,16 @@ export default function App() {
     };
   }, []);
 
-  // Real-time Cloud Firestore live data synchronizer
+  // Real-time Cloud multi-device synchronizer (Instant sync on PC, Android, Tablet)
   useEffect(() => {
+    let isMounted = true;
+    let unsubCloud: (() => void) | undefined;
+
     const startRealTimeSync = async () => {
       try {
         await ensureAuthenticated();
         
-        // Non-blocking mass-data seeder if Firestore is freshly provisioned
+        // Lightweight check & seed if cloud master dataset is fresh
         await seedInitialDataIfDocsEmpty(
           SISWA_INITIAL,
           USER_DEMO_ACCOUNTS,
@@ -199,114 +206,51 @@ export default function App() {
           PRESENSI_INITIAL
         );
 
-        // Helper for graceful snapshot error handling
-        const handleSnapshotNotice = (label: string, err: any) => {
-          const errStr = err instanceof Error ? err.message : String(err);
-          if (errStr.includes('Quota') || errStr.includes('quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
-            console.warn(`[Firestore Real-time ${label}] Free quota limit reached. Using fast local offline storage.`);
-          } else {
-            console.warn(`[Firestore Real-time ${label}] Sync status:`, errStr);
-          }
-        };
+        if (!isMounted) return;
 
-        // 1. Subscribe to Siswa directory
-        const unsubSiswa = onSnapshot(collection(db, 'siswa'), (snap) => {
-          const list: Siswa[] = [];
-          snap.forEach((doc) => {
-            list.push(doc.data() as Siswa);
-          });
-          if (list.length > 0) {
-            setSiswaList(list);
-          }
-        }, (err) => {
-          handleSnapshotNotice('Siswa', err);
-        });
-
-        // 2. Subscribe to Attendance records
-        const unsubPresensi = onSnapshot(collection(db, 'presensi'), (snap) => {
-          const list: Presensi[] = [];
-          snap.forEach((doc) => {
-            list.push(doc.data() as Presensi);
-          });
-          setPresensiList(list);
-        }, (err) => {
-          handleSnapshotNotice('Presensi', err);
-        });
-
-        // 3. Subscribe to Accounts directory
-        const unsubAccounts = onSnapshot(collection(db, 'accounts'), (snap) => {
-          const list: { user: User; pin: string }[] = [];
-          snap.forEach((doc) => {
-            const d = doc.data();
-            list.push({
-              user: {
-                id: d.id,
-                username: d.username,
-                namaLengkap: d.namaLengkap,
-                role: d.role,
-                kelasSpesifik: d.kelasSpesifik || undefined
-              },
-              pin: d.pin
-            });
-          });
-          if (list.length > 0) {
-            setAccountsList(list);
-          }
-        }, (err) => {
-          handleSnapshotNotice('Accounts', err);
-        });
-
-        // 4. Subscribe to App settings
-        const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as SystemSettings;
-            if (data.appLogoUrl) {
-              safeSetItem(APP_LOGO_STORAGE_KEY, data.appLogoUrl);
+        // Master cloud sync subscription (1 atomic connection per category)
+        unsubCloud = subscribeToCloudSync({
+          onStudentsChange: (incomingStudents) => {
+            if (incomingStudents && Array.isArray(incomingStudents) && incomingStudents.length > 0) {
+              setSiswaList(incomingStudents);
+              safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
             }
-            setSettings((prev) => {
-              const persistentLogo = data.appLogoUrl || prev.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
-              return { ...data, appLogoUrl: persistentLogo };
-            });
+          },
+          onPresensiChange: (incomingPresensi) => {
+            if (incomingPresensi && Array.isArray(incomingPresensi)) {
+              setPresensiList(incomingPresensi);
+              safeSetItem('karapres3_presensi_v5', JSON.stringify(incomingPresensi));
+            }
+          },
+          onSettingsChange: (incomingSettings) => {
+            if (incomingSettings) {
+              if (incomingSettings.appLogoUrl) {
+                safeSetItem(APP_LOGO_STORAGE_KEY, incomingSettings.appLogoUrl);
+              }
+              setSettings((prev) => {
+                const persistentLogo = incomingSettings.appLogoUrl || prev.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
+                return { ...incomingSettings, appLogoUrl: persistentLogo };
+              });
+              safeSetItem('karapres3_settings', JSON.stringify(incomingSettings));
+            }
+          },
+          onAccountsChange: (incomingAccounts) => {
+            if (incomingAccounts && Array.isArray(incomingAccounts) && incomingAccounts.length > 0) {
+              setAccountsList(incomingAccounts);
+              safeSetItem('karapres3_accounts_v4', JSON.stringify(incomingAccounts));
+            }
           }
-        }, (err) => {
-          handleSnapshotNotice('Settings', err);
         });
-
-        // 5. Subscribe to Activity logs
-        const unsubLogs = onSnapshot(collection(db, 'activityLogs'), (snap) => {
-          const list: ActivityLog[] = [];
-          snap.forEach((doc) => {
-            list.push(doc.data() as ActivityLog);
-          });
-          list.sort((a, b) => new Date(b.waktu).getTime() - new Date(a.waktu).getTime());
-          setActivityLogs(list);
-        }, (err) => {
-          handleSnapshotNotice('Logs', err);
-        });
-
-        return () => {
-          unsubSiswa();
-          unsubPresensi();
-          unsubAccounts();
-          unsubSettings();
-          unsubLogs();
-        };
       } catch (error) {
-        console.warn('Firestore connection initialization notice:', error);
+        console.warn('Real-time database sync notice:', error);
       }
     };
 
-    let unsubFuncs: (() => void) | undefined;
-    startRealTimeSync()
-      .then((cleaner) => {
-        unsubFuncs = cleaner;
-      })
-      .catch((err) => {
-        console.warn('Real-time database sync initialization notice:', err);
-      });
+    startRealTimeSync();
 
     return () => {
-      if (unsubFuncs) unsubFuncs();
+      isMounted = false;
+      if (unsubCloud) unsubCloud();
     };
   }, []);
 
@@ -358,30 +302,39 @@ export default function App() {
     if (old) {
       const mergedUser = { ...old.user, ...updatedUser };
       const mergedPin = newPin !== undefined ? newPin : old.pin;
-      setAccountsList(prev => prev.map(acc => acc.user.id === userId ? { user: mergedUser, pin: mergedPin } : acc));
+      const newList = accountsList.map(acc => acc.user.id === userId ? { user: mergedUser, pin: mergedPin } : acc);
+      setAccountsList(newList);
+      safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
       saveAccountToFirestore({ user: mergedUser, pin: mergedPin });
+      syncMasterAccountsToCloud(newList);
       addActivityLog('Update Akun', `Merubah detail profil akun: ${updatedUser.namaLengkap || userId}`);
       triggerNotice('Akun berhasil diperbarui.', 'success');
     }
   }, [accountsList, addActivityLog]);
 
   const handleAddAccount = useCallback((user: User, pin: string) => {
-    setAccountsList(prev => [...prev.filter(a => a.user.id !== user.id), { user, pin }]);
+    const newList = [...accountsList.filter(a => a.user.id !== user.id), { user, pin }];
+    setAccountsList(newList);
+    safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
     saveAccountToFirestore({ user, pin });
+    syncMasterAccountsToCloud(newList);
     addActivityLog('Tambah Akun Baru', `Membuat akun operator baru: ${user.namaLengkap} [${user.role.toUpperCase()}]`);
     triggerNotice('Akun baru berhasil ditambahkan.', 'success');
-  }, [addActivityLog]);
+  }, [accountsList, addActivityLog]);
 
   const handleDeleteAccount = useCallback((userId: string) => {
     if (currentUser && currentUser.id === userId) {
       triggerNotice('Tidak dapat menghapus akun Anda sendiri!', 'info');
       return;
     }
-    setAccountsList(prev => prev.filter(a => a.user.id !== userId));
+    const newList = accountsList.filter(a => a.user.id !== userId);
+    setAccountsList(newList);
+    safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
     deleteAccountFromFirestore(userId);
+    syncMasterAccountsToCloud(newList);
     addActivityLog('Hapus Akun', `Menghapus akun operator ID: ${userId}`);
     triggerNotice('Akun berhasil dihapus.', 'success');
-  }, [currentUser, addActivityLog]);
+  }, [currentUser, accountsList, addActivityLog]);
 
   const handleLogin = useCallback((user: User) => {
     // Make sure we load the dynamic updated user from our accounts list so details are correct
@@ -608,22 +561,24 @@ export default function App() {
     setSiswaList(prev => {
       const updated = [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)];
       safeSetItem('karapres3_siswa_v5', JSON.stringify(updated));
+      syncMasterStudentsToCloud(updated, 'Admin');
       return updated;
     });
     saveSiswaToFirestore(newSiswa);
     addActivityLog('Menambah Siswa', `Mendaftarkan siswa baru: ${newSiswa.nama} (NIS ${newSiswa.nis}) di ${newSiswa.kelas}`);
-    triggerNotice(`Siswa ${newSiswa.nama} (${newSiswa.kelas}) berhasil ditambahkan & disimpan!`, 'success');
+    triggerNotice(`Siswa ${newSiswa.nama} (${newSiswa.kelas}) berhasil ditambahkan & disinkronkan ke seluruh perangkat!`, 'success');
   }, [addActivityLog]);
 
   const handleUpdateSiswa = useCallback((updated: Siswa) => {
     setSiswaList(prev => {
       const newList = prev.map(s => s.id === updated.id ? updated : s);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
+      syncMasterStudentsToCloud(newList, 'Admin');
       return newList;
     });
     saveSiswaToFirestore(updated);
     addActivityLog('Update Siswa', `Mengubah data/kelas: ${updated.nama} (NIS ${updated.nis}) ➔ ${updated.kelas}`);
-    triggerNotice(`Data/relokasi ${updated.nama} (${updated.kelas}) berhasil disimpan!`, 'success');
+    triggerNotice(`Data ${updated.nama} (${updated.kelas}) berhasil disimpan & disinkronkan ke seluruh perangkat!`, 'success');
   }, [addActivityLog]);
 
   const handleDeleteSiswa = useCallback((id: string) => {
@@ -634,10 +589,11 @@ export default function App() {
       }
       const newList = prev.filter(s => s.id !== id);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
+      syncMasterStudentsToCloud(newList, 'Admin');
       return newList;
     });
     deleteSiswaFromFirestore(id);
-    triggerNotice('Data siswa berhasil dihapus dari sistem.', 'info');
+    triggerNotice('Data siswa berhasil dihapus dari sistem & disinkronkan.', 'info');
   }, [addActivityLog]);
 
   // Settings Save action
@@ -669,6 +625,7 @@ export default function App() {
         updated = [newPresensi, ...prev];
       }
       safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
+      syncMasterPresensiToCloud(updated, 'Presensi Live');
       return updated;
     });
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);

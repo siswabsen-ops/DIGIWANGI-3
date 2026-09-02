@@ -4,6 +4,7 @@ import {
   getFirestore, 
   collection, 
   doc, 
+  getDoc,
   setDoc, 
   deleteDoc, 
   onSnapshot, 
@@ -280,6 +281,127 @@ export const clearActivityLogsInFirestore = async (logs: ActivityLog[]) => {
   }
 };
 
+// ==========================================
+// MASTER MULTI-DEVICE CLOUD SYNC ENGINE
+// ==========================================
+
+export interface CloudSyncPayload<T> {
+  data: T;
+  updatedAt: number;
+  updatedBy?: string;
+  total?: number;
+}
+
+// Push master students dataset to Cloud Sync doc (Syncs to PC, Android, etc. in 1 atomic read/write)
+export const syncMasterStudentsToCloud = async (students: Siswa[], updatedBy?: string) => {
+  const path = 'sync/students';
+  try {
+    const cleaned = students.map(cleanSiswaForFirestore);
+    await setDoc(doc(db, 'sync', 'students'), {
+      data: cleaned,
+      updatedAt: Date.now(),
+      updatedBy: updatedBy || 'Client Device',
+      total: cleaned.length
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+};
+
+// Push master presensi dataset to Cloud Sync doc
+export const syncMasterPresensiToCloud = async (presensiList: Presensi[], updatedBy?: string) => {
+  const path = 'sync/presensi';
+  try {
+    const cleaned = presensiList.map(cleanPresensiForFirestore);
+    await setDoc(doc(db, 'sync', 'presensi'), {
+      data: cleaned,
+      updatedAt: Date.now(),
+      updatedBy: updatedBy || 'Client Device',
+      total: cleaned.length
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+};
+
+// Push master accounts dataset to Cloud Sync doc
+export const syncMasterAccountsToCloud = async (accounts: { user: User; pin: string }[]) => {
+  const path = 'sync/accounts';
+  try {
+    await setDoc(doc(db, 'sync', 'accounts'), {
+      data: accounts,
+      updatedAt: Date.now(),
+      total: accounts.length
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+};
+
+// Real-time multi-device subscription (Android & PC instant sync)
+export const subscribeToCloudSync = (callbacks: {
+  onStudentsChange?: (students: Siswa[]) => void;
+  onPresensiChange?: (presensi: Presensi[]) => void;
+  onSettingsChange?: (settings: SystemSettings) => void;
+  onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
+  onStatusChange?: (status: 'connected' | 'offline' | 'syncing') => void;
+}) => {
+  const unsubs: (() => void)[] = [];
+
+  // 1. Subscribe to master students doc
+  const unsubStudents = onSnapshot(doc(db, 'sync', 'students'), (snapshot) => {
+    if (snapshot.exists()) {
+      const payload = snapshot.data() as CloudSyncPayload<Siswa[]>;
+      if (Array.isArray(payload?.data) && payload.data.length > 0) {
+        callbacks.onStudentsChange?.(payload.data);
+      }
+    }
+  }, (err) => {
+    handleFirestoreError(err, OperationType.GET, 'sync/students');
+  });
+  unsubs.push(unsubStudents);
+
+  // 2. Subscribe to master presensi doc
+  const unsubPresensi = onSnapshot(doc(db, 'sync', 'presensi'), (snapshot) => {
+    if (snapshot.exists()) {
+      const payload = snapshot.data() as CloudSyncPayload<Presensi[]>;
+      if (Array.isArray(payload?.data)) {
+        callbacks.onPresensiChange?.(payload.data);
+      }
+    }
+  }, (err) => {
+    handleFirestoreError(err, OperationType.GET, 'sync/presensi');
+  });
+  unsubs.push(unsubPresensi);
+
+  // 3. Subscribe to settings
+  const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (snapshot) => {
+    if (snapshot.exists()) {
+      callbacks.onSettingsChange?.(snapshot.data() as SystemSettings);
+    }
+  }, (err) => {
+    handleFirestoreError(err, OperationType.GET, 'settings/system');
+  });
+  unsubs.push(unsubSettings);
+
+  // 4. Subscribe to accounts
+  const unsubAccounts = onSnapshot(doc(db, 'sync', 'accounts'), (snapshot) => {
+    if (snapshot.exists()) {
+      const payload = snapshot.data() as CloudSyncPayload<{ user: User; pin: string }[]>;
+      if (Array.isArray(payload?.data) && payload.data.length > 0) {
+        callbacks.onAccountsChange?.(payload.data);
+      }
+    }
+  }, (err) => {
+    handleFirestoreError(err, OperationType.GET, 'sync/accounts');
+  });
+  unsubs.push(unsubAccounts);
+
+  return () => {
+    unsubs.forEach(fn => fn());
+  };
+};
+
 // Batch Sync all students to Firestore database
 export const syncAllStudentsToFirestore = async (students: Siswa[]) => {
   try {
@@ -299,7 +421,7 @@ export const syncAllStudentsToFirestore = async (students: Siswa[]) => {
 };
 
 // ==========================================
-// MASS DATABASE SEEDING UTILITIES
+// MASS DATABASE SEEDING UTILITIES (OPTIMIZED)
 // ==========================================
 export const seedInitialDataIfDocsEmpty = async (
   siswaSource: Siswa[],
@@ -308,81 +430,33 @@ export const seedInitialDataIfDocsEmpty = async (
   logsSource: ActivityLog[],
   presensiSource?: Presensi[]
 ) => {
-  console.log('Checking database initial collections...');
   try {
-    // 1. Check Siswa (Only seed if database is strictly empty)
-    const siswaSnap = await getDocs(collection(db, 'siswa'));
-    if (siswaSnap.empty) {
-      console.log(`Seeding initial ${siswaSource.length} students into Cloud Firestore...`);
-      const chunkSize = 200;
-      for (let i = 0; i < siswaSource.length; i += chunkSize) {
-        const chunk = siswaSource.slice(i, i + chunkSize);
-        const batch = writeBatch(db);
-        chunk.forEach((s) => {
-          batch.set(doc(db, 'siswa', s.id), cleanSiswaForFirestore(s));
-        });
-        await batch.commit();
-      }
-      console.log('Seeded Students to cloud.');
+    // 1. Check Master Sync Students doc (Only 1 atomic read!)
+    const syncSiswaDoc = await getDoc(doc(db, 'sync', 'students'));
+    if (!syncSiswaDoc.exists() || !syncSiswaDoc.data()?.data?.length) {
+      console.log(`Seeding master catalog of ${siswaSource.length} students to Cloud Sync...`);
+      await syncMasterStudentsToCloud(siswaSource, 'Initial Seeding');
     }
 
-    // 2. Check Accounts (Only seed if empty)
-    const accountsSnap = await getDocs(collection(db, 'accounts'));
-    if (accountsSnap.empty) {
-      console.log(`Seeding demo accounts into Cloud Firestore...`);
-      const batch = writeBatch(db);
-      accountsSource.forEach((acc) => {
-        batch.set(doc(db, 'accounts', acc.user.id), {
-          id: acc.user.id,
-          username: acc.user.username,
-          namaLengkap: acc.user.namaLengkap,
-          role: acc.user.role,
-          kelasSpesifik: acc.user.kelasSpesifik || '',
-          pin: acc.pin
-        });
-      });
-      await batch.commit();
-      console.log('Seeded Accounts to cloud.');
+    // 2. Check Accounts Sync doc (1 atomic read)
+    const syncAccountsDoc = await getDoc(doc(db, 'sync', 'accounts'));
+    if (!syncAccountsDoc.exists() || !syncAccountsDoc.data()?.data?.length) {
+      await syncMasterAccountsToCloud(accountsSource);
     }
 
-    // 3. Check Settings (Only seed if empty)
-    const settingsSnap = await getDocs(collection(db, 'settings'));
-    if (settingsSnap.empty) {
-      console.log('Seeding settings into Cloud Firestore...');
+    // 3. Check Settings doc (1 atomic read)
+    const settingsDoc = await getDoc(doc(db, 'settings', 'system'));
+    if (!settingsDoc.exists()) {
       await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settingsSource));
-      console.log('Seeded Settings to cloud.');
     }
 
-    // 4. Check Activity Logs (Only seed if empty)
-    const logsSnap = await getDocs(collection(db, 'activityLogs'));
-    if (logsSnap.empty) {
-      console.log('Seeding initial logs into Cloud Firestore...');
-      const batch = writeBatch(db);
-      logsSource.forEach((log) => {
-        batch.set(doc(db, 'activityLogs', log.id), log);
-      });
-      await batch.commit();
-      console.log('Seeded Logs to cloud.');
-    }
-
-    // 5. Check Presensi (Only seed if collection is completely empty)
+    // 4. Check Presensi Sync doc (1 atomic read)
     if (presensiSource && presensiSource.length > 0) {
-      const presensiSnap = await getDocs(collection(db, 'presensi'));
-      if (presensiSnap.empty) {
-        console.log(`Seeding initial demo attendance records into Firestore...`);
-        const chunkSize = 200;
-        for (let i = 0; i < presensiSource.length; i += chunkSize) {
-          const chunk = presensiSource.slice(i, i + chunkSize);
-          const batch = writeBatch(db);
-          chunk.forEach((p) => {
-            batch.set(doc(db, 'presensi', p.id), cleanPresensiForFirestore(p));
-          });
-          await batch.commit();
-        }
-        console.log('Seeded Presensi to cloud.');
+      const syncPresensiDoc = await getDoc(doc(db, 'sync', 'presensi'));
+      if (!syncPresensiDoc.exists()) {
+        await syncMasterPresensiToCloud(presensiSource, 'Initial Seeding');
       }
     }
-
   } catch (err: any) {
     const errStr = err instanceof Error ? err.message : String(err);
     if (errStr.includes('Quota') || errStr.includes('quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
