@@ -62,16 +62,16 @@ import {
 export default function App() {
   // Real-time local state engine backed by LocalStorage
   const [siswaList, setSiswaList] = useState<Siswa[]>(() => {
-    const cached = safeGetItem('karapres3_siswa_v3');
+    const cached = safeGetItem('karapres3_siswa_v5');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed) && parsed.length === 428) {
           return parsed;
         }
       } catch {}
     }
-    safeSetItem('karapres3_siswa_v3', JSON.stringify(SISWA_INITIAL));
+    safeSetItem('karapres3_siswa_v5', JSON.stringify(SISWA_INITIAL));
     return SISWA_INITIAL;
   });
 
@@ -312,7 +312,7 @@ export default function App() {
 
   // Sync state modifications to Web Storage
   useEffect(() => {
-    safeSetItem('karapres3_siswa_v3', JSON.stringify(siswaList));
+    safeSetItem('karapres3_siswa_v5', JSON.stringify(siswaList));
   }, [siswaList]);
 
   useEffect(() => {
@@ -583,7 +583,7 @@ export default function App() {
 
       const updatedStudents = res.students;
       setSiswaList(updatedStudents);
-      safeSetItem('karapres3_siswa_v3', JSON.stringify(updatedStudents));
+      safeSetItem('karapres3_siswa_v5', JSON.stringify(updatedStudents));
 
       // Batch sync to Firestore cloud database
       await syncAllStudentsToFirestore(updatedStudents);
@@ -607,7 +607,7 @@ export default function App() {
   const handleAddSiswa = useCallback((newSiswa: Siswa) => {
     setSiswaList(prev => {
       const updated = [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)];
-      safeSetItem('karapres3_siswa_v3', JSON.stringify(updated));
+      safeSetItem('karapres3_siswa_v5', JSON.stringify(updated));
       return updated;
     });
     saveSiswaToFirestore(newSiswa);
@@ -618,7 +618,7 @@ export default function App() {
   const handleUpdateSiswa = useCallback((updated: Siswa) => {
     setSiswaList(prev => {
       const newList = prev.map(s => s.id === updated.id ? updated : s);
-      safeSetItem('karapres3_siswa_v3', JSON.stringify(newList));
+      safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
       return newList;
     });
     saveSiswaToFirestore(updated);
@@ -633,7 +633,7 @@ export default function App() {
         addActivityLog('Hapus Siswa', `Menghapus pendaftaran: ${matched.nama} (NIS ${matched.nis})`);
       }
       const newList = prev.filter(s => s.id !== id);
-      safeSetItem('karapres3_siswa_v3', JSON.stringify(newList));
+      safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
       return newList;
     });
     deleteSiswaFromFirestore(id);

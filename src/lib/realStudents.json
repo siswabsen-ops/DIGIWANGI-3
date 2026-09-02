@@ -1,66 +1,6 @@
 [
   {
     "id": "sis-001",
-    "nis": "3183606108",
-    "nama": "AAFIINA IZATUL ISLAM",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081283606108",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-08-11"
-  },
-  {
-    "id": "sis-002",
-    "nis": "3152090638",
-    "nama": "ABDILAH ARKAN HAFIZ",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081252090638",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-29"
-  },
-  {
-    "id": "sis-003",
-    "nis": "3159629953",
-    "nama": "ABDUL JABAR",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259629953",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-12-11"
-  },
-  {
-    "id": "sis-004",
-    "nis": "159943837",
-    "nama": "ABDUL MUGNI HIDAYAT",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259943837",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2015-11-12"
-  },
-  {
-    "id": "sis-005",
-    "nis": "3156801836",
-    "nama": "ABDUL MUIS",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081256801836",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-31"
-  },
-  {
-    "id": "sis-006",
-    "nis": "3166977464",
-    "nama": "ABIDAH JAJILA HASNA",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266977464",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-04-04"
-  },
-  {
-    "id": "sis-007",
     "nis": "3197201275",
     "nama": "ADE MILDA NURAENI",
     "kelas": "Kelas 1-A",
@@ -70,307 +10,17 @@
     "tanggalLahir": "2019-06-27"
   },
   {
-    "id": "sis-008",
-    "nis": "3158740096",
-    "nama": "ADILA PUTRI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081258740096",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-05-16"
-  },
-  {
-    "id": "sis-009",
-    "nis": "3184468288",
-    "nama": "Adipan",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081284468288",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-05-03"
-  },
-  {
-    "id": "sis-010",
-    "nis": "149916533",
-    "nama": "ADRIANSAH LNH",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081249916533",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-06-23"
-  },
-  {
-    "id": "sis-011",
+    "id": "sis-002",
     "nis": "3197632624",
     "nama": "AGNA ZASKIA",
-    "kelas": "Kelas 1-B",
+    "kelas": "Kelas 1-A",
     "jenisKelamin": "P",
     "waOrangTua": "081297632624",
     "tempatLahir": "GARUT",
     "tanggalLahir": "2019-08-20"
   },
   {
-    "id": "sis-012",
-    "nis": "3172472564",
-    "nama": "AGUS JUMHUR MUBAROK",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081272472564",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-08-11"
-  },
-  {
-    "id": "sis-013",
-    "nis": "3168544406",
-    "nama": "AHLAM AQILLA PRANAJA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081268544406",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-06-22"
-  },
-  {
-    "id": "sis-014",
-    "nis": "165776718",
-    "nama": "AHMAD AL HAFIZ",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081265776718",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-04-09"
-  },
-  {
-    "id": "sis-015",
-    "nis": "3161162058",
-    "nama": "AHMAD HADIANA PUTRA JUANTA",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081261162058",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-02-22"
-  },
-  {
-    "id": "sis-016",
-    "nis": "3150022185",
-    "nama": "AHMAD MOCHTAR APPANDI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081250022185",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-05-19"
-  },
-  {
-    "id": "sis-017",
-    "nis": "3160318580",
-    "nama": "AHMAD NURESTU",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081260318580",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-04-12"
-  },
-  {
-    "id": "sis-018",
-    "nis": "3149872436",
-    "nama": "AHMAD PAUZI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081249872436",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-04-13"
-  },
-  {
-    "id": "sis-019",
-    "nis": "3190411876",
-    "nama": "AHMAD SAIT ABDILAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081290411876",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-02-25"
-  },
-  {
-    "id": "sis-020",
-    "nis": "3185254820",
-    "nama": "Ahmad Sayuti",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081285254820",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-02-12"
-  },
-  {
-    "id": "sis-021",
-    "nis": "3186377247",
-    "nama": "AHMAD YUSUP MAULANA",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081286377247",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-03-04"
-  },
-  {
-    "id": "sis-022",
-    "nis": "3198767924",
-    "nama": "AILA AURELIA AZURA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081298767924",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-02-16"
-  },
-  {
-    "id": "sis-023",
-    "nis": "3164545968",
-    "nama": "AINA FITRI LESTARI RAMADHANI",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081264545968",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-06-29"
-  },
-  {
-    "id": "sis-024",
-    "nis": "3206365696",
-    "nama": "AIRA RUHIMA BUNGA AINURFATAH",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081206365696",
-    "tempatLahir": "garut",
-    "tanggalLahir": "2020-02-11"
-  },
-  {
-    "id": "sis-025",
-    "nis": "3191634272",
-    "nama": "AIRIN PUTRI JULIYANTI",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081291634272",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-07-25"
-  },
-  {
-    "id": "sis-026",
-    "nis": "3187802818",
-    "nama": "AJHARA NABILA PUTRI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081287802818",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-03-29"
-  },
-  {
-    "id": "sis-027",
-    "nis": "3166469973",
-    "nama": "AKBAR KHOIRU TAMAM",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081266469973",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-06-17"
-  },
-  {
-    "id": "sis-028",
-    "nis": "3187493430",
-    "nama": "AKBAR SYAHID NAWAWI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081287493430",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-08-23"
-  },
-  {
-    "id": "sis-029",
-    "nis": "3176314197",
-    "nama": "ALBAR MUHAMAD AL KAUSAR",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081276314197",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-02-05"
-  },
-  {
-    "id": "sis-030",
-    "nis": "3139962072",
-    "nama": "ALI NUR RAMADHAN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081239962072",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2013-07-21"
-  },
-  {
-    "id": "sis-031",
-    "nis": "3207826625",
-    "nama": "ALIF PRATAMA MUHAMMAD SAPUTRA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081207826625",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2020-01-23"
-  },
-  {
-    "id": "sis-032",
-    "nis": "3191074070",
-    "nama": "ALIFA RAYYA NABILA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081291074070",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-08-21"
-  },
-  {
-    "id": "sis-033",
-    "nis": "3185499801",
-    "nama": "ALIKA NAILA PUTRI",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285499801",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-08-21"
-  },
-  {
-    "id": "sis-034",
-    "nis": "3179827291",
-    "nama": "ALIKA NAYLA PUTRI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081279827291",
-    "tempatLahir": "CILACAP",
-    "tanggalLahir": "2017-11-04"
-  },
-  {
-    "id": "sis-035",
-    "nis": "3189386702",
-    "nama": "ALIKA REVALINA",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081289386702",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-12-24"
-  },
-  {
-    "id": "sis-036",
-    "nis": "143813733",
-    "nama": "ALIYA RAFIFA MUTIARA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081243813733",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-11-29"
-  },
-  {
-    "id": "sis-037",
-    "nis": "3145380081",
-    "nama": "ALMIRA RAMADANI",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081245380081",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-07-10"
-  },
-  {
-    "id": "sis-038",
+    "id": "sis-003",
     "nis": "3197795947",
     "nama": "ALULA AYUNINDYA AZZAHRA",
     "kelas": "Kelas 1-A",
@@ -380,107 +30,7 @@
     "tanggalLahir": "2019-07-03"
   },
   {
-    "id": "sis-039",
-    "nis": "3185495764",
-    "nama": "ALVIN ALWI AL-FIANSYAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081285495764",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-05-23"
-  },
-  {
-    "id": "sis-040",
-    "nis": "3172986365",
-    "nama": "ALVIN FAHREZA MOCH FATAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081272986365",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-12-29"
-  },
-  {
-    "id": "sis-041",
-    "nis": "3165187522",
-    "nama": "ALYA AINUNISA",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081265187522",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-09-16"
-  },
-  {
-    "id": "sis-042",
-    "nis": "3170422500",
-    "nama": "ALYA NURAINI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081270422500",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-09-12"
-  },
-  {
-    "id": "sis-043",
-    "nis": "3185378000",
-    "nama": "ALYA SEPTIANI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285378000",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-09-01"
-  },
-  {
-    "id": "sis-044",
-    "nis": "3171192578",
-    "nama": "Amanda Rahayu",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081271192578",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-01-08"
-  },
-  {
-    "id": "sis-045",
-    "nis": "3188300591",
-    "nama": "AMIDA SAFITRI",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081288300591",
-    "tempatLahir": "Kabupaten Garut",
-    "tanggalLahir": "2018-08-28"
-  },
-  {
-    "id": "sis-046",
-    "nis": "3181272702",
-    "nama": "ANDREYAS MUHAMAD S",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081281272702",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-14"
-  },
-  {
-    "id": "sis-047",
-    "nis": "3186370649",
-    "nama": "ANGGA SEPTIAN",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081286370649",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-01-03"
-  },
-  {
-    "id": "sis-048",
-    "nis": "3144241835",
-    "nama": "ANGGARA JAYA SUKMANA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081244241835",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2014-01-12"
-  },
-  {
-    "id": "sis-049",
+    "id": "sis-004",
     "nis": "3197058026",
     "nama": "ANINDITA SALSA ADISTIA",
     "kelas": "Kelas 1-A",
@@ -490,117 +40,7 @@
     "tanggalLahir": "2019-03-19"
   },
   {
-    "id": "sis-050",
-    "nis": "3154898039",
-    "nama": "ANISA DEWINA MARIAM",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081254898039",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-05-25"
-  },
-  {
-    "id": "sis-051",
-    "nis": "3147440015",
-    "nama": "ANTON FAUJIAN YUDHISTIRA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081247440015",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-10-09"
-  },
-  {
-    "id": "sis-052",
-    "nis": "3160329774",
-    "nama": "APIP AGUSTIAN",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081260329774",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-08-30"
-  },
-  {
-    "id": "sis-053",
-    "nis": "3160288254",
-    "nama": "APIPAH PITRI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081260288254",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-05-17"
-  },
-  {
-    "id": "sis-054",
-    "nis": "3177237640",
-    "nama": "AQILA BILQISH MALAYEKA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081277237640",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-06-24"
-  },
-  {
-    "id": "sis-055",
-    "nis": "3182425018",
-    "nama": "ARFAN AL-GIFARI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081282425018",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-01-08"
-  },
-  {
-    "id": "sis-056",
-    "nis": "3186967579",
-    "nama": "ARFAN NAUFAL R",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081286967579",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-07-18"
-  },
-  {
-    "id": "sis-057",
-    "nis": "3143757630",
-    "nama": "ARIPA MUHAMAD AFANDI",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081243757630",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-06-08"
-  },
-  {
-    "id": "sis-058",
-    "nis": "147336844",
-    "nama": "ARPAN MAULANA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081247336844",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-11-22"
-  },
-  {
-    "id": "sis-059",
-    "nis": "3150126975",
-    "nama": "ARSAL NUL HAKIM",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081250126975",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-11-21"
-  },
-  {
-    "id": "sis-060",
-    "nis": "3167557206",
-    "nama": "ARSILA NUR RIZQIA",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081267557206",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-01-14"
-  },
-  {
-    "id": "sis-061",
+    "id": "sis-005",
     "nis": "3198942718",
     "nama": "ASALINA YUMNA NALADIPA",
     "kelas": "Kelas 1-A",
@@ -610,27 +50,7 @@
     "tanggalLahir": "2019-10-22"
   },
   {
-    "id": "sis-062",
-    "nis": "3166341089",
-    "nama": "Asila Aulia Nurrahman",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266341089",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-02-19"
-  },
-  {
-    "id": "sis-063",
-    "nis": "3174694584",
-    "nama": "ASIPA SITI MARWAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081274694584",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-10-12"
-  },
-  {
-    "id": "sis-064",
+    "id": "sis-006",
     "nis": "3203241187",
     "nama": "ASYIFA AULIA NUR ROHMAN",
     "kelas": "Kelas 1-A",
@@ -640,27 +60,7 @@
     "tanggalLahir": "2020-01-30"
   },
   {
-    "id": "sis-065",
-    "nis": "3182579568",
-    "nama": "AYRA SHIRLI ALNAIRA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081282579568",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-09-22"
-  },
-  {
-    "id": "sis-066",
-    "nis": "3168540539",
-    "nama": "AYUB SOBIRIN",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081268540539",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-08-24"
-  },
-  {
-    "id": "sis-067",
+    "id": "sis-007",
     "nis": "3197184730",
     "nama": "AZAM MUHAMAD NUGRAHA",
     "kelas": "Kelas 1-A",
@@ -670,127 +70,17 @@
     "tanggalLahir": "2019-11-22"
   },
   {
-    "id": "sis-068",
-    "nis": "3157856916",
-    "nama": "AZKA HAMIDAH",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081257856916",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-03"
-  },
-  {
-    "id": "sis-069",
-    "nis": "3163720956",
-    "nama": "AZKA ZAINA RAPANIA",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081263720956",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-07-28"
-  },
-  {
-    "id": "sis-070",
-    "nis": "3184156806",
-    "nama": "Azrina Lavenia Qotrun Nada",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081284156806",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-04-08"
-  },
-  {
-    "id": "sis-071",
-    "nis": "3166928474",
-    "nama": "BAGAS SURYA PUTRA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081266928474",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-08-11"
-  },
-  {
-    "id": "sis-072",
-    "nis": "3203304099",
-    "nama": "Bilqis Hoirun Nisa",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081203304099",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2020-02-19"
-  },
-  {
-    "id": "sis-073",
-    "nis": "3185240784",
-    "nama": "BUNGA PEBRI PEBRIAN",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285240784",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-02-08"
-  },
-  {
-    "id": "sis-074",
-    "nis": "3161086535",
-    "nama": "CECEP AGIL",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081261086535",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-11-11"
-  },
-  {
-    "id": "sis-075",
-    "nis": "155957577",
-    "nama": "CEPI NUGRAHA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081255957577",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-28"
-  },
-  {
-    "id": "sis-076",
-    "nis": "3176606666",
-    "nama": "DAHANA MAULANA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081276606666",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-01-17"
-  },
-  {
-    "id": "sis-077",
-    "nis": "3151277600",
-    "nama": "DARUL ASROR",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081251277600",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-23"
-  },
-  {
-    "id": "sis-078",
-    "nis": "3173256416",
-    "nama": "DAVA RAMADANI",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081273256416",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-06-08"
-  },
-  {
-    "id": "sis-079",
+    "id": "sis-008",
     "nis": "3192689226",
-    "nama": "Dea Salsabila",
+    "nama": "DEA SALSABILA",
     "kelas": "Kelas 1-A",
     "jenisKelamin": "P",
-    "waOrangTua": "081292689226",
+    "waOrangTua": "082219078882",
     "tempatLahir": "Garut",
     "tanggalLahir": "2019-10-30"
   },
   {
-    "id": "sis-080",
+    "id": "sis-009",
     "nis": "3196504411",
     "nama": "DEDE MUHAMMAD RAMDANI",
     "kelas": "Kelas 1-A",
@@ -800,167 +90,7 @@
     "tanggalLahir": "2019-12-07"
   },
   {
-    "id": "sis-081",
-    "nis": "3198063751",
-    "nama": "DEWI SEKAR KOMARIAH",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081298063751",
-    "tempatLahir": "KABUPATEN GARUT",
-    "tanggalLahir": "2019-08-14"
-  },
-  {
-    "id": "sis-082",
-    "nis": "3191133933",
-    "nama": "Dila Yuliyanti",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081291133933",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-07-03"
-  },
-  {
-    "id": "sis-083",
-    "nis": "3173415021",
-    "nama": "Dilara Shafiyatunnisa",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081273415021",
-    "tempatLahir": "Berastagi",
-    "tanggalLahir": "2017-06-01"
-  },
-  {
-    "id": "sis-084",
-    "nis": "3187437249",
-    "nama": "Dinda Aulia Alzahra",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081287437249",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-07"
-  },
-  {
-    "id": "sis-085",
-    "nis": "3185319976",
-    "nama": "DINDA KOYIMA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285319976",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-09-07"
-  },
-  {
-    "id": "sis-086",
-    "nis": "3176730543",
-    "nama": "DIVA RAHAYU",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081276730543",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-04-02"
-  },
-  {
-    "id": "sis-087",
-    "nis": "3190347322",
-    "nama": "DZAKIA NAIFFA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081290347322",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-11-06"
-  },
-  {
-    "id": "sis-088",
-    "nis": "147312603",
-    "nama": "DZAKIRA TALITA ZAHRA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081247312603",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-11-25"
-  },
-  {
-    "id": "sis-089",
-    "nis": "3151518521",
-    "nama": "ELI SELVIANI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081251518521",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-09-19"
-  },
-  {
-    "id": "sis-090",
-    "nis": "3180466178",
-    "nama": "ELMYIDA ANARAYA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081280466178",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-02-10"
-  },
-  {
-    "id": "sis-091",
-    "nis": "3162179234",
-    "nama": "ELSA MADINA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081262179234",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-08-28"
-  },
-  {
-    "id": "sis-092",
-    "nis": "3180188945",
-    "nama": "Emi Ramadani",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081280188945",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-06-13"
-  },
-  {
-    "id": "sis-093",
-    "nis": "3178802684",
-    "nama": "ENJEL ENRIANA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081278802684",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-07-02"
-  },
-  {
-    "id": "sis-094",
-    "nis": "3194053193",
-    "nama": "Fadiyah Inayah ummamah",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081294053193",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-11-16"
-  },
-  {
-    "id": "sis-095",
-    "nis": "3157007680",
-    "nama": "FAISAL FATUL ROHNAN",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081257007680",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-11-14"
-  },
-  {
-    "id": "sis-096",
-    "nis": "3167289273",
-    "nama": "FAISAL KURNIAWAN",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081267289273",
-    "tempatLahir": "BANDUNG",
-    "tanggalLahir": "2015-11-24"
-  },
-  {
-    "id": "sis-097",
+    "id": "sis-010",
     "nis": "3185226686",
     "nama": "FAISAL NUGRAHA",
     "kelas": "Kelas 1-A",
@@ -970,117 +100,17 @@
     "tanggalLahir": "2018-11-27"
   },
   {
-    "id": "sis-098",
-    "nis": "3162589694",
-    "nama": "FARHANA DWI RAMADHANI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081262589694",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-06-15"
-  },
-  {
-    "id": "sis-099",
-    "nis": "3142392232",
-    "nama": "FATIMAHTUL AZZAHRA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081242392232",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-03-27"
-  },
-  {
-    "id": "sis-100",
-    "nis": "154244999",
-    "nama": "FATUL ROHMAN",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254244999",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-27"
-  },
-  {
-    "id": "sis-101",
-    "nis": "149506590",
-    "nama": "FAUZAN FADILAH",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081249506590",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2014-07-07"
-  },
-  {
-    "id": "sis-102",
+    "id": "sis-011",
     "nis": "3198878857",
     "nama": "FAYRA DZIKRA",
-    "kelas": "Kelas 1-B",
+    "kelas": "Kelas 1-A",
     "jenisKelamin": "P",
     "waOrangTua": "081298878857",
     "tempatLahir": "GARUT",
     "tanggalLahir": "2019-01-29"
   },
   {
-    "id": "sis-103",
-    "nis": "3189331664",
-    "nama": "FEBRIYANI AYU SUGIARTI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081289331664",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-02-13"
-  },
-  {
-    "id": "sis-104",
-    "nis": "3152890108",
-    "nama": "FITRI RAHMADANI FATIMAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081252890108",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-07-13"
-  },
-  {
-    "id": "sis-105",
-    "nis": "3167579763",
-    "nama": "FUTRI NADIA ARDIANI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081267579763",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-11-01"
-  },
-  {
-    "id": "sis-106",
-    "nis": "3198724595",
-    "nama": "GALAXY SAUQY FIRDAUS",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081298724595",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-06-04"
-  },
-  {
-    "id": "sis-107",
-    "nis": "3156992355",
-    "nama": "Galih Azwan Kamil",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081256992355",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-10-07"
-  },
-  {
-    "id": "sis-108",
-    "nis": "3150531453",
-    "nama": "GELAR CATUR RAHAYU",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081250531453",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-10-10"
-  },
-  {
-    "id": "sis-109",
+    "id": "sis-012",
     "nis": "3194298218",
     "nama": "GHERIL SHIDQIA GHAZAL",
     "kelas": "Kelas 1-A",
@@ -1090,327 +120,17 @@
     "tanggalLahir": "2019-06-14"
   },
   {
-    "id": "sis-110",
-    "nis": "3199650136",
-    "nama": "GIBRAN ALDI PRATAMA",
-    "kelas": "Kelas 1-B",
+    "id": "sis-013",
+    "nis": "3188097189",
+    "nama": "JEMA MAULANA PUTRA",
+    "kelas": "Kelas 1-A",
     "jenisKelamin": "L",
-    "waOrangTua": "081299650136",
+    "waOrangTua": "081288097189",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2019-04-29"
+    "tanggalLahir": "2018-08-28"
   },
   {
-    "id": "sis-111",
-    "nis": "3184211045",
-    "nama": "GIBRAN SAPUTRA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081284211045",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-01-06"
-  },
-  {
-    "id": "sis-112",
-    "nis": "3160113048",
-    "nama": "HABIBI PARHAN ASIDIK",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081260113048",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-09-24"
-  },
-  {
-    "id": "sis-113",
-    "nis": "155246357",
-    "nama": "HABIBI WAPIK HIPDILAH",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081255246357",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-02-28"
-  },
-  {
-    "id": "sis-114",
-    "nis": "3165072590",
-    "nama": "HABIBUL KIROM",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081265072590",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-04-21"
-  },
-  {
-    "id": "sis-115",
-    "nis": "3160214517",
-    "nama": "HAFIZ NABAWI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081260214517",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-08-29"
-  },
-  {
-    "id": "sis-116",
-    "nis": "3180839526",
-    "nama": "HAIRIL RAFQI SAPAR",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081280839526",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-25"
-  },
-  {
-    "id": "sis-117",
-    "nis": "3180089558",
-    "nama": "HAMDAN HABIB M T",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081280089558",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-07-06"
-  },
-  {
-    "id": "sis-118",
-    "nis": "3156051652",
-    "nama": "HAMJAH ALPA NURIZWAN",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081256051652",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-03-11"
-  },
-  {
-    "id": "sis-119",
-    "nis": "3159573914",
-    "nama": "HANDIKA RADITYA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259573914",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-01"
-  },
-  {
-    "id": "sis-120",
-    "nis": "3148854506",
-    "nama": "HANIFAH KIRANA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081248854506",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-03-02"
-  },
-  {
-    "id": "sis-121",
-    "nis": "3179987875",
-    "nama": "HAURA FAUZIAH",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081279987875",
-    "tempatLahir": "TANGERANG",
-    "tanggalLahir": "2017-06-30"
-  },
-  {
-    "id": "sis-122",
-    "nis": "3168867647",
-    "nama": "HAZNA SALSABILA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081268867647",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-09-07"
-  },
-  {
-    "id": "sis-123",
-    "nis": "3186738231",
-    "nama": "HELNI HAURA HINSIYAH",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081286738231",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-08-05"
-  },
-  {
-    "id": "sis-124",
-    "nis": "3189286926",
-    "nama": "Heni Nur Aeni",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081289286926",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-09-27"
-  },
-  {
-    "id": "sis-125",
-    "nis": "3170159874",
-    "nama": "HIFDI ARRASYID",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081270159874",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-12-02"
-  },
-  {
-    "id": "sis-126",
-    "nis": "3169233250",
-    "nama": "HIKAM ABDUL MALIK",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081269233250",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-11-24"
-  },
-  {
-    "id": "sis-127",
-    "nis": "3154288582",
-    "nama": "HILMAN NIJAM MAULANA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254288582",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-23"
-  },
-  {
-    "id": "sis-128",
-    "nis": "3186745323",
-    "nama": "HURIYATUL ISLAMIYAH SYAMILAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081286745323",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-06-21"
-  },
-  {
-    "id": "sis-129",
-    "nis": "154034058",
-    "nama": "HUSNA ASOFA NURHOPIPAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081254034058",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-17"
-  },
-  {
-    "id": "sis-130",
-    "nis": "3145265668",
-    "nama": "HUSNI NURAZIZAH",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081245265668",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-09-22"
-  },
-  {
-    "id": "sis-131",
-    "nis": "3173022363",
-    "nama": "IHSAN NURDIANSAH",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081273022363",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-01-11"
-  },
-  {
-    "id": "sis-132",
-    "nis": "3189563884",
-    "nama": "ILYAS SANUSI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081289563884",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-07-06"
-  },
-  {
-    "id": "sis-133",
-    "nis": "3168534075",
-    "nama": "ILYASA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081268534075",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-04-03"
-  },
-  {
-    "id": "sis-134",
-    "nis": "3141325697",
-    "nama": "ILYASA SOPARWADI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081241325697",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-12-19"
-  },
-  {
-    "id": "sis-135",
-    "nis": "3140307021",
-    "nama": "IQBAL MUHAMAD NUR",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081240307021",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-08-14"
-  },
-  {
-    "id": "sis-136",
-    "nis": "156036781",
-    "nama": "IRPAN MAOLANA",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081256036781",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-02-16"
-  },
-  {
-    "id": "sis-137",
-    "nis": "141327142",
-    "nama": "IRWANSYAH",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081241327142",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-02-28"
-  },
-  {
-    "id": "sis-138",
-    "nis": "3185417241",
-    "nama": "Juna",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081285417241",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-23"
-  },
-  {
-    "id": "sis-139",
-    "nis": "3151816519",
-    "nama": "KAILA NURHAYATI",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081251816519",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-07-02"
-  },
-  {
-    "id": "sis-140",
-    "nis": "3176890487",
-    "nama": "KAMIL WAHDAN",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081276890487",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-03-26"
-  },
-  {
-    "id": "sis-141",
-    "nis": "153007082",
-    "nama": "KANIA KHOERUNISA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081253007082",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2015-01-16"
-  },
-  {
-    "id": "sis-142",
+    "id": "sis-014",
     "nis": "3203055387",
     "nama": "KANIA PEBIANA PUTRI",
     "kelas": "Kelas 1-A",
@@ -1420,7 +140,7 @@
     "tanggalLahir": "2020-02-24"
   },
   {
-    "id": "sis-143",
+    "id": "sis-015",
     "nis": "3191897404",
     "nama": "KANZA APRILIA",
     "kelas": "Kelas 1-A",
@@ -1430,57 +150,7 @@
     "tanggalLahir": "2019-04-28"
   },
   {
-    "id": "sis-144",
-    "nis": "3188070259",
-    "nama": "KAYLA NATALIA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081288070259",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-01-11"
-  },
-  {
-    "id": "sis-145",
-    "nis": "3186774397",
-    "nama": "KAYLA ROS MALINA",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081286774397",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-11-24"
-  },
-  {
-    "id": "sis-146",
-    "nis": "3159419182",
-    "nama": "KAYLA SYIFA AZZAHRA",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081259419182",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-24"
-  },
-  {
-    "id": "sis-147",
-    "nis": "3161683724",
-    "nama": "KEISYA RAHMA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081261683724",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-02-12"
-  },
-  {
-    "id": "sis-148",
-    "nis": "3172105278",
-    "nama": "KEVIN ADRIANSYAH",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081272105278",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-12-21"
-  },
-  {
-    "id": "sis-149",
+    "id": "sis-016",
     "nis": "3191126334",
     "nama": "KHAZIA ASYABIA IZATUNISA",
     "kelas": "Kelas 1-A",
@@ -1490,367 +160,27 @@
     "tanggalLahir": "2019-04-26"
   },
   {
-    "id": "sis-150",
-    "nis": "3189658525",
-    "nama": "KHOIRUL AZZAM",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081289658525",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-02-13"
-  },
-  {
-    "id": "sis-151",
-    "nis": "3158527982",
-    "nama": "LIANI MULYANI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081258527982",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-10-04"
-  },
-  {
-    "id": "sis-152",
-    "nis": "3185988161",
-    "nama": "LUTHFIA ZAHSY SALSABILLA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285988161",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-07-08"
-  },
-  {
-    "id": "sis-153",
-    "nis": "3169467240",
-    "nama": "M ABDUL HALIM",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081269467240",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-12-28"
-  },
-  {
-    "id": "sis-154",
-    "nis": "3174378492",
-    "nama": "M ARSYA AL FARIZ",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274378492",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-04-15"
-  },
-  {
-    "id": "sis-155",
-    "nis": "3183905170",
-    "nama": "M AZKA RAFFASYA SETIAWAN",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081283905170",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-02-04"
-  },
-  {
-    "id": "sis-156",
-    "nis": "3169102273",
-    "nama": "M FAJAR RAMDANI",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081269102273",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-06-11"
-  },
-  {
-    "id": "sis-157",
-    "nis": "3149422180",
-    "nama": "M FAUZI",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081249422180",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-09-10"
-  },
-  {
-    "id": "sis-158",
-    "nis": "3170107046",
-    "nama": "M PADLAN ARPAH",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081270107046",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-08-29"
-  },
-  {
-    "id": "sis-159",
-    "nis": "3167939996",
-    "nama": "M RIFAL PRATAMA",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081267939996",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-02-18"
-  },
-  {
-    "id": "sis-160",
-    "nis": "3204316473",
-    "nama": "M RIFKI ABDUL ROJAK",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081204316473",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2020-02-02"
-  },
-  {
-    "id": "sis-161",
-    "nis": "3184430967",
-    "nama": "M. Alif Ridho",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081284430967",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-01-22"
-  },
-  {
-    "id": "sis-162",
-    "nis": "30101162",
+    "id": "sis-017",
+    "nis": "3199766519",
     "nama": "M. HAIKAL PRATAMA",
     "kelas": "Kelas 1-A",
     "jenisKelamin": "L",
-    "waOrangTua": "0813245162",
+    "waOrangTua": "081299766519",
     "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-08-20"
+    "tanggalLahir": "2019-06-20"
   },
   {
-    "id": "sis-163",
-    "nis": "3154570900",
-    "nama": "M. RAEHAN KURNIAWAN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254570900",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-10-26"
-  },
-  {
-    "id": "sis-164",
-    "nis": "3166342651",
-    "nama": "M. RAFLI RAMADANI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081266342651",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-08-02"
-  },
-  {
-    "id": "sis-165",
-    "nis": "3171404812",
-    "nama": "MARPIN SAEPUDIN",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081271404812",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-07"
-  },
-  {
-    "id": "sis-166",
-    "nis": "3190104924",
-    "nama": "MARSYA SETIA RAHAYU",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081290104924",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-09-21"
-  },
-  {
-    "id": "sis-167",
+    "id": "sis-018",
     "nis": "3194064980",
     "nama": "MARSYA TISYA ALPATUNISSA",
-    "kelas": "Kelas 1-B",
+    "kelas": "Kelas 1-A",
     "jenisKelamin": "P",
     "waOrangTua": "081294064980",
     "tempatLahir": "GARUT",
     "tanggalLahir": "2019-06-23"
   },
   {
-    "id": "sis-168",
-    "nis": "3188266054",
-    "nama": "MAULANA YUSUP",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081288266054",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-04-14"
-  },
-  {
-    "id": "sis-169",
-    "nis": "3171712759",
-    "nama": "MEIDA SALSA",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081271712759",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-05-27"
-  },
-  {
-    "id": "sis-170",
-    "nis": "3174839637",
-    "nama": "MELAN NURHOLIS",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274839637",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-08-07"
-  },
-  {
-    "id": "sis-171",
-    "nis": "3153336116",
-    "nama": "MELISA ANGGRAENI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081253336116",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-16"
-  },
-  {
-    "id": "sis-172",
-    "nis": "3159049000",
-    "nama": "MIFTAH FARID",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259049000",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-26"
-  },
-  {
-    "id": "sis-173",
-    "nis": "3190245455",
-    "nama": "MILKA PATIMAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081290245455",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-01-24"
-  },
-  {
-    "id": "sis-174",
-    "nis": "148300431",
-    "nama": "MIPTAH AL AZKIA PATUROHIM",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081248300431",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-02-05"
-  },
-  {
-    "id": "sis-175",
-    "nis": "3184001630",
-    "nama": "MOCH AIMAN NAWAWI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081284001630",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-07-10"
-  },
-  {
-    "id": "sis-176",
-    "nis": "3171804372",
-    "nama": "MOCH SYAHRUL SAPUTRA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081271804372",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-11-12"
-  },
-  {
-    "id": "sis-177",
-    "nis": "3171084378",
-    "nama": "MOCH. RAFIQ KURNIAWAN",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081271084378",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-11-22"
-  },
-  {
-    "id": "sis-178",
-    "nis": "3158448729",
-    "nama": "MOH RANGGA",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081258448729",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-07-02"
-  },
-  {
-    "id": "sis-179",
-    "nis": "3192336062",
-    "nama": "MUAZ HELMI YAKDAN",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081292336062",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-03-03"
-  },
-  {
-    "id": "sis-180",
-    "nis": "3177379356",
-    "nama": "MUFIDAH SAPARIA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081277379356",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-10-21"
-  },
-  {
-    "id": "sis-181",
-    "nis": "3179081165",
-    "nama": "MUHAMAD AKBAR ABDUL ROJAK",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081279081165",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-10-03"
-  },
-  {
-    "id": "sis-182",
-    "nis": "3144325132",
-    "nama": "MUHAMAD ALAWI",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081244325132",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-10-29"
-  },
-  {
-    "id": "sis-183",
-    "nis": "3184803472",
-    "nama": "MUHAMAD ALDI NOPIANSYAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081284803472",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-12-23"
-  },
-  {
-    "id": "sis-184",
-    "nis": "3188099018",
-    "nama": "MUHAMAD ALWI SAPUTRA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081288099018",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-03-30"
-  },
-  {
-    "id": "sis-185",
-    "nis": "3172187291",
-    "nama": "MUHAMAD AZKA HABIBULLOH",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081272187291",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-26"
-  },
-  {
-    "id": "sis-186",
+    "id": "sis-019",
     "nis": "3194746062",
     "nama": "MUHAMAD AZRIL PAUZAN",
     "kelas": "Kelas 1-A",
@@ -1860,87 +190,7 @@
     "tanggalLahir": "2019-05-02"
   },
   {
-    "id": "sis-187",
-    "nis": "3194765045",
-    "nama": "Muhamad Azril Rafif Fahri",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081294765045",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-10-31"
-  },
-  {
-    "id": "sis-188",
-    "nis": "3166619890",
-    "nama": "MUHAMAD BAGJA JAYA KARAMA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081266619890",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-04-18"
-  },
-  {
-    "id": "sis-189",
-    "nis": "3151761361",
-    "nama": "MUHAMAD DAUD SULAEMAN AL KAHFI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081251761361",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-14"
-  },
-  {
-    "id": "sis-190",
-    "nis": "3181476113",
-    "nama": "MUHAMAD EKA SAPUTRA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081281476113",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-29"
-  },
-  {
-    "id": "sis-191",
-    "nis": "3157980892",
-    "nama": "MUHAMAD FATHAN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081257980892",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2015-12-08"
-  },
-  {
-    "id": "sis-192",
-    "nis": "3167166227",
-    "nama": "MUHAMAD HAFIZ ARKANA",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081267166227",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-02-04"
-  },
-  {
-    "id": "sis-193",
-    "nis": "3165860030",
-    "nama": "Muhamad Hasbi Ramadan",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081265860030",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-07-01"
-  },
-  {
-    "id": "sis-194",
-    "nis": "3149065298",
-    "nama": "MUHAMAD HIKAM ALVATIR",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081249065298",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-12-18"
-  },
-  {
-    "id": "sis-195",
+    "id": "sis-020",
     "nis": "3190202145",
     "nama": "MUHAMAD HUSNI TAMRIN",
     "kelas": "Kelas 1-A",
@@ -1950,7 +200,7 @@
     "tanggalLahir": "2019-07-11"
   },
   {
-    "id": "sis-196",
+    "id": "sis-021",
     "nis": "3197492853",
     "nama": "MUHAMAD IRDAN AL-HAFSI",
     "kelas": "Kelas 1-A",
@@ -1960,67 +210,7 @@
     "tanggalLahir": "2019-04-24"
   },
   {
-    "id": "sis-197",
-    "nis": "3160500898",
-    "nama": "Muhamad Jihad Fauzi",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081260500898",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-03-02"
-  },
-  {
-    "id": "sis-198",
-    "nis": "3145060479",
-    "nama": "MUHAMAD NAUVAL",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081245060479",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-06-08"
-  },
-  {
-    "id": "sis-199",
-    "nis": "3174661270",
-    "nama": "MUHAMAD NAZMI DIHYAUL HAQ",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274661270",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-05-23"
-  },
-  {
-    "id": "sis-200",
-    "nis": "3156899552",
-    "nama": "MUHAMAD NURROHIM RAMADHAN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081256899552",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-07-03"
-  },
-  {
-    "id": "sis-201",
-    "nis": "3196143623",
-    "nama": "Muhamad Padilah",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081296143623",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-07-04"
-  },
-  {
-    "id": "sis-202",
-    "nis": "3198580229",
-    "nama": "Muhamad Paujan Saputra",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081298580229",
-    "tempatLahir": "Cisurupan",
-    "tanggalLahir": "2019-06-07"
-  },
-  {
-    "id": "sis-203",
+    "id": "sis-022",
     "nis": "3205674843",
     "nama": "MUHAMAD R FABIAN RAPAHSA",
     "kelas": "Kelas 1-A",
@@ -2030,7 +220,7 @@
     "tanggalLahir": "2020-02-27"
   },
   {
-    "id": "sis-204",
+    "id": "sis-023",
     "nis": "3198122017",
     "nama": "MUHAMAD RAFSAN",
     "kelas": "Kelas 1-A",
@@ -2040,97 +230,7 @@
     "tanggalLahir": "2019-12-07"
   },
   {
-    "id": "sis-205",
-    "nis": "3191321193",
-    "nama": "MUHAMAD RAIS MALIK AL BAHAQI",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081291321193",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-06-08"
-  },
-  {
-    "id": "sis-206",
-    "nis": "3166070639",
-    "nama": "MUHAMAD RAMA",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081266070639",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-02-19"
-  },
-  {
-    "id": "sis-207",
-    "nis": "3171863248",
-    "nama": "MUHAMAD RAMDAN",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081271863248",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-06-10"
-  },
-  {
-    "id": "sis-208",
-    "nis": "3154435001",
-    "nama": "MUHAMAD RAMDANI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254435001",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-07-20"
-  },
-  {
-    "id": "sis-209",
-    "nis": "3185007660",
-    "nama": "MUHAMAD RIDWAN",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081285007660",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-01-26"
-  },
-  {
-    "id": "sis-210",
-    "nis": "3167025136",
-    "nama": "MUHAMAD RIDWAN",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081267025136",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-05-18"
-  },
-  {
-    "id": "sis-211",
-    "nis": "158846243",
-    "nama": "MUHAMAD RIVALDI ALIYANSYAH",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081258846243",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-18"
-  },
-  {
-    "id": "sis-212",
-    "nis": "3179129704",
-    "nama": "MUHAMAD RIZKI PADILAH",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081279129704",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-06"
-  },
-  {
-    "id": "sis-213",
-    "nis": "3154546727",
-    "nama": "MUHAMAD RIZQI AR",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254546727",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-10-17"
-  },
-  {
-    "id": "sis-214",
+    "id": "sis-024",
     "nis": "3195847599",
     "nama": "MUHAMAD RIZWAN",
     "kelas": "Kelas 1-A",
@@ -2140,107 +240,7 @@
     "tanggalLahir": "2019-09-05"
   },
   {
-    "id": "sis-215",
-    "nis": "3180863965",
-    "nama": "MUHAMAD ROHMAN",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081280863965",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-09-15"
-  },
-  {
-    "id": "sis-216",
-    "nis": "3197205455",
-    "nama": "Muhamad Sadikin",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081297205455",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-02-26"
-  },
-  {
-    "id": "sis-217",
-    "nis": "3192733629",
-    "nama": "MUHAMAD SAHRUL AL GIFARI",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081292733629",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-06-22"
-  },
-  {
-    "id": "sis-218",
-    "nis": "3161985345",
-    "nama": "MUHAMAD SYAHRIL ISHAQ",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081261985345",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-12-11"
-  },
-  {
-    "id": "sis-219",
-    "nis": "3198718488",
-    "nama": "MUHAMAD YASYFI JAFIR AKHTAR",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081298718488",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-03-02"
-  },
-  {
-    "id": "sis-220",
-    "nis": "3174073499",
-    "nama": "MUHAMAD ZAINURI AL FATH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274073499",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-10-26"
-  },
-  {
-    "id": "sis-221",
-    "nis": "155013141",
-    "nama": "MUHAMMAD ALFI SARIP",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081255013141",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-26"
-  },
-  {
-    "id": "sis-222",
-    "nis": "3157334586",
-    "nama": "MUHAMMAD ALVIANRI FAUZAN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081257334586",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-28"
-  },
-  {
-    "id": "sis-223",
-    "nis": "3159111528",
-    "nama": "MUHAMMAD ALVIYANRA FAUZI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259111528",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-08-28"
-  },
-  {
-    "id": "sis-224",
-    "nis": "3174947341",
-    "nama": "MUHAMMAD ALWI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274947341",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-09-21"
-  },
-  {
-    "id": "sis-225",
+    "id": "sis-025",
     "nis": "3207864920",
     "nama": "MUHAMMAD ASLAN ZAIDAN HIDAYAT",
     "kelas": "Kelas 1-A",
@@ -2250,7 +250,7 @@
     "tanggalLahir": "2020-01-26"
   },
   {
-    "id": "sis-226",
+    "id": "sis-026",
     "nis": "3199293211",
     "nama": "MUHAMMAD AZAM NURWAHID",
     "kelas": "Kelas 1-A",
@@ -2260,307 +260,7 @@
     "tanggalLahir": "2019-11-15"
   },
   {
-    "id": "sis-227",
-    "nis": "3201757100",
-    "nama": "MUHAMMAD AZIZ FIRMANSYAH",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081201757100",
-    "tempatLahir": "Bekasi",
-    "tanggalLahir": "2020-06-12"
-  },
-  {
-    "id": "sis-228",
-    "nis": "3186538995",
-    "nama": "MUHAMMAD AZZAM AL GIFARI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081286538995",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-11-22"
-  },
-  {
-    "id": "sis-229",
-    "nis": "3144023469",
-    "nama": "MUHAMMAD DAFA MAULANA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081244023469",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-11-16"
-  },
-  {
-    "id": "sis-230",
-    "nis": "3196679229",
-    "nama": "MUHAMMAD FABIAN YUSUF",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081296679229",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-02-26"
-  },
-  {
-    "id": "sis-231",
-    "nis": "3198603753",
-    "nama": "Muhammad Faqih",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081298603753",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-10-03"
-  },
-  {
-    "id": "sis-232",
-    "nis": "3179118169",
-    "nama": "MUHAMMAD FARIZ",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081279118169",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-04-11"
-  },
-  {
-    "id": "sis-233",
-    "nis": "3187271255",
-    "nama": "MUHAMMAD GIAS HAMIJAN",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081287271255",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-12-15"
-  },
-  {
-    "id": "sis-234",
-    "nis": "3159868009",
-    "nama": "MUHAMMAD IKBAL",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259868009",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-04"
-  },
-  {
-    "id": "sis-235",
-    "nis": "3160762197",
-    "nama": "MUHAMMAD KURNIANSYAH",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081260762197",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-12-05"
-  },
-  {
-    "id": "sis-236",
-    "nis": "3190160519",
-    "nama": "MUHAMMAD MIFTAH BABUSSALAM",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081290160519",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-09-27"
-  },
-  {
-    "id": "sis-237",
-    "nis": "3188653537",
-    "nama": "MUHAMMAD NAUFAL ANSHARI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081288653537",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-01-31"
-  },
-  {
-    "id": "sis-238",
-    "nis": "3204374971",
-    "nama": "MUHAMMAD RABBANI AKBAR",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081204374971",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2020-02-15"
-  },
-  {
-    "id": "sis-239",
-    "nis": "3141254992",
-    "nama": "MUHAMMAD RIDWAN",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081241254992",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-06-24"
-  },
-  {
-    "id": "sis-240",
-    "nis": "3195528253",
-    "nama": "Muhammad Rifqi Noufal",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081295528253",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-06-13"
-  },
-  {
-    "id": "sis-241",
-    "nis": "3182676423",
-    "nama": "MUHAMMAD RIZKI HERMANSYAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081282676423",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-10-17"
-  },
-  {
-    "id": "sis-242",
-    "nis": "3171090658",
-    "nama": "MUHAMMAD RIZKI IMAMI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081271090658",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-11-21"
-  },
-  {
-    "id": "sis-243",
-    "nis": "3142612230",
-    "nama": "MUHAMMAD RIZKI PRATAMA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081242612230",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-09-12"
-  },
-  {
-    "id": "sis-244",
-    "nis": "3181030640",
-    "nama": "MUHAMMAD SYABIL RAMDANI",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081281030640",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-06-10"
-  },
-  {
-    "id": "sis-245",
-    "nis": "3178047616",
-    "nama": "MUHAMMAD TRISTAN FEBRIANSYAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081278047616",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-02-15"
-  },
-  {
-    "id": "sis-246",
-    "nis": "3190946084",
-    "nama": "MULFI AZMI RAMADHAN",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081290946084",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-06-02"
-  },
-  {
-    "id": "sis-247",
-    "nis": "3186205827",
-    "nama": "MULKI MALIK SEPGINANJAR",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081286205827",
-    "tempatLahir": "Kabupaten Garut",
-    "tanggalLahir": "2018-03-15"
-  },
-  {
-    "id": "sis-248",
-    "nis": "145719573",
-    "nama": "MUSTAJAB RAHMATILAH",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081245719573",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-04-16"
-  },
-  {
-    "id": "sis-249",
-    "nis": "3158474097",
-    "nama": "MUSYAHID MUBIN",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081258474097",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-10-19"
-  },
-  {
-    "id": "sis-250",
-    "nis": "3152810557",
-    "nama": "MUTIA AZAHRA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081252810557",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-03-11"
-  },
-  {
-    "id": "sis-251",
-    "nis": "3192207885",
-    "nama": "Mutiara Sani",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081292207885",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-03-21"
-  },
-  {
-    "id": "sis-252",
-    "nis": "3156254056",
-    "nama": "NABILA KHOIRUNISA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081256254056",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-04-15"
-  },
-  {
-    "id": "sis-253",
-    "nis": "3152405354",
-    "nama": "NABILA NUR AMALIA",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081252405354",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-11-23"
-  },
-  {
-    "id": "sis-254",
-    "nis": "3159210761",
-    "nama": "NABILAH",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081259210761",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-11-14"
-  },
-  {
-    "id": "sis-255",
-    "nis": "3189673205",
-    "nama": "NABIRA KHABUBILLAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081289673205",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-03-02"
-  },
-  {
-    "id": "sis-256",
-    "nis": "3145120533",
-    "nama": "NADA SRIDAYANTI",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081245120533",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-12-04"
-  },
-  {
-    "id": "sis-257",
+    "id": "sis-027",
     "nis": "3206729806",
     "nama": "NAFISA MUMTAZA FARID",
     "kelas": "Kelas 1-A",
@@ -2570,47 +270,7 @@
     "tanggalLahir": "2020-06-23"
   },
   {
-    "id": "sis-258",
-    "nis": "3152723831",
-    "nama": "NAFLA SYAKIRA HERMAWAN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081252723831",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-25"
-  },
-  {
-    "id": "sis-259",
-    "nis": "3166130960",
-    "nama": "NAHLA RIZQIA MALIKA MULKI",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266130960",
-    "tempatLahir": "Bandung Barat",
-    "tanggalLahir": "2016-07-24"
-  },
-  {
-    "id": "sis-260",
-    "nis": "3183431183",
-    "nama": "NAILA",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081283431183",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-16"
-  },
-  {
-    "id": "sis-261",
-    "nis": "3176523060",
-    "nama": "NAILA NURAPIPAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081276523060",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-23"
-  },
-  {
-    "id": "sis-262",
+    "id": "sis-028",
     "nis": "3195550898",
     "nama": "NAIMA ULFATUNISA",
     "kelas": "Kelas 1-A",
@@ -2620,247 +280,17 @@
     "tanggalLahir": "2019-12-28"
   },
   {
-    "id": "sis-263",
-    "nis": "3149950635",
-    "nama": "NAIRA MARIYA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081249950635",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-09-10"
-  },
-  {
-    "id": "sis-264",
-    "nis": "157418845",
-    "nama": "NAJMA ROUDOTUL JANAH",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081257418845",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-29"
-  },
-  {
-    "id": "sis-265",
-    "nis": "3164996327",
-    "nama": "NAJMATUL LAIL",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081264996327",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-04-23"
-  },
-  {
-    "id": "sis-266",
-    "nis": "147982764",
-    "nama": "Najmi Alna Mawawi",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081247982764",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-03-17"
-  },
-  {
-    "id": "sis-267",
-    "nis": "3184765736",
-    "nama": "NANDA NUR AFIFAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081284765736",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-03-23"
-  },
-  {
-    "id": "sis-268",
-    "nis": "3172831373",
-    "nama": "NAPISA NUSWATUL HASANAH",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081272831373",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-01-03"
-  },
-  {
-    "id": "sis-269",
-    "nis": "3195788629",
-    "nama": "NAURA KHALISTA ATALIA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081295788629",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-09-30"
-  },
-  {
-    "id": "sis-270",
+    "id": "sis-029",
     "nis": "3200005054",
     "nama": "NAURA SABILA SALAM",
-    "kelas": "Kelas 1-B",
+    "kelas": "Kelas 1-A",
     "jenisKelamin": "P",
     "waOrangTua": "081200005054",
     "tempatLahir": "GARUT",
     "tanggalLahir": "2020-04-11"
   },
   {
-    "id": "sis-271",
-    "nis": "3189075402",
-    "nama": "NAURA SALSABILA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081289075402",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-05-30"
-  },
-  {
-    "id": "sis-272",
-    "nis": "3143125763",
-    "nama": "NAUVAL SIDQI",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081243125763",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-08-22"
-  },
-  {
-    "id": "sis-273",
-    "nis": "143204543",
-    "nama": "NAZRIL MUHAMAD ILHAM",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081243204543",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-08-21"
-  },
-  {
-    "id": "sis-274",
-    "nis": "3185914075",
-    "nama": "NAZWA SYAHIRA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285914075",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-27"
-  },
-  {
-    "id": "sis-275",
-    "nis": "3178982286",
-    "nama": "NENG HANDAYANI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081278982286",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-11-15"
-  },
-  {
-    "id": "sis-276",
-    "nis": "3166213116",
-    "nama": "NENG REVA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266213116",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-03-29"
-  },
-  {
-    "id": "sis-277",
-    "nis": "3140726429",
-    "nama": "NIKEN SELIA ANJANI",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081240726429",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-05-25"
-  },
-  {
-    "id": "sis-278",
-    "nis": "3142743694",
-    "nama": "NURI NOPITA SARI",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081242743694",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-09-21"
-  },
-  {
-    "id": "sis-279",
-    "nis": "3185785769",
-    "nama": "NURIL MAULIDA",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285785769",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-04-17"
-  },
-  {
-    "id": "sis-280",
-    "nis": "3184779134",
-    "nama": "NURNAZMI ANGGRAENI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081284779134",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-01-12"
-  },
-  {
-    "id": "sis-281",
-    "nis": "3156539811",
-    "nama": "NURUL FATIMAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081256539811",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-07-29"
-  },
-  {
-    "id": "sis-282",
-    "nis": "3184111702",
-    "nama": "Nurul Siva",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081284111702",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-06-01"
-  },
-  {
-    "id": "sis-283",
-    "nis": "3154440914",
-    "nama": "PAISAL MUHAMAD BAKRI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254440914",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-03-20"
-  },
-  {
-    "id": "sis-284",
-    "nis": "3188453656",
-    "nama": "Prasana Nazif Fahri",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081288453656",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-10-27"
-  },
-  {
-    "id": "sis-285",
-    "nis": "3177335872",
-    "nama": "PRATAMA ASRIL ARDIANSYAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081277335872",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-20"
-  },
-  {
-    "id": "sis-286",
-    "nis": "3152351790",
-    "nama": "PRIDA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081252351790",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-11"
-  },
-  {
-    "id": "sis-287",
+    "id": "sis-030",
     "nis": "3190769359",
     "nama": "PUPI NUR HASANAH",
     "kelas": "Kelas 1-A",
@@ -2870,47 +300,7 @@
     "tanggalLahir": "2019-10-23"
   },
   {
-    "id": "sis-288",
-    "nis": "3144133450",
-    "nama": "PUPU ASMAWIYAH SYAHIDATUL HAQ",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081244133450",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-06-13"
-  },
-  {
-    "id": "sis-289",
-    "nis": "3154846789",
-    "nama": "PUPUT RAHAYU",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081254846789",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-03-20"
-  },
-  {
-    "id": "sis-290",
-    "nis": "3153372747",
-    "nama": "PUTRA NALAR NUR RAHMAT",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081253372747",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-02-07"
-  },
-  {
-    "id": "sis-291",
-    "nis": "3166424169",
-    "nama": "PUTRI ALYA RAMADANI",
-    "kelas": "Kelas 5-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266424169",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-06-08"
-  },
-  {
-    "id": "sis-292",
+    "id": "sis-031",
     "nis": "3193546900",
     "nama": "QIANA PUTRI ARDANI",
     "kelas": "Kelas 1-A",
@@ -2920,7 +310,7 @@
     "tanggalLahir": "2019-05-30"
   },
   {
-    "id": "sis-293",
+    "id": "sis-032",
     "nis": "3196080610",
     "nama": "RADEN SURYA GUMELAR",
     "kelas": "Kelas 1-A",
@@ -2930,67 +320,7 @@
     "tanggalLahir": "2019-09-06"
   },
   {
-    "id": "sis-294",
-    "nis": "3195923904",
-    "nama": "RADITIA MUHAMAD SARIP HIDAYAT",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081295923904",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-04-03"
-  },
-  {
-    "id": "sis-295",
-    "nis": "3142920513",
-    "nama": "RAFA FADILAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081242920513",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-01-06"
-  },
-  {
-    "id": "sis-296",
-    "nis": "3176872676",
-    "nama": "RAFA MAULANA AKBAR",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081276872676",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-01-22"
-  },
-  {
-    "id": "sis-297",
-    "nis": "3178078778",
-    "nama": "RAFI MAULANI AKBAR",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081278078778",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-01-22"
-  },
-  {
-    "id": "sis-298",
-    "nis": "151669065",
-    "nama": "RAFI MUHAMAD RAMDANI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081251669065",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-06-19"
-  },
-  {
-    "id": "sis-299",
-    "nis": "3173620782",
-    "nama": "RAFLI FAUZAN",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081273620782",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-10-25"
-  },
-  {
-    "id": "sis-300",
+    "id": "sis-033",
     "nis": "3195699332",
     "nama": "RAHMA SYAFIRA AL ZZARA",
     "kelas": "Kelas 1-A",
@@ -3000,117 +330,7 @@
     "tanggalLahir": "2019-08-28"
   },
   {
-    "id": "sis-301",
-    "nis": "3131089479",
-    "nama": "RAHMAT BAHTIAR",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081231089479",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2013-11-13"
-  },
-  {
-    "id": "sis-302",
-    "nis": "3161454214",
-    "nama": "RAIHAN MALIK AL KHAIRI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081261454214",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-07-20"
-  },
-  {
-    "id": "sis-303",
-    "nis": "3190897181",
-    "nama": "RAINSYA ZAINA ZAKIRA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081290897181",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-01-12"
-  },
-  {
-    "id": "sis-304",
-    "nis": "3179681739",
-    "nama": "RAIS AL FARIZI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081279681739",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-04-17"
-  },
-  {
-    "id": "sis-305",
-    "nis": "3146041109",
-    "nama": "RAISA ADILA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081246041109",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-05-16"
-  },
-  {
-    "id": "sis-306",
-    "nis": "3196156396",
-    "nama": "Raisa Nurul Janah",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081296156396",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-04-11"
-  },
-  {
-    "id": "sis-307",
-    "nis": "3177345399",
-    "nama": "RAMDAN",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081277345399",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-06-04"
-  },
-  {
-    "id": "sis-308",
-    "nis": "3189885676",
-    "nama": "RANDI AKBAR RADIKIA",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081289885676",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-03-01"
-  },
-  {
-    "id": "sis-309",
-    "nis": "3177337006",
-    "nama": "RANDI SAPUTRA",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081277337006",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-01-27"
-  },
-  {
-    "id": "sis-310",
-    "nis": "3152771044",
-    "nama": "RANEM HUMAIRA",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081252771044",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-12-06"
-  },
-  {
-    "id": "sis-311",
-    "nis": "3141946297",
-    "nama": "RANGGA DENA MUHAMAD ALFAZRI",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081241946297",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-10-01"
-  },
-  {
-    "id": "sis-312",
+    "id": "sis-034",
     "nis": "3191015960",
     "nama": "RANGGI ROSADI",
     "kelas": "Kelas 1-A",
@@ -3120,17 +340,1037 @@
     "tanggalLahir": "2019-03-03"
   },
   {
-    "id": "sis-313",
-    "nis": "3162445623",
-    "nama": "RANTI SRI RAHAYU",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081262445623",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-01-05"
+    "id": "sis-035",
+    "nis": "3192271437",
+    "nama": "RIFQI ALFIANSYAH",
+    "kelas": "Kelas 1-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081292271437",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-06-19"
   },
   {
-    "id": "sis-314",
+    "id": "sis-036",
+    "nis": "3198395342",
+    "nama": "SABIL SIDIQ KADAFFI",
+    "kelas": "Kelas 1-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081298395342",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-12-19"
+  },
+  {
+    "id": "sis-037",
+    "nis": "3194434490",
+    "nama": "SANI ASLAN",
+    "kelas": "Kelas 1-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081294434490",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-06-10"
+  },
+  {
+    "id": "sis-038",
+    "nis": "3193001253",
+    "nama": "SYAKIRA HILYA DINIAH",
+    "kelas": "Kelas 1-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081293001253",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-03-20"
+  },
+  {
+    "id": "sis-039",
+    "nis": "3190946971",
+    "nama": "TIARA SAPITRI",
+    "kelas": "Kelas 1-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081290946971",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-07-19"
+  },
+  {
+    "id": "sis-040",
+    "nis": "3197218554",
+    "nama": "WILDAN PADILAH",
+    "kelas": "Kelas 1-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081297218554",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-11-02"
+  },
+  {
+    "id": "sis-041",
+    "nis": "3206365696",
+    "nama": "AIRA RUHIMA BUNGA AINURFATAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081206365696",
+    "tempatLahir": "garut",
+    "tanggalLahir": "2020-02-11"
+  },
+  {
+    "id": "sis-042",
+    "nis": "3191634272",
+    "nama": "AIRIN PUTRI JULIYANTI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081291634272",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-07-25"
+  },
+  {
+    "id": "sis-043",
+    "nis": "3207826625",
+    "nama": "ALIF PRATAMA MUHAMMAD SAPUTRA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081207826625",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2020-01-23"
+  },
+  {
+    "id": "sis-044",
+    "nis": "3191074070",
+    "nama": "ALIFA RAYYA NABILA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081291074070",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-08-21"
+  },
+  {
+    "id": "sis-045",
+    "nis": "3203304099",
+    "nama": "BILQIS HOIRUN NISA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081203304099",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2020-02-19"
+  },
+  {
+    "id": "sis-046",
+    "nis": "3198063751",
+    "nama": "DEWI SEKAR KOMARIAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081298063751",
+    "tempatLahir": "KABUPATEN GARUT",
+    "tanggalLahir": "2019-08-14"
+  },
+  {
+    "id": "sis-047",
+    "nis": "3191133933",
+    "nama": "DILA YULIYANTI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081291133933",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-07-03"
+  },
+  {
+    "id": "sis-048",
+    "nis": "3190347322",
+    "nama": "DZAKIA NAIFFA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081290347322",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-11-06"
+  },
+  {
+    "id": "sis-049",
+    "nis": "3194053193",
+    "nama": "FADIYAH INAYAH UMMAMAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "083101871513",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-11-16"
+  },
+  {
+    "id": "sis-050",
+    "nis": "3198724595",
+    "nama": "GALAXY SAUQY FIRDAUS",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081298724595",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-06-04"
+  },
+  {
+    "id": "sis-051",
+    "nis": "3199650136",
+    "nama": "GIBRAN ALDI PRATAMA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081299650136",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-04-29"
+  },
+  {
+    "id": "sis-052",
+    "nis": "3204316473",
+    "nama": "M RIFKI ABDUL ROJAK",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081204316473",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2020-02-02"
+  },
+  {
+    "id": "sis-053",
+    "nis": "3190104924",
+    "nama": "MARSYA SETIA RAHAYU",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081290104924",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-09-21"
+  },
+  {
+    "id": "sis-054",
+    "nis": "3194765045",
+    "nama": "MUHAMAD AZRIL RAFIF FAHRI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "089512178478",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-10-31"
+  },
+  {
+    "id": "sis-055",
+    "nis": "3196143623",
+    "nama": "MUHAMAD PADILAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "083832173838",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-07-04"
+  },
+  {
+    "id": "sis-056",
+    "nis": "3198580229",
+    "nama": "MUHAMAD PAUJAN SAPUTRA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "083116530153",
+    "tempatLahir": "Cisurupan",
+    "tanggalLahir": "2019-06-07"
+  },
+  {
+    "id": "sis-057",
+    "nis": "3191321193",
+    "nama": "MUHAMAD RAIS MALIK AL BAHAQI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081291321193",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-06-09"
+  },
+  {
+    "id": "sis-058",
+    "nis": "3192733629",
+    "nama": "MUHAMAD SAHRUL AL GIFARI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081292733629",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-06-22"
+  },
+  {
+    "id": "sis-059",
+    "nis": "3198718488",
+    "nama": "MUHAMAD YASYFI JAFIR AKHTAR",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081298718488",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-03-02"
+  },
+  {
+    "id": "sis-060",
+    "nis": "3201757100",
+    "nama": "MUHAMMAD AZIZ FIRMANSYAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081201757100",
+    "tempatLahir": "Bekasi",
+    "tanggalLahir": "2020-06-12"
+  },
+  {
+    "id": "sis-061",
+    "nis": "3198603753",
+    "nama": "MUHAMMAD FAQIH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "083892722300",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-10-03"
+  },
+  {
+    "id": "sis-062",
+    "nis": "3190160519",
+    "nama": "MUHAMMAD MIFTAH BABUSSALAM",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081290160519",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-09-27"
+  },
+  {
+    "id": "sis-063",
+    "nis": "3204374971",
+    "nama": "MUHAMMAD RABBANI AKBAR",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081204374971",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2020-02-15"
+  },
+  {
+    "id": "sis-064",
+    "nis": "3195528253",
+    "nama": "MUHAMMAD RIFQI NOUFAL",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "082125919733",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-06-13"
+  },
+  {
+    "id": "sis-065",
+    "nis": "3190946084",
+    "nama": "MULFI AZMI RAMADHAN",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081290946084",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-06-02"
+  },
+  {
+    "id": "sis-066",
+    "nis": "3192207885",
+    "nama": "MUTIARA SANI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081292207885",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-03-21"
+  },
+  {
+    "id": "sis-067",
+    "nis": "3195788629",
+    "nama": "NAURA KHALISTA TALIA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081295788629",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-09-30"
+  },
+  {
+    "id": "sis-068",
+    "nis": "3188453656",
+    "nama": "PRASANA NAZIF FAHRI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081288453656",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-27"
+  },
+  {
+    "id": "sis-069",
+    "nis": "3195923904",
+    "nama": "RADITIA MUHAMAD SARIP HIDAYAT",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081295923904",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-04-03"
+  },
+  {
+    "id": "sis-070",
+    "nis": "3196156396",
+    "nama": "RAISA NURUL JANAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081296156396",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-04-11"
+  },
+  {
+    "id": "sis-071",
+    "nis": "3192626570",
+    "nama": "SABQI RAIQ RAKHSYAN PERMANA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081292626570",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-05-12"
+  },
+  {
+    "id": "sis-072",
+    "nis": "3202366178",
+    "nama": "SITI MASFUFAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081202366178",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2020-01-02"
+  },
+  {
+    "id": "sis-073",
+    "nis": "3193034116",
+    "nama": "SITI SOLEHAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081293034116",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-12-25"
+  },
+  {
+    "id": "sis-074",
+    "nis": "3192207933",
+    "nama": "SURYA NUGRAHA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081292207933",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-01-07"
+  },
+  {
+    "id": "sis-075",
+    "nis": "3196163968",
+    "nama": "SYAFIQ M SADIDUL AZMI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081296163968",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-07-11"
+  },
+  {
+    "id": "sis-076",
+    "nis": "3197852974",
+    "nama": "SYAUQI FADHLAN MULTAZAM",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081297852974",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-12-30"
+  },
+  {
+    "id": "sis-077",
+    "nis": "3192268159",
+    "nama": "TANIA LESTARI",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081292268159",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-08-29"
+  },
+  {
+    "id": "sis-078",
+    "nis": "3198267192",
+    "nama": "TRIYANA ARSYA WIJAYA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081298267192",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-08-17"
+  },
+  {
+    "id": "sis-079",
+    "nis": "3197582773",
+    "nama": "TSAMROTUS SA'ADAH",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081297582773",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-04-11"
+  },
+  {
+    "id": "sis-080",
+    "nis": "3191569474",
+    "nama": "VANESA VARELIA",
+    "kelas": "Kelas 1-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081291569474",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-04-07"
+  },
+  {
+    "id": "sis-081",
+    "nis": "3185254820",
+    "nama": "AHMAD SAYUTI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081285254820",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-02-12"
+  },
+  {
+    "id": "sis-082",
+    "nis": "3198767924",
+    "nama": "AILA AURELIA AZURA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081298767924",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-02-16"
+  },
+  {
+    "id": "sis-083",
+    "nis": "3187493430",
+    "nama": "AKBAR SYAHID NAWAWI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081287493430",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-08-23"
+  },
+  {
+    "id": "sis-084",
+    "nis": "3181272702",
+    "nama": "ANDREYAS MUHAMAD S",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081281272702",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-14"
+  },
+  {
+    "id": "sis-085",
+    "nis": "3182579568",
+    "nama": "AYRA SHIRLI ALNAIRA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081282579568",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-09-22"
+  },
+  {
+    "id": "sis-086",
+    "nis": "3184156806",
+    "nama": "AZRINA LAVENIA QOTRUN NADA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081284156806",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-04-08"
+  },
+  {
+    "id": "sis-087",
+    "nis": "3187437249",
+    "nama": "DINDA AULIA ALZAHRA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081287437249",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-07"
+  },
+  {
+    "id": "sis-088",
+    "nis": "3185319976",
+    "nama": "DINDA KOYIMA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285319976",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-09-07"
+  },
+  {
+    "id": "sis-089",
+    "nis": "3180188945",
+    "nama": "EMI RAMADANI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081280188945",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-06-13"
+  },
+  {
+    "id": "sis-090",
+    "nis": "3178802684",
+    "nama": "ENJEL ENRIANA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081278802684",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-07-02"
+  },
+  {
+    "id": "sis-091",
+    "nis": "3180839526",
+    "nama": "HAIRIL RAFQI SAPAR",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081280839526",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-25"
+  },
+  {
+    "id": "sis-092",
+    "nis": "3186738231",
+    "nama": "HELNI HAURA HINSIYAH",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081286738231",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-08-05"
+  },
+  {
+    "id": "sis-093",
+    "nis": "3189563884",
+    "nama": "ILYAS SANUSI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081289563884",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-07-06"
+  },
+  {
+    "id": "sis-094",
+    "nis": "3188070259",
+    "nama": "KAYLA NATALIA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081288070259",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-01-11"
+  },
+  {
+    "id": "sis-095",
+    "nis": "3189658525",
+    "nama": "KHOIRUL AZZAM",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081289658525",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-02-13"
+  },
+  {
+    "id": "sis-096",
+    "nis": "3185988161",
+    "nama": "LUTHFIA ZAHSY SALSABILLA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285988161",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-07-08"
+  },
+  {
+    "id": "sis-097",
+    "nis": "3184001630",
+    "nama": "MOCH AIMAN NAWAWI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081284001630",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-07-10"
+  },
+  {
+    "id": "sis-098",
+    "nis": "3181476113",
+    "nama": "MUHAMAD EKA SAPUTRA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081281476113",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-29"
+  },
+  {
+    "id": "sis-099",
+    "nis": "3197205455",
+    "nama": "MUHAMAD SADIKIN",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081297205455",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-02-26"
+  },
+  {
+    "id": "sis-100",
+    "nis": "3186538995",
+    "nama": "MUHAMMAD AZZAM AL GIFARI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081286538995",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-11-22"
+  },
+  {
+    "id": "sis-101",
+    "nis": "3187271255",
+    "nama": "MUHAMMAD GIAS HAMIJAN",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081287271255",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-12-15"
+  },
+  {
+    "id": "sis-102",
+    "nis": "3182592961",
+    "nama": "MUHAMMAD GIBRAN SANJAYA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "083116892054",
+    "tempatLahir": "BANDUNG",
+    "tanggalLahir": "2018-08-18"
+  },
+  {
+    "id": "sis-103",
+    "nis": "3188653537",
+    "nama": "MUHAMMAD NAUFAL ANSHARRI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081288653537",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-01-31"
+  },
+  {
+    "id": "sis-104",
+    "nis": "3186205827",
+    "nama": "MULKI MALIK SEPGINANJAR",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081286205827",
+    "tempatLahir": "Kabupaten Garut",
+    "tanggalLahir": "2018-03-15"
+  },
+  {
+    "id": "sis-105",
+    "nis": "3189075402",
+    "nama": "NAURA SALSABILA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081289075402",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-05-30"
+  },
+  {
+    "id": "sis-106",
+    "nis": "3185914075",
+    "nama": "NAZWA SYAHIRA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285914075",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-27"
+  },
+  {
+    "id": "sis-107",
+    "nis": "3184111702",
+    "nama": "NURUL SIVA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081284111702",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-06-01"
+  },
+  {
+    "id": "sis-108",
+    "nis": "3190897181",
+    "nama": "RAINSYA ZAINA ZAKIRA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081290897181",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-01-12"
+  },
+  {
+    "id": "sis-109",
+    "nis": "3197700478",
+    "nama": "RIKAZ ALMILKI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081297700478",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-01-29"
+  },
+  {
+    "id": "sis-110",
+    "nis": "3185951795",
+    "nama": "SARI NURSAPITRI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285951795",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-11-05"
+  },
+  {
+    "id": "sis-111",
+    "nis": "3182847151",
+    "nama": "SUCI NUR HOLIA",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081282847151",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-11-10"
+  },
+  {
+    "id": "sis-112",
+    "nis": "3183822030",
+    "nama": "SULTAN PAUZI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081283822030",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-05-05"
+  },
+  {
+    "id": "sis-113",
+    "nis": "3185248586",
+    "nama": "WIANA DEWI PEBRIANTI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "082116922765",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-02-10"
+  },
+  {
+    "id": "sis-114",
+    "nis": "3198326889",
+    "nama": "ZELMIRA PUTRI",
+    "kelas": "Kelas 2-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081298326889",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-06-26"
+  },
+  {
+    "id": "sis-115",
+    "nis": "3183606108",
+    "nama": "AAFIINA IZATUL ISLAM",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081283606108",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-08-11"
+  },
+  {
+    "id": "sis-116",
+    "nis": "3184468288",
+    "nama": "ADIPAN",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "08572493084",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-05-03"
+  },
+  {
+    "id": "sis-117",
+    "nis": "3190411876",
+    "nama": "AHMAD SAIT ABDILAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081290411876",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-02-25"
+  },
+  {
+    "id": "sis-118",
+    "nis": "3186377247",
+    "nama": "AHMAD YUSUP MAULANA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081286377247",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-03-04"
+  },
+  {
+    "id": "sis-119",
+    "nis": "3185499801",
+    "nama": "ALIKA NAILA PUTRI",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285499801",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-08-21"
+  },
+  {
+    "id": "sis-120",
+    "nis": "3189386702",
+    "nama": "ALIKA REVALINA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081289386702",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-12-24"
+  },
+  {
+    "id": "sis-121",
+    "nis": "3185495764",
+    "nama": "ALVIN ALWI AL-FIANSYAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081285495764",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-05-23"
+  },
+  {
+    "id": "sis-122",
+    "nis": "3188300591",
+    "nama": "AMIDA SAFITRI",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081288300591",
+    "tempatLahir": "Kabupaten Garut",
+    "tanggalLahir": "2018-08-28"
+  },
+  {
+    "id": "sis-123",
+    "nis": "3186967579",
+    "nama": "ARFAN NAUFAL R",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081286967579",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-07-18"
+  },
+  {
+    "id": "sis-124",
+    "nis": "3185240784",
+    "nama": "BUNGA PEBRI PEBRIAN",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285240784",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-02-08"
+  },
+  {
+    "id": "sis-125",
+    "nis": "3180089558",
+    "nama": "HAMDAN HABIB M T",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081280089558",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-07-06"
+  },
+  {
+    "id": "sis-126",
+    "nis": "3189286926",
+    "nama": "HENI NUR AENI",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081289286926",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-09-27"
+  },
+  {
+    "id": "sis-127",
+    "nis": "3185417241",
+    "nama": "JUNA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081285417241",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-23"
+  },
+  {
+    "id": "sis-128",
+    "nis": "3186774397",
+    "nama": "KAYLA ROS MALINA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081286774397",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-11-24"
+  },
+  {
+    "id": "sis-129",
+    "nis": "3184430967",
+    "nama": "M. ALIF RIDHO",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081284430967",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-01-22"
+  },
+  {
+    "id": "sis-130",
+    "nis": "3174839637",
+    "nama": "MELAN NURHOLIS",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274839637",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-08-07"
+  },
+  {
+    "id": "sis-131",
+    "nis": "3190245455",
+    "nama": "MILKA PATIMAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081290245455",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-01-24"
+  },
+  {
+    "id": "sis-132",
+    "nis": "3192336062",
+    "nama": "MUAZ HELMI YAKDAN",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081292336062",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-03-03"
+  },
+  {
+    "id": "sis-133",
+    "nis": "3184803472",
+    "nama": "MUHAMAD ALDI NOPIANSYAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081284803472",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-12-23"
+  },
+  {
+    "id": "sis-134",
+    "nis": "3196679229",
+    "nama": "MUHAMMAD FABIAN YUSUF",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081296679229",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-02-26"
+  },
+  {
+    "id": "sis-135",
+    "nis": "3182676423",
+    "nama": "MUHAMMAD RIZKI HERMANSYAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081282676423",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-10-17"
+  },
+  {
+    "id": "sis-136",
+    "nis": "3181030640",
+    "nama": "MUHAMMAD SYABIL RAMDANI",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081281030640",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-06-10"
+  },
+  {
+    "id": "sis-137",
+    "nis": "3183431183",
+    "nama": "NAILA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081283431183",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-10-16"
+  },
+  {
+    "id": "sis-138",
     "nis": "3195490563",
     "nama": "RAYAN ABDILAH",
     "kelas": "Kelas 2-B",
@@ -3138,6 +1378,1766 @@
     "waOrangTua": "081295490563",
     "tempatLahir": "GARUT",
     "tanggalLahir": "2019-06-05"
+  },
+  {
+    "id": "sis-139",
+    "nis": "3182642881",
+    "nama": "REVAN NURWAHID",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081282642881",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-09-10"
+  },
+  {
+    "id": "sis-140",
+    "nis": "3197032965",
+    "nama": "RIFA RAMDHAN FUZIAMAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081297032965",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-08-14"
+  },
+  {
+    "id": "sis-141",
+    "nis": "3194110382",
+    "nama": "SABILA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081294110382",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2019-04-13"
+  },
+  {
+    "id": "sis-142",
+    "nis": "3188287220",
+    "nama": "SAMSUDIN NAWAWI",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081288287220",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-03-22"
+  },
+  {
+    "id": "sis-143",
+    "nis": "3188787375",
+    "nama": "SANAYA MUTIARA",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081288787375",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-03-12"
+  },
+  {
+    "id": "sis-144",
+    "nis": "3189509303",
+    "nama": "SRI DANIA KHOERIAH",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081289509303",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-12-08"
+  },
+  {
+    "id": "sis-145",
+    "nis": "3190016113",
+    "nama": "SYAKIRA NURAENUN",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081290016113",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2019-01-29"
+  },
+  {
+    "id": "sis-146",
+    "nis": "3184495169",
+    "nama": "WIDIA YULIA RAHMAWATI",
+    "kelas": "Kelas 2-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081284495169",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-07-16"
+  },
+  {
+    "id": "sis-147",
+    "nis": "3172986365",
+    "nama": "ALVIN FAHREZA MOCH FATAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081272986365",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-12-29"
+  },
+  {
+    "id": "sis-148",
+    "nis": "3185378000",
+    "nama": "ALYA SEPTIANI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285378000",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-09-01"
+  },
+  {
+    "id": "sis-149",
+    "nis": "3174694584",
+    "nama": "ASIPA SITI MARWAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081274694584",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-10-12"
+  },
+  {
+    "id": "sis-150",
+    "nis": "3170159874",
+    "nama": "HIFDI ARRASYID",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081270159874",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-12-02"
+  },
+  {
+    "id": "sis-151",
+    "nis": "3186745323",
+    "nama": "HURIYATUL ISLAMIYAH SYAMILAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081286745323",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-06-21"
+  },
+  {
+    "id": "sis-152",
+    "nis": "3176890487",
+    "nama": "KAMIL WAHDAN",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081276890487",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-03-26"
+  },
+  {
+    "id": "sis-153",
+    "nis": "3174378492",
+    "nama": "M ARSYA AL FARIZ",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274378492",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-04-15"
+  },
+  {
+    "id": "sis-154",
+    "nis": "3183905170",
+    "nama": "M AZKA RAFFASYA SETIAWAN",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081283905170",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-02-04"
+  },
+  {
+    "id": "sis-155",
+    "nis": "3188266054",
+    "nama": "MAULANA YUSUP",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081288266054",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-04-14"
+  },
+  {
+    "id": "sis-156",
+    "nis": "3171712759",
+    "nama": "MEIDA SALSA",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081271712759",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-05-27"
+  },
+  {
+    "id": "sis-157",
+    "nis": "3171084378",
+    "nama": "MOCH. RAFIQ KURNIAWAN",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081271084378",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-11-22"
+  },
+  {
+    "id": "sis-158",
+    "nis": "3174073499",
+    "nama": "MUHAMAD ZAINURI AL FATH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274073499",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-10-26"
+  },
+  {
+    "id": "sis-159",
+    "nis": "3174947341",
+    "nama": "MUHAMMAD ALWI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274947341",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-09-21"
+  },
+  {
+    "id": "sis-160",
+    "nis": "3179118169",
+    "nama": "MUHAMMAD FARIZ",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081279118169",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-04-11"
+  },
+  {
+    "id": "sis-161",
+    "nis": "3171090658",
+    "nama": "MUHAMMAD RIZKI IMAMI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081271090658",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-11-21"
+  },
+  {
+    "id": "sis-162",
+    "nis": "3178047616",
+    "nama": "MUHAMMAD TRISTAN FEBRIANSYAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081278047616",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-02-15"
+  },
+  {
+    "id": "sis-163",
+    "nis": "3189673205",
+    "nama": "NABIRA KHABUBILLAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081289673205",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-03-02"
+  },
+  {
+    "id": "sis-164",
+    "nis": "3176523060",
+    "nama": "NAILA NURAPIPAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081276523060",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-23"
+  },
+  {
+    "id": "sis-165",
+    "nis": "3184765736",
+    "nama": "NANDA NUR AFIFAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081284765736",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-03-23"
+  },
+  {
+    "id": "sis-166",
+    "nis": "3185785769",
+    "nama": "NURIL MAULIDA",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081285785769",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-04-17"
+  },
+  {
+    "id": "sis-167",
+    "nis": "3184779134",
+    "nama": "NURNAZMI ANGGRAENI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081284779134",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-01-12"
+  },
+  {
+    "id": "sis-168",
+    "nis": "3177335872",
+    "nama": "PRATAMA ASRIL ARDIANSYAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081277335872",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-20"
+  },
+  {
+    "id": "sis-169",
+    "nis": "3173620782",
+    "nama": "RAFLI FAUZAN",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081273620782",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-10-25"
+  },
+  {
+    "id": "sis-170",
+    "nis": "3189885676",
+    "nama": "RANDI AKBAR RADIKIA",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081289885676",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-03-01"
+  },
+  {
+    "id": "sis-171",
+    "nis": "3177337006",
+    "nama": "RANDI SAPUTRA",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081277337006",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-01-27"
+  },
+  {
+    "id": "sis-172",
+    "nis": "3172220938",
+    "nama": "RISKA SAFITRI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081272220938",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-06-29"
+  },
+  {
+    "id": "sis-173",
+    "nis": "3174422038",
+    "nama": "RISKI MUHAMMAD ADAM",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274422038",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-05-01"
+  },
+  {
+    "id": "sis-174",
+    "nis": "3170863010",
+    "nama": "RIZKI SAMSU AL FADILAH",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081270863010",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-08-11"
+  },
+  {
+    "id": "sis-175",
+    "nis": "3162405887",
+    "nama": "SAEPUDIN AL FARIJI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081262405887",
+    "tempatLahir": "Kabupaten Garut",
+    "tanggalLahir": "2016-10-17"
+  },
+  {
+    "id": "sis-176",
+    "nis": "3176279490",
+    "nama": "SALMA NURAENI",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081276279490",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-10-13"
+  },
+  {
+    "id": "sis-177",
+    "nis": "3186174214",
+    "nama": "SYAHILA NISA APRIANTY",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081286174214",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-04-16"
+  },
+  {
+    "id": "sis-178",
+    "nis": "3189636362",
+    "nama": "WILDAN BAHRUL ULUM",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081289636362",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-03-03"
+  },
+  {
+    "id": "sis-179",
+    "nis": "3171613671",
+    "nama": "WILQI ARJUNA",
+    "kelas": "Kelas 3-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081271613671",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-10-12"
+  },
+  {
+    "id": "sis-180",
+    "nis": "3172472564",
+    "nama": "AGUS JUMHUR MUBAROK",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081272472564",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-08-11"
+  },
+  {
+    "id": "sis-181",
+    "nis": "3187802818",
+    "nama": "AJHARA NABILA PUTRI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081287802818",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-03-29"
+  },
+  {
+    "id": "sis-182",
+    "nis": "3179827291",
+    "nama": "ALIKA NAYLA PUTRI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081279827291",
+    "tempatLahir": "CILACAP",
+    "tanggalLahir": "2017-11-04"
+  },
+  {
+    "id": "sis-183",
+    "nis": "3170422500",
+    "nama": "ALYA NURAINI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081270422500",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-09-12"
+  },
+  {
+    "id": "sis-184",
+    "nis": "3186370649",
+    "nama": "ANGGA SEPTIAN",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081286370649",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-01-03"
+  },
+  {
+    "id": "sis-185",
+    "nis": "3160288254",
+    "nama": "APIPAH PITRI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081260288254",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-05-17"
+  },
+  {
+    "id": "sis-186",
+    "nis": "3177237640",
+    "nama": "AQILA BILQISH MALAYEKA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081277237640",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-06-24"
+  },
+  {
+    "id": "sis-187",
+    "nis": "3182425018",
+    "nama": "ARFAN AL-GIFARI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081282425018",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-01-08"
+  },
+  {
+    "id": "sis-188",
+    "nis": "3166928474",
+    "nama": "BAGAS SURYA PUTRA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266928474",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-08-11"
+  },
+  {
+    "id": "sis-189",
+    "nis": "3187735064",
+    "nama": "DEUIS FITRIANI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081287735064",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-08-03"
+  },
+  {
+    "id": "sis-190",
+    "nis": "3173415021",
+    "nama": "DILARA SHAFIYATUNNISA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081273415021",
+    "tempatLahir": "Berastagi",
+    "tanggalLahir": "2017-06-01"
+  },
+  {
+    "id": "sis-191",
+    "nis": "3180466178",
+    "nama": "ELMYIDA ANARAYA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081280466178",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-02-10"
+  },
+  {
+    "id": "sis-192",
+    "nis": "3162179234",
+    "nama": "ELSA MADINA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081262179234",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-08-28"
+  },
+  {
+    "id": "sis-193",
+    "nis": "3189331664",
+    "nama": "FEBRIYANI AYU SUGIARTI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081289331664",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-02-13"
+  },
+  {
+    "id": "sis-194",
+    "nis": "3184211045",
+    "nama": "GIBRAN SAPUTRA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081284211045",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-01-06"
+  },
+  {
+    "id": "sis-195",
+    "nis": "3173022363",
+    "nama": "IHSAN NURDIANSAH",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081273022363",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-01-11"
+  },
+  {
+    "id": "sis-196",
+    "nis": "3172105278",
+    "nama": "KEVIN ADRIANSYAH",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081272105278",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-12-21"
+  },
+  {
+    "id": "sis-197",
+    "nis": "3170107046",
+    "nama": "M PADLAN ARPAH",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081270107046",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-08-29"
+  },
+  {
+    "id": "sis-198",
+    "nis": "3171804372",
+    "nama": "MOCH SYAHRUL SAPUTRA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081271804372",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-11-12"
+  },
+  {
+    "id": "sis-199",
+    "nis": "3177379356",
+    "nama": "MUFIDAH SAPARIA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081277379356",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-10-21"
+  },
+  {
+    "id": "sis-200",
+    "nis": "3179081165",
+    "nama": "MUHAMAD AKBAR ABDUL ROJAK",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081279081165",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-10-03"
+  },
+  {
+    "id": "sis-201",
+    "nis": "3188099018",
+    "nama": "MUHAMAD ALWI SAPUTRA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081288099018",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-03-30"
+  },
+  {
+    "id": "sis-202",
+    "nis": "3172187291",
+    "nama": "MUHAMAD AZKA HABIBULLOH",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081272187291",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-26"
+  },
+  {
+    "id": "sis-203",
+    "nis": "3174661270",
+    "nama": "MUHAMAD NAZMI DIHYAUL HAQ",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274661270",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-05-23"
+  },
+  {
+    "id": "sis-204",
+    "nis": "3171863248",
+    "nama": "MUHAMAD RAMDAN",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081271863248",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-06-10"
+  },
+  {
+    "id": "sis-205",
+    "nis": "3185007660",
+    "nama": "MUHAMAD RIDWAN",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081285007660",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-01-26"
+  },
+  {
+    "id": "sis-206",
+    "nis": "3180863965",
+    "nama": "MUHAMAD ROHMAN",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081280863965",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-09-15"
+  },
+  {
+    "id": "sis-207",
+    "nis": "3178982286",
+    "nama": "NENG HANDAYANI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081278982286",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-11-15"
+  },
+  {
+    "id": "sis-208",
+    "nis": "3176872676",
+    "nama": "RAFA MAULANA AKBAR",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081276872676",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-01-22"
+  },
+  {
+    "id": "sis-209",
+    "nis": "3178078778",
+    "nama": "RAFI MAULANI AKBAR",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081278078778",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-01-22"
+  },
+  {
+    "id": "sis-210",
+    "nis": "3179681739",
+    "nama": "RAIS AL FARIZI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081279681739",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-04-17"
+  },
+  {
+    "id": "sis-211",
+    "nis": "3177345399",
+    "nama": "RAMDAN",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081277345399",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-06-04"
+  },
+  {
+    "id": "sis-212",
+    "nis": "3170080878",
+    "nama": "REPALDI MUHAMAD NUGRAHA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081270080878",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-07-07"
+  },
+  {
+    "id": "sis-213",
+    "nis": "3174306587",
+    "nama": "RIFKI MUHAMMAD YUSUP",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081274306587",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-10-09"
+  },
+  {
+    "id": "sis-214",
+    "nis": "3188875749",
+    "nama": "RISKI MUHAMMADULLOH",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081288875749",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-04-07"
+  },
+  {
+    "id": "sis-215",
+    "nis": "3177639344",
+    "nama": "RIZKI MUHAMMAD NUR SAKTI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081277639344",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-01"
+  },
+  {
+    "id": "sis-216",
+    "nis": "3186405952",
+    "nama": "SITI ALWASI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081286405952",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2018-05-10"
+  },
+  {
+    "id": "sis-217",
+    "nis": "3186218898",
+    "nama": "SURYA NURYASIN",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081286218898",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2018-04-12"
+  },
+  {
+    "id": "sis-218",
+    "nis": "3172226395",
+    "nama": "YUNI YUNITA",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081272226395",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-05-10"
+  },
+  {
+    "id": "sis-219",
+    "nis": "3177168957",
+    "nama": "ZULPIAN RISWANDI",
+    "kelas": "Kelas 3-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081277168957",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-05-08"
+  },
+  {
+    "id": "sis-220",
+    "nis": "3168544406",
+    "nama": "AHLAM AQILLA PRANAJA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081268544406",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-06-22"
+  },
+  {
+    "id": "sis-221",
+    "nis": "3176314197",
+    "nama": "ALBAR MUHAMAD AL KAUSAR",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081276314197",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-02-05"
+  },
+  {
+    "id": "sis-222",
+    "nis": "3144241835",
+    "nama": "ANGGARA JAYA SUKMANA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081244241835",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2014-01-12"
+  },
+  {
+    "id": "sis-223",
+    "nis": "3166341089",
+    "nama": "ASILA AULIA NURRAHMAN",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266341089",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-02-19"
+  },
+  {
+    "id": "sis-224",
+    "nis": "3176606666",
+    "nama": "DAHANA MAULANA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081276606666",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-01-17"
+  },
+  {
+    "id": "sis-225",
+    "nis": "3176730543",
+    "nama": "DIVA RAHAYU",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081276730543",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-04-02"
+  },
+  {
+    "id": "sis-226",
+    "nis": "3160214517",
+    "nama": "HAFIZ NABAWI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081260214517",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-08-29"
+  },
+  {
+    "id": "sis-227",
+    "nis": "3168867647",
+    "nama": "HAZNA SALSABILA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081268867647",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-09-07"
+  },
+  {
+    "id": "sis-228",
+    "nis": "3168534075",
+    "nama": "ILYASA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081268534075",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-04-03"
+  },
+  {
+    "id": "sis-229",
+    "nis": "3161683724",
+    "nama": "KEISYA RAHMA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081261683724",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-02-12"
+  },
+  {
+    "id": "sis-230",
+    "nis": "3169467240",
+    "nama": "M ABDUL HALIM",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081269467240",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-12-28"
+  },
+  {
+    "id": "sis-231",
+    "nis": "3166619890",
+    "nama": "MUHAMAD BAGJA JAYA KARAMA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266619890",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-04-18"
+  },
+  {
+    "id": "sis-232",
+    "nis": "3161985345",
+    "nama": "MUHAMAD SYAHRIL ISHAQ",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081261985345",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-12-11"
+  },
+  {
+    "id": "sis-233",
+    "nis": "3160762197",
+    "nama": "MUHAMMAD KURNIANSYAH",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081260762197",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-12-05"
+  },
+  {
+    "id": "sis-234",
+    "nis": "3164996327",
+    "nama": "NAJMATUL LAIL",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081264996327",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-04-23"
+  },
+  {
+    "id": "sis-235",
+    "nis": "3166213116",
+    "nama": "NENG REVA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266213116",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-03-29"
+  },
+  {
+    "id": "sis-236",
+    "nis": "3161454214",
+    "nama": "RAIHAN MALIK AL KHAIRI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081261454214",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-07-20"
+  },
+  {
+    "id": "sis-237",
+    "nis": "3162496633",
+    "nama": "SALWA NURKHOFIFAH",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081262496633",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-11-28"
+  },
+  {
+    "id": "sis-238",
+    "nis": "3163638502",
+    "nama": "SANTI NURHAYATI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081263638502",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-10-25"
+  },
+  {
+    "id": "sis-239",
+    "nis": "3166650723",
+    "nama": "SAYILA APRIYANI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "083820445137",
+    "tempatLahir": "BANDUNG",
+    "tanggalLahir": "2016-04-11"
+  },
+  {
+    "id": "sis-240",
+    "nis": "3164719207",
+    "nama": "SENA NURAENI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081264719207",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-07-25"
+  },
+  {
+    "id": "sis-241",
+    "nis": "3175408323",
+    "nama": "SENI ANGGRAENI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081275408323",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-01-26"
+  },
+  {
+    "id": "sis-242",
+    "nis": "3162330254",
+    "nama": "SHIBGOTULLOH ROBANI ABDUL AZIZ",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081262330254",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-11-23"
+  },
+  {
+    "id": "sis-243",
+    "nis": "3167272811",
+    "nama": "SILVIA NATASYA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081267272811",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-01-22"
+  },
+  {
+    "id": "sis-244",
+    "nis": "3171710922",
+    "nama": "SILVIA RAHMAWATI",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081271710922",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-01-03"
+  },
+  {
+    "id": "sis-245",
+    "nis": "3166440752",
+    "nama": "SITI NUR HALIFAH",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266440752",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-12-02"
+  },
+  {
+    "id": "sis-246",
+    "nis": "3167014912",
+    "nama": "SULTAN HERMAWAN",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081267014912",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-07-25"
+  },
+  {
+    "id": "sis-247",
+    "nis": "3163656151",
+    "nama": "SYIFA NURMAULIDA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081263656151",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-12-26"
+  },
+  {
+    "id": "sis-248",
+    "nis": "3164706441",
+    "nama": "UJANG HARIS",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081264706441",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-10-30"
+  },
+  {
+    "id": "sis-249",
+    "nis": "3166461838",
+    "nama": "UMU HABIBAH",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266461838",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-03-16"
+  },
+  {
+    "id": "sis-250",
+    "nis": "3164345713",
+    "nama": "WARFA GINA AMALIYATUSSHOLIHAH",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081264345713",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-08-18"
+  },
+  {
+    "id": "sis-251",
+    "nis": "3179232298",
+    "nama": "WIRDA FIRDAUS SALAMAH",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081279232298",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-07-03"
+  },
+  {
+    "id": "sis-252",
+    "nis": "3171334817",
+    "nama": "ZAHWA AWALIA",
+    "kelas": "Kelas 4-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081271334817",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-31"
+  },
+  {
+    "id": "sis-253",
+    "nis": "159943837",
+    "nama": "ABDUL MUGNI HIDAYAT",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259943837",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2015-11-12"
+  },
+  {
+    "id": "sis-254",
+    "nis": "3161162058",
+    "nama": "AHMAD HADIANA PUTRA JUANTA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081261162058",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-02-22"
+  },
+  {
+    "id": "sis-255",
+    "nis": "3177336641",
+    "nama": "AHMAD NATHAN RADITIA RAPASYA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081277336641",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-01-23"
+  },
+  {
+    "id": "sis-256",
+    "nis": "3164545968",
+    "nama": "AINA FITRI LESTARI RAMADHANI",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081264545968",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-06-29"
+  },
+  {
+    "id": "sis-257",
+    "nis": "3166469973",
+    "nama": "AKBAR KHOIRU TAMAM",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266469973",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-06-17"
+  },
+  {
+    "id": "sis-258",
+    "nis": "3165187522",
+    "nama": "ALYA AINUNISA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081265187522",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-09-16"
+  },
+  {
+    "id": "sis-259",
+    "nis": "3171192578",
+    "nama": "AMANDA RAHAYU",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081271192578",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2017-01-08"
+  },
+  {
+    "id": "sis-260",
+    "nis": "3168924681",
+    "nama": "ANISA RAHMA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081268924681",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-12-22"
+  },
+  {
+    "id": "sis-261",
+    "nis": "3160329774",
+    "nama": "APIP AGUSTIAN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081260329774",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-08-30"
+  },
+  {
+    "id": "sis-262",
+    "nis": "3168540539",
+    "nama": "AYUB SOBIRIN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081268540539",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-08-24"
+  },
+  {
+    "id": "sis-263",
+    "nis": "3161086535",
+    "nama": "CECEP AGIL",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081261086535",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-11-11"
+  },
+  {
+    "id": "sis-264",
+    "nis": "3173256416",
+    "nama": "DAVA RAMADANI",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081273256416",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-06-08"
+  },
+  {
+    "id": "sis-265",
+    "nis": "3167289273",
+    "nama": "FAISAL KURNIAWAN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "085320638314",
+    "tempatLahir": "BANDUNG",
+    "tanggalLahir": "2015-11-24"
+  },
+  {
+    "id": "sis-266",
+    "nis": "3156992355",
+    "nama": "GALIH AZWAN KAMIL",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081256992355",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-10-07"
+  },
+  {
+    "id": "sis-267",
+    "nis": "3160113048",
+    "nama": "HABIBI PARHAN ASIDIK",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081260113048",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-09-24"
+  },
+  {
+    "id": "sis-268",
+    "nis": "3179987875",
+    "nama": "HAURA FAUZIAH",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081279987875",
+    "tempatLahir": "TANGERANG",
+    "tanggalLahir": "2017-06-30"
+  },
+  {
+    "id": "sis-269",
+    "nis": "3169233250",
+    "nama": "HIKAM ABDUL MALIK",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081269233250",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-11-24"
+  },
+  {
+    "id": "sis-270",
+    "nis": "156036781",
+    "nama": "IRPAN MAOLANA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081256036781",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-02-16"
+  },
+  {
+    "id": "sis-271",
+    "nis": "3169102273",
+    "nama": "M FAJAR RAMDANI",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081269102273",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-06-11"
+  },
+  {
+    "id": "sis-272",
+    "nis": "3171404812",
+    "nama": "MARPIN SAEPUDIN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081271404812",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-07"
+  },
+  {
+    "id": "sis-273",
+    "nis": "3165860030",
+    "nama": "MUHAMAD HASBI RAMADAN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081265860030",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-07-01"
+  },
+  {
+    "id": "sis-274",
+    "nis": "3160500898",
+    "nama": "MUHAMAD JIHAD FAUZI",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081260500898",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-03-02"
+  },
+  {
+    "id": "sis-275",
+    "nis": "3167025136",
+    "nama": "MUHAMAD RIDWAN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081267025136",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-05-18"
+  },
+  {
+    "id": "sis-276",
+    "nis": "3179129704",
+    "nama": "MUHAMAD RIZKI PADILAH",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081279129704",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-06"
+  },
+  {
+    "id": "sis-277",
+    "nis": "3158474097",
+    "nama": "MUSYAHID MUBIN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081258474097",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-10-19"
+  },
+  {
+    "id": "sis-278",
+    "nis": "3166130960",
+    "nama": "NAHLA RIZQIA MALIKA MULKI",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266130960",
+    "tempatLahir": "Bandung Barat",
+    "tanggalLahir": "2016-07-24"
+  },
+  {
+    "id": "sis-279",
+    "nis": "3172831373",
+    "nama": "NAPISA NUSWATUL HASANAH",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081272831373",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-01-03"
+  },
+  {
+    "id": "sis-280",
+    "nis": "3166184515",
+    "nama": "RIZA MUHAMMAD AL FATAH",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266184515",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-04-11"
+  },
+  {
+    "id": "sis-281",
+    "nis": "3166768762",
+    "nama": "SALMA NUR PADILAH",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266768762",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-12-26"
+  },
+  {
+    "id": "sis-282",
+    "nis": "3164531785",
+    "nama": "SALSABILA APRILIANI",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081264531785",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-04-05"
+  },
+  {
+    "id": "sis-283",
+    "nis": "3176985394",
+    "nama": "SYAKILA MARWAH",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081276985394",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-05-15"
+  },
+  {
+    "id": "sis-284",
+    "nis": "3162130428",
+    "nama": "SYFA NUR SUKMA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081262130428",
+    "tempatLahir": "BANJAR",
+    "tanggalLahir": "2016-10-01"
+  },
+  {
+    "id": "sis-285",
+    "nis": "3175262219",
+    "nama": "WINDA FAUZIA",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081275262219",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2017-03-25"
+  },
+  {
+    "id": "sis-286",
+    "nis": "3169011503",
+    "nama": "WISNU ABDUL AZIS",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081269011503",
+    "tempatLahir": "KABUPATEN GARUT",
+    "tanggalLahir": "2016-05-06"
+  },
+  {
+    "id": "sis-287",
+    "nis": "3166033757",
+    "nama": "YUDI BUDIMAN",
+    "kelas": "Kelas 4-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266033757",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2016-09-16"
+  },
+  {
+    "id": "sis-288",
+    "nis": "3152090638",
+    "nama": "ABDILAH ARKAN HAFIZ",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081252090638",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-29"
+  },
+  {
+    "id": "sis-289",
+    "nis": "3159629953",
+    "nama": "ABDUL JABAR",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259629953",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-12-11"
+  },
+  {
+    "id": "sis-290",
+    "nis": "3166977464",
+    "nama": "ABIDAH JAJILA HASNA",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266977464",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-04-04"
+  },
+  {
+    "id": "sis-291",
+    "nis": "3158740096",
+    "nama": "ADILA PUTRI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081258740096",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-05-16"
+  },
+  {
+    "id": "sis-292",
+    "nis": "165776718",
+    "nama": "AHMAD AL HAFIZ",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081265776718",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-04-09"
+  },
+  {
+    "id": "sis-293",
+    "nis": "3149872436",
+    "nama": "AHMAD PAUZI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081249872436",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-04-13"
+  },
+  {
+    "id": "sis-294",
+    "nis": "3154898039",
+    "nama": "ANISA DEWINA MARIAM",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081254898039",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-05-25"
+  },
+  {
+    "id": "sis-295",
+    "nis": "3150126975",
+    "nama": "ARSAL NUL HAKIM",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081250126975",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-11-21"
+  },
+  {
+    "id": "sis-296",
+    "nis": "3167557206",
+    "nama": "ARSILA NUR RIZQIA",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081267557206",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-01-14"
+  },
+  {
+    "id": "sis-297",
+    "nis": "3157856916",
+    "nama": "AZKA HAMIDAH",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081257856916",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-08-03"
+  },
+  {
+    "id": "sis-298",
+    "nis": "3157007680",
+    "nama": "FAISAL FATUL ROHNAN",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081257007680",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-11-14"
+  },
+  {
+    "id": "sis-299",
+    "nis": "3162589694",
+    "nama": "FARHANA DWI RAMADHANI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081262589694",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-06-15"
+  },
+  {
+    "id": "sis-300",
+    "nis": "154244999",
+    "nama": "FATUL ROHMAN",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254244999",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-27"
+  },
+  {
+    "id": "sis-301",
+    "nis": "3167579763",
+    "nama": "FUTRI NADIA ARDANI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081267579763",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-11-01"
+  },
+  {
+    "id": "sis-302",
+    "nis": "3150531453",
+    "nama": "GELAR CATUR RAHAYU",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081250531453",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-10-10"
+  },
+  {
+    "id": "sis-303",
+    "nis": "3165072590",
+    "nama": "HABIBUL KIROM",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081265072590",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-04-21"
+  },
+  {
+    "id": "sis-304",
+    "nis": "3167939996",
+    "nama": "M RIFAL PRATAMA",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081267939996",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-02-18"
+  },
+  {
+    "id": "sis-305",
+    "nis": "3166342651",
+    "nama": "M. RAFLI RAMADANI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266342651",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-08-02"
+  },
+  {
+    "id": "sis-306",
+    "nis": "3153336116",
+    "nama": "MELISA ANGGRAENI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081253336116",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-08-16"
+  },
+  {
+    "id": "sis-307",
+    "nis": "3158448729",
+    "nama": "MOH RANGGA",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081258448729",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-07-02"
+  },
+  {
+    "id": "sis-308",
+    "nis": "3166070639",
+    "nama": "MUHAMAD RAMA",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081266070639",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-02-19"
+  },
+  {
+    "id": "sis-309",
+    "nis": "3154435001",
+    "nama": "MUHAMAD RAMDANI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254435001",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-07-20"
+  },
+  {
+    "id": "sis-310",
+    "nis": "158846243",
+    "nama": "MUHAMAD RIVALDI ALIYANSYAH",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081258846243",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-08-18"
+  },
+  {
+    "id": "sis-311",
+    "nis": "3154546727",
+    "nama": "MUHAMAD RIZQI AR",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254546727",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-10-17"
+  },
+  {
+    "id": "sis-312",
+    "nis": "155013141",
+    "nama": "MUHAMMAD ALFI SARIP",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081255013141",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-26"
+  },
+  {
+    "id": "sis-313",
+    "nis": "3159210761",
+    "nama": "NABILAH",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081259210761",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-11-14"
+  },
+  {
+    "id": "sis-314",
+    "nis": "3166424169",
+    "nama": "PUTRI ALYA RAMADANI",
+    "kelas": "Kelas 5-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081266424169",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-06-08"
   },
   {
     "id": "sis-315",
@@ -3151,56 +3151,6 @@
   },
   {
     "id": "sis-316",
-    "nis": "3170080878",
-    "nama": "REPALDI MUHAMAD NUGRAHA",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081270080878",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-07-07"
-  },
-  {
-    "id": "sis-317",
-    "nis": "3156087147",
-    "nama": "REVAN NURSALEH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081256087147",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-12-11"
-  },
-  {
-    "id": "sis-318",
-    "nis": "3182642881",
-    "nama": "Revan Nurwahid",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081282642881",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-09-10"
-  },
-  {
-    "id": "sis-319",
-    "nis": "3161006875",
-    "nama": "REVI LIA LAILATUL PAUZIAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081261006875",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-06-24"
-  },
-  {
-    "id": "sis-320",
-    "nis": "3147764315",
-    "nama": "REVI MAULANA",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081247764315",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-07-10"
-  },
-  {
-    "id": "sis-321",
     "nis": "3149105091",
     "nama": "RIDO MAULANA",
     "kelas": "Kelas 5-A",
@@ -3210,67 +3160,7 @@
     "tanggalLahir": "2014-12-24"
   },
   {
-    "id": "sis-322",
-    "nis": "3197032965",
-    "nama": "RIFA RAMDHAN FUZIAMAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081297032965",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-08-14"
-  },
-  {
-    "id": "sis-323",
-    "nis": "3174306587",
-    "nama": "RIFKI MUHAMMAD YUSUP",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274306587",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-10-09"
-  },
-  {
-    "id": "sis-324",
-    "nis": "3159295559",
-    "nama": "RIFKI WAHYUDIN",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081259295559",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-12-31"
-  },
-  {
-    "id": "sis-325",
-    "nis": "3192271437",
-    "nama": "RIFQI ALFIANSYAH",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081292271437",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-06-19"
-  },
-  {
-    "id": "sis-326",
-    "nis": "3197700478",
-    "nama": "RIKAZ ALMILKI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081297700478",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-01-29"
-  },
-  {
-    "id": "sis-327",
-    "nis": "3172220938",
-    "nama": "RISKA SAFITRI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081272220938",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-06-29"
-  },
-  {
-    "id": "sis-328",
+    "id": "sis-317",
     "nis": "3169943315",
     "nama": "RISKA ZAHROTUZ SITA",
     "kelas": "Kelas 5-A",
@@ -3280,47 +3170,7 @@
     "tanggalLahir": "2016-02-23"
   },
   {
-    "id": "sis-329",
-    "nis": "147716325",
-    "nama": "RISKI MAULANA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081247716325",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-09-09"
-  },
-  {
-    "id": "sis-330",
-    "nis": "3174422038",
-    "nama": "RISKI MUHAMMAD ADAM",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081274422038",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-05-01"
-  },
-  {
-    "id": "sis-331",
-    "nis": "3188875749",
-    "nama": "RISKI MUHAMMADULLOH",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081288875749",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-04-07"
-  },
-  {
-    "id": "sis-332",
-    "nis": "3166184515",
-    "nama": "RIZA MUHAMMAD AL FATAH",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081266184515",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-04-11"
-  },
-  {
-    "id": "sis-333",
+    "id": "sis-318",
     "nis": "3155548431",
     "nama": "RIZAL IMAM M",
     "kelas": "Kelas 5-A",
@@ -3330,167 +3180,7 @@
     "tanggalLahir": "2015-08-28"
   },
   {
-    "id": "sis-334",
-    "nis": "3169265969",
-    "nama": "RIZKI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081269265969",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2016-07-26"
-  },
-  {
-    "id": "sis-335",
-    "nis": "3177639344",
-    "nama": "RIZKI MUHAMMAD NUR SAKTI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081277639344",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-01"
-  },
-  {
-    "id": "sis-336",
-    "nis": "3170863010",
-    "nama": "RIZKI SAMSU AL FADILAH",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081270863010",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-08-11"
-  },
-  {
-    "id": "sis-337",
-    "nis": "3155385898",
-    "nama": "RIZQY FADILLAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081255385898",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-11-21"
-  },
-  {
-    "id": "sis-338",
-    "nis": "3198395342",
-    "nama": "Sabil Sidiq Kadaffi",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081298395342",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-12-19"
-  },
-  {
-    "id": "sis-339",
-    "nis": "3194110382",
-    "nama": "SABILA",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081294110382",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-04-13"
-  },
-  {
-    "id": "sis-340",
-    "nis": "3192626570",
-    "nama": "SABQI RAIQ RAKHSYAN PERMANA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081292626570",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-05-12"
-  },
-  {
-    "id": "sis-341",
-    "nis": "141081998",
-    "nama": "SAENAL ABIDIN",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081241081998",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-03-13"
-  },
-  {
-    "id": "sis-342",
-    "nis": "3162405887",
-    "nama": "SAEPUDIN AL FARIJI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081262405887",
-    "tempatLahir": "Kabupaten Garut",
-    "tanggalLahir": "2016-10-17"
-  },
-  {
-    "id": "sis-343",
-    "nis": "3151237371",
-    "nama": "SAEPUL AJIS",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081251237371",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-10-25"
-  },
-  {
-    "id": "sis-344",
-    "nis": "3140736759",
-    "nama": "SAEPUL PADILAH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081240736759",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-11-08"
-  },
-  {
-    "id": "sis-345",
-    "nis": "3142038565",
-    "nama": "SAEPUL RIJWAN",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081242038565",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-10-06"
-  },
-  {
-    "id": "sis-346",
-    "nis": "3166768762",
-    "nama": "SALMA NUR PADILAH",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266768762",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-12-26"
-  },
-  {
-    "id": "sis-347",
-    "nis": "3176279490",
-    "nama": "SALMA NURAENI",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081276279490",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2017-10-13"
-  },
-  {
-    "id": "sis-348",
-    "nis": "3149645374",
-    "nama": "SALPIA ANANDA PUTRI",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081249645374",
-    "tempatLahir": "Ciamis",
-    "tanggalLahir": "2014-12-15"
-  },
-  {
-    "id": "sis-349",
-    "nis": "3164531785",
-    "nama": "SALSABILA APRILIANI",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081264531785",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-04-05"
-  },
-  {
-    "id": "sis-350",
+    "id": "sis-319",
     "nis": "3161316567",
     "nama": "SALSABILA PUTRI ANINDITA",
     "kelas": "Kelas 5-A",
@@ -3500,147 +3190,7 @@
     "tanggalLahir": "2016-07-02"
   },
   {
-    "id": "sis-351",
-    "nis": "158491257",
-    "nama": "SALWA HOERUN NISA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081258491257",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-05-23"
-  },
-  {
-    "id": "sis-352",
-    "nis": "3162496633",
-    "nama": "SALWA NURKHOFIFAH",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081262496633",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-11-28"
-  },
-  {
-    "id": "sis-353",
-    "nis": "146916110",
-    "nama": "SALWA NURLAILA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081246916110",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-08-18"
-  },
-  {
-    "id": "sis-354",
-    "nis": "3188287220",
-    "nama": "SAMSUDIN NAWAWI",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081288287220",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-03-22"
-  },
-  {
-    "id": "sis-355",
-    "nis": "144353709",
-    "nama": "SAN SAN ARIPAN",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081244353709",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-12-22"
-  },
-  {
-    "id": "sis-356",
-    "nis": "3188787375",
-    "nama": "SANAYA MUTIARA",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081288787375",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-03-12"
-  },
-  {
-    "id": "sis-357",
-    "nis": "3194434490",
-    "nama": "SANI ASLAN",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081294434490",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-06-10"
-  },
-  {
-    "id": "sis-358",
-    "nis": "3163638502",
-    "nama": "SANTI NURHAYATI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081263638502",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-10-25"
-  },
-  {
-    "id": "sis-359",
-    "nis": "3185951795",
-    "nama": "Sari Nursapitri",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285951795",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-11-05"
-  },
-  {
-    "id": "sis-360",
-    "nis": "3166650723",
-    "nama": "SAYILA APRIYANI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266650723",
-    "tempatLahir": "BANDUNG",
-    "tanggalLahir": "2016-04-11"
-  },
-  {
-    "id": "sis-361",
-    "nis": "3164719207",
-    "nama": "SENA NURAENI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081264719207",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-07-25"
-  },
-  {
-    "id": "sis-362",
-    "nis": "3175408323",
-    "nama": "SENI ANGGRAENI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081275408323",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-01-26"
-  },
-  {
-    "id": "sis-363",
-    "nis": "3158183363",
-    "nama": "SEPTIAN SAFUTRA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081258183363",
-    "tempatLahir": "SUKABUMI",
-    "tanggalLahir": "2015-03-14"
-  },
-  {
-    "id": "sis-364",
-    "nis": "3162330254",
-    "nama": "SHIBGOTULLOH ROBANI ABDUL AZIZ",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081262330254",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-11-23"
-  },
-  {
-    "id": "sis-365",
+    "id": "sis-320",
     "nis": "3150366325",
     "nama": "SIDIQ MAULANA IBRAHIM",
     "kelas": "Kelas 5-A",
@@ -3650,7 +3200,7 @@
     "tanggalLahir": "2015-01-15"
   },
   {
-    "id": "sis-366",
+    "id": "sis-321",
     "nis": "3160046241",
     "nama": "SILMI NURAENI",
     "kelas": "Kelas 5-A",
@@ -3660,17 +3210,7 @@
     "tanggalLahir": "2016-01-01"
   },
   {
-    "id": "sis-367",
-    "nis": "3159194354",
-    "nama": "Silvi Khoirunnisa",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081259194354",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-03-11"
-  },
-  {
-    "id": "sis-368",
+    "id": "sis-322",
     "nis": "163744562",
     "nama": "SILVI NUR LAELA",
     "kelas": "Kelas 5-A",
@@ -3680,27 +3220,7 @@
     "tanggalLahir": "2016-02-23"
   },
   {
-    "id": "sis-369",
-    "nis": "3167272811",
-    "nama": "SILVIA NATASYA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081267272811",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-01-22"
-  },
-  {
-    "id": "sis-370",
-    "nis": "3171710922",
-    "nama": "SILVIA RAHMAWATI",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081271710922",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-01-03"
-  },
-  {
-    "id": "sis-371",
+    "id": "sis-323",
     "nis": "3158762329",
     "nama": "SINTIA MAULIDA",
     "kelas": "Kelas 5-A",
@@ -3710,27 +3230,7 @@
     "tanggalLahir": "2015-12-28"
   },
   {
-    "id": "sis-372",
-    "nis": "3157492507",
-    "nama": "SIPA NURAENI",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081257492507",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-11-02"
-  },
-  {
-    "id": "sis-373",
-    "nis": "3186405952",
-    "nama": "SITI ALWASI",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081286405952",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-05-10"
-  },
-  {
-    "id": "sis-374",
+    "id": "sis-324",
     "nis": "3167775426",
     "nama": "SITI MARYAM",
     "kelas": "Kelas 5-A",
@@ -3740,17 +3240,7 @@
     "tanggalLahir": "2016-03-28"
   },
   {
-    "id": "sis-375",
-    "nis": "3202366178",
-    "nama": "Siti Masfufah",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081202366178",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2020-01-02"
-  },
-  {
-    "id": "sis-376",
+    "id": "sis-325",
     "nis": "3169094092",
     "nama": "SITI MASITOH",
     "kelas": "Kelas 5-A",
@@ -3760,157 +3250,7 @@
     "tanggalLahir": "2016-03-17"
   },
   {
-    "id": "sis-377",
-    "nis": "3157385202",
-    "nama": "SITI MASRUROH",
-    "kelas": "Kelas 5-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081257385202",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-06-26"
-  },
-  {
-    "id": "sis-378",
-    "nis": "3166440752",
-    "nama": "SITI NUR HALIFAH",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266440752",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-12-02"
-  },
-  {
-    "id": "sis-379",
-    "nis": "3146984086",
-    "nama": "SITI NUR MELIA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081246984086",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-07-08"
-  },
-  {
-    "id": "sis-380",
-    "nis": "3155632401",
-    "nama": "SITI ROBIATUL ADAWIAH",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081255632401",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-16"
-  },
-  {
-    "id": "sis-381",
-    "nis": "3193034116",
-    "nama": "Siti Solehah",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081293034116",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-12-25"
-  },
-  {
-    "id": "sis-382",
-    "nis": "141449658",
-    "nama": "SRI CITRA MAULANA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081241449658",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2014-02-06"
-  },
-  {
-    "id": "sis-383",
-    "nis": "3189509303",
-    "nama": "SRI DANIA KHOERIAH",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081289509303",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-12-08"
-  },
-  {
-    "id": "sis-384",
-    "nis": "3182847151",
-    "nama": "SUCI NUR HOLIA",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081282847151",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-11-10"
-  },
-  {
-    "id": "sis-385",
-    "nis": "3167014912",
-    "nama": "SULTAN HERMAWAN",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081267014912",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-07-25"
-  },
-  {
-    "id": "sis-386",
-    "nis": "3183822030",
-    "nama": "SULTAN PAUZI",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081283822030",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2018-05-05"
-  },
-  {
-    "id": "sis-387",
-    "nis": "3192207933",
-    "nama": "SURYA NUGRAHA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081292207933",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-01-07"
-  },
-  {
-    "id": "sis-388",
-    "nis": "3186218898",
-    "nama": "SURYA NURYASIN",
-    "kelas": "Kelas 3-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081286218898",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-04-12"
-  },
-  {
-    "id": "sis-389",
-    "nis": "3196163968",
-    "nama": "SYAFIQ M SADIDUL AZMI",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "L",
-    "waOrangTua": "081296163968",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-07-11"
-  },
-  {
-    "id": "sis-390",
-    "nis": "3154278345",
-    "nama": "SYAHID MI'RAJ MANBAUL ULUM",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081254278345",
-    "tempatLahir": "BANDUNG",
-    "tanggalLahir": "2015-04-29"
-  },
-  {
-    "id": "sis-391",
-    "nis": "3186174214",
-    "nama": "SYAHILA NISA APRIANTY",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081286174214",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2018-04-16"
-  },
-  {
-    "id": "sis-392",
+    "id": "sis-326",
     "nis": "3161656616",
     "nama": "SYAHILA RAHMA DIANI",
     "kelas": "Kelas 5-A",
@@ -3920,247 +3260,407 @@
     "tanggalLahir": "2016-05-03"
   },
   {
-    "id": "sis-393",
-    "nis": "3140227617",
-    "nama": "SYAHLA ASFIA",
-    "kelas": "Kelas 6-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081240227617",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2014-11-12"
-  },
-  {
-    "id": "sis-394",
-    "nis": "3176985394",
-    "nama": "SYAKILA MARWAH",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081276985394",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-05-15"
-  },
-  {
-    "id": "sis-395",
-    "nis": "3193001253",
-    "nama": "SYAKIRA HILYA DINIAH",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081293001253",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-03-20"
-  },
-  {
-    "id": "sis-396",
-    "nis": "3190016113",
-    "nama": "SYAKIRA NURAENUN",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081290016113",
-    "tempatLahir": "Garut",
-    "tanggalLahir": "2019-01-29"
-  },
-  {
-    "id": "sis-397",
-    "nis": "3197852974",
-    "nama": "SYAUQI FADHLAN MULTAZAM",
-    "kelas": "Kelas 1-B",
+    "id": "sis-327",
+    "nis": "3156801836",
+    "nama": "ABDUL MUIS",
+    "kelas": "Kelas 5-B",
     "jenisKelamin": "L",
-    "waOrangTua": "081297852974",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-12-30"
-  },
-  {
-    "id": "sis-398",
-    "nis": "3162130428",
-    "nama": "SYFA NUR SUKMA",
-    "kelas": "Kelas 4-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081262130428",
-    "tempatLahir": "BANJAR",
-    "tanggalLahir": "2016-10-01"
-  },
-  {
-    "id": "sis-399",
-    "nis": "3163656151",
-    "nama": "SYIFA NURMAULIDA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081263656151",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-12-26"
-  },
-  {
-    "id": "sis-400",
-    "nis": "3192268159",
-    "nama": "Tania Lestari",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081292268159",
+    "waOrangTua": "081256801836",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2019-08-29"
+    "tanggalLahir": "2015-08-31"
   },
   {
-    "id": "sis-401",
-    "nis": "3153519332",
-    "nama": "TARISA",
-    "kelas": "Kelas 6-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081253519332",
+    "id": "sis-328",
+    "nis": "3150022185",
+    "nama": "AHMAD MOCHTAR APPANDI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081250022185",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2015-01-30"
+    "tanggalLahir": "2015-05-19"
   },
   {
-    "id": "sis-402",
-    "nis": "3190946971",
-    "nama": "TIARA SAPITRI",
-    "kelas": "Kelas 1-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081290946971",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-07-19"
-  },
-  {
-    "id": "sis-403",
-    "nis": "3198267192",
-    "nama": "TRIYANA ARSYA WIJAYA",
-    "kelas": "Kelas 1-B",
+    "id": "sis-329",
+    "nis": "3160318580",
+    "nama": "AHMAD NURESTU",
+    "kelas": "Kelas 5-B",
     "jenisKelamin": "L",
-    "waOrangTua": "081298267192",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-08-17"
-  },
-  {
-    "id": "sis-404",
-    "nis": "3197582773",
-    "nama": "TSAMROTUS SA'ADAH",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081297582773",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-04-11"
-  },
-  {
-    "id": "sis-405",
-    "nis": "3164706441",
-    "nama": "UJANG HARIS",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081264706441",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-10-30"
-  },
-  {
-    "id": "sis-406",
-    "nis": "3166461838",
-    "nama": "UMU HABIBAH",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081266461838",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-03-16"
-  },
-  {
-    "id": "sis-407",
-    "nis": "3191569474",
-    "nama": "VANESA VARELIA",
-    "kelas": "Kelas 1-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081291569474",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-04-07"
-  },
-  {
-    "id": "sis-408",
-    "nis": "3164345713",
-    "nama": "WARFA GINA AMALIYATUSSHOLIHAH",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081264345713",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-08-18"
-  },
-  {
-    "id": "sis-409",
-    "nis": "3185248586",
-    "nama": "Wiana Dewi Pebrianti",
-    "kelas": "Kelas 2-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081285248586",
+    "waOrangTua": "081260318580",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2018-02-10"
+    "tanggalLahir": "2016-04-12"
   },
   {
-    "id": "sis-410",
-    "nis": "3184495169",
-    "nama": "WIDIA YULIA RAHMAWATI",
-    "kelas": "Kelas 2-B",
-    "jenisKelamin": "P",
-    "waOrangTua": "081284495169",
+    "id": "sis-330",
+    "nis": "3139962072",
+    "nama": "ALI NUR RAMADHAN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081239962072",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2018-07-16"
+    "tanggalLahir": "2013-07-21"
   },
   {
-    "id": "sis-411",
-    "nis": "3189636362",
-    "nama": "WILDAN BAHRUL ULUM",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081289636362",
+    "id": "sis-331",
+    "nis": "3163720956",
+    "nama": "AZKA ZAINA RAPANIA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081263720956",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2018-03-03"
+    "tanggalLahir": "2016-07-28"
   },
   {
-    "id": "sis-412",
-    "nis": "3197218554",
-    "nama": "WILDAN PADILAH",
-    "kelas": "Kelas 1-A",
+    "id": "sis-332",
+    "nis": "3151277600",
+    "nama": "DARUL ASROR",
+    "kelas": "Kelas 5-B",
     "jenisKelamin": "L",
-    "waOrangTua": "081297218554",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2019-11-02"
+    "waOrangTua": "081251277600",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-08-23"
   },
   {
-    "id": "sis-413",
-    "nis": "3171613671",
-    "nama": "WILQI ARJUNA",
-    "kelas": "Kelas 3-A",
-    "jenisKelamin": "L",
-    "waOrangTua": "081271613671",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-10-12"
-  },
-  {
-    "id": "sis-414",
-    "nis": "3175262219",
-    "nama": "WINDA FAUZIA",
-    "kelas": "Kelas 4-B",
+    "id": "sis-333",
+    "nis": "3151518521",
+    "nama": "ELI SELVIANI",
+    "kelas": "Kelas 5-B",
     "jenisKelamin": "P",
-    "waOrangTua": "081275262219",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-25"
+    "waOrangTua": "081251518521",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-09-19"
   },
   {
-    "id": "sis-415",
-    "nis": "3179232298",
-    "nama": "WIRDA FIRDAUS SALAMAH",
-    "kelas": "Kelas 4-A",
+    "id": "sis-334",
+    "nis": "3152890108",
+    "nama": "FITRI RAHMADANI FATIMAH",
+    "kelas": "Kelas 5-B",
     "jenisKelamin": "P",
-    "waOrangTua": "081279232298",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-07-03"
+    "waOrangTua": "081252890108",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-07-13"
   },
   {
-    "id": "sis-416",
-    "nis": "3169011503",
-    "nama": "WISNU ABDUL AZIS",
-    "kelas": "Kelas 4-B",
+    "id": "sis-335",
+    "nis": "154034058",
+    "nama": "HUSNA ASOFA NURHOPIPAH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081254034058",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-17"
+  },
+  {
+    "id": "sis-336",
+    "nis": "3141325697",
+    "nama": "ILYASA SOPARWADI",
+    "kelas": "Kelas 5-B",
     "jenisKelamin": "L",
-    "waOrangTua": "081269011503",
-    "tempatLahir": "KABUPATEN GARUT",
-    "tanggalLahir": "2016-05-06"
+    "waOrangTua": "081241325697",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-12-19"
   },
   {
-    "id": "sis-417",
+    "id": "sis-337",
+    "nis": "3159419182",
+    "nama": "KAYLA SYIFA AZZAHRA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081259419182",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-24"
+  },
+  {
+    "id": "sis-338",
+    "nis": "3158527982",
+    "nama": "LIANI MULYANI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081258527982",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-10-04"
+  },
+  {
+    "id": "sis-339",
+    "nis": "3154570900",
+    "nama": "M. RAEHAN KURNIAWAN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254570900",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-10-26"
+  },
+  {
+    "id": "sis-340",
+    "nis": "3151761361",
+    "nama": "MUHAMAD DAWUD SULAEMAN AL KAHFI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081251761361",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-14"
+  },
+  {
+    "id": "sis-341",
+    "nis": "3157980892",
+    "nama": "MUHAMAD FATHAN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081257980892",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2015-12-08"
+  },
+  {
+    "id": "sis-342",
+    "nis": "3167166227",
+    "nama": "MUHAMAD HAFIZ ARKANA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081267166227",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-02-04"
+  },
+  {
+    "id": "sis-343",
+    "nis": "3156899552",
+    "nama": "MUHAMAD NURROHIM RAMADHAN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081256899552",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-07-03"
+  },
+  {
+    "id": "sis-344",
+    "nis": "3157334586",
+    "nama": "MUHAMMAD ALVIANRI FAUZAN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081257334586",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-08-28"
+  },
+  {
+    "id": "sis-345",
+    "nis": "3159111528",
+    "nama": "MUHAMMAD ALVIYANRA FAUZI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259111528",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-08-28"
+  },
+  {
+    "id": "sis-346",
+    "nis": "3152405354",
+    "nama": "NABILA NUR AMALIA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081252405354",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-11-23"
+  },
+  {
+    "id": "sis-347",
+    "nis": "3152723831",
+    "nama": "NAFLA SYAKIRA HERMAWAN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081252723831",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-25"
+  },
+  {
+    "id": "sis-348",
+    "nis": "3156539811",
+    "nama": "NURUL FATIMAH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081256539811",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-07-29"
+  },
+  {
+    "id": "sis-349",
+    "nis": "3154440914",
+    "nama": "PAISAL MUHAMAD BAKRI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254440914",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-03-20"
+  },
+  {
+    "id": "sis-350",
+    "nis": "3154846789",
+    "nama": "PUPUT RAHAYU",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081254846789",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-03-20"
+  },
+  {
+    "id": "sis-351",
+    "nis": "3142920513",
+    "nama": "RAFA FADILAH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081242920513",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-01-06"
+  },
+  {
+    "id": "sis-352",
+    "nis": "151669065",
+    "nama": "RAFI MUHAMAD RAMDANI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081251669065",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-06-19"
+  },
+  {
+    "id": "sis-353",
+    "nis": "3152771044",
+    "nama": "RANEM HUMAIRA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081252771044",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-12-06"
+  },
+  {
+    "id": "sis-354",
+    "nis": "3162445623",
+    "nama": "RANTI SRI RAHAYU",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081262445623",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-01-05"
+  },
+  {
+    "id": "sis-355",
+    "nis": "3156087147",
+    "nama": "REVAN NURSALEH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081256087147",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-12-11"
+  },
+  {
+    "id": "sis-356",
+    "nis": "3161006875",
+    "nama": "REVI LIA LAILATUL PAUZIAH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081261006875",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-06-24"
+  },
+  {
+    "id": "sis-357",
+    "nis": "3147764315",
+    "nama": "REVI MAULANA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081247764315",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-07-10"
+  },
+  {
+    "id": "sis-358",
+    "nis": "3159295559",
+    "nama": "RIFKI WAHYUDIN",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259295559",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-12-31"
+  },
+  {
+    "id": "sis-359",
+    "nis": "3169265969",
+    "nama": "RIZKI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081269265969",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2016-07-26"
+  },
+  {
+    "id": "sis-360",
+    "nis": "3155385898",
+    "nama": "RIZQY FADILLAH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081255385898",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-11-21"
+  },
+  {
+    "id": "sis-361",
+    "nis": "3151237371",
+    "nama": "SAEPUL AJIS",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081251237371",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-10-25"
+  },
+  {
+    "id": "sis-362",
+    "nis": "3140736759",
+    "nama": "SAEPUL PADILAH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081240736759",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-11-08"
+  },
+  {
+    "id": "sis-363",
+    "nis": "3151191919",
+    "nama": "SILVI FITRIANI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081251191919",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-09"
+  },
+  {
+    "id": "sis-364",
+    "nis": "3159194354",
+    "nama": "SILVI KHOIRUNNISA",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081259194354",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-03-11"
+  },
+  {
+    "id": "sis-365",
+    "nis": "3157492507",
+    "nama": "SIPA NURAENI",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081257492507",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-11-02"
+  },
+  {
+    "id": "sis-366",
+    "nis": "3157385202",
+    "nama": "SITI MASRUROH",
+    "kelas": "Kelas 5-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081257385202",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-06-26"
+  },
+  {
+    "id": "sis-367",
     "nis": "3158458388",
     "nama": "WULAN DARI IRWANTI",
     "kelas": "Kelas 5-B",
@@ -4170,43 +3670,613 @@
     "tanggalLahir": "2015-03-01"
   },
   {
-    "id": "sis-418",
-    "nis": "3166033757",
-    "nama": "YUDI BUDIMAN",
-    "kelas": "Kelas 4-B",
+    "id": "sis-368",
+    "nis": "149916533",
+    "nama": "ADRIANSAH LNH",
+    "kelas": "Kelas 6-A",
     "jenisKelamin": "L",
-    "waOrangTua": "081266033757",
+    "waOrangTua": "081249916533",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-06-23"
+  },
+  {
+    "id": "sis-369",
+    "nis": "143813733",
+    "nama": "ALIYA RAFIFA MUTIARA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081243813733",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-11-29"
+  },
+  {
+    "id": "sis-370",
+    "nis": "3145380081",
+    "nama": "ALMIRA RAMADANI",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081245380081",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-07-10"
+  },
+  {
+    "id": "sis-371",
+    "nis": "3143757630",
+    "nama": "ARIPA MUHAMAD AFANDI",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081243757630",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-06-08"
+  },
+  {
+    "id": "sis-372",
+    "nis": "147336844",
+    "nama": "ARPAN MAULANA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081247336844",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-11-22"
+  },
+  {
+    "id": "sis-373",
+    "nis": "155957577",
+    "nama": "CEPI NUGRAHA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081255957577",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-28"
+  },
+  {
+    "id": "sis-374",
+    "nis": "147312603",
+    "nama": "DZAKIRA TALITA ZAHRA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081247312603",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-11-25"
+  },
+  {
+    "id": "sis-375",
+    "nis": "3142392232",
+    "nama": "FATIMAHTUL AZZAHRA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081242392232",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-03-27"
+  },
+  {
+    "id": "sis-376",
+    "nis": "155246357",
+    "nama": "HABIBI WAPIK HIPDILAH",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081255246357",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-02-28"
+  },
+  {
+    "id": "sis-377",
+    "nis": "3154288582",
+    "nama": "HILMAN NIJAM MAULANA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254288582",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-23"
+  },
+  {
+    "id": "sis-378",
+    "nis": "3151816519",
+    "nama": "KAILA NURHAYATI",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081251816519",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-07-02"
+  },
+  {
+    "id": "sis-379",
+    "nis": "3149422180",
+    "nama": "M FAUZI",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081249422180",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-09-10"
+  },
+  {
+    "id": "sis-380",
+    "nis": "3159049000",
+    "nama": "MIFTAH FARID",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259049000",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-26"
+  },
+  {
+    "id": "sis-381",
+    "nis": "148300431",
+    "nama": "MIPTAH AL AZKIA PATUROHIM",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081248300431",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-02-05"
+  },
+  {
+    "id": "sis-382",
+    "nis": "3144325132",
+    "nama": "MUHAMAD ALAWI",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081244325132",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-10-29"
+  },
+  {
+    "id": "sis-383",
+    "nis": "3149065298",
+    "nama": "MUHAMAD HIKAM ALVATIR",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081249065298",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-12-18"
+  },
+  {
+    "id": "sis-384",
+    "nis": "3145060479",
+    "nama": "MUHAMAD NAUVAL",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081245060479",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-06-08"
+  },
+  {
+    "id": "sis-385",
+    "nis": "3142612230",
+    "nama": "MUHAMMAD RIZKI PRATAMA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081242612230",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-09-12"
+  },
+  {
+    "id": "sis-386",
+    "nis": "145719573",
+    "nama": "MUSTAJAB RAHMATILAH",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081245719573",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-04-16"
+  },
+  {
+    "id": "sis-387",
+    "nis": "157418845",
+    "nama": "NAJMA ROUDOTUL JANAH",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081257418845",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-29"
+  },
+  {
+    "id": "sis-388",
+    "nis": "143204543",
+    "nama": "NAZRIL MUHAMAD ILHAM",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081243204543",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-08-21"
+  },
+  {
+    "id": "sis-389",
+    "nis": "3152351790",
+    "nama": "PRIDA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081252351790",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-11"
+  },
+  {
+    "id": "sis-390",
+    "nis": "3144133450",
+    "nama": "PUPU ASMAWIYAH SYAHIDATUL HAQ",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081244133450",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-06-13"
+  },
+  {
+    "id": "sis-391",
+    "nis": "3153372747",
+    "nama": "PUTRA NALAR NUR RAHMAT",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081253372747",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-02-07"
+  },
+  {
+    "id": "sis-392",
+    "nis": "3131089479",
+    "nama": "RAHMAT BAHTIAR",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081231089479",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2013-11-13"
+  },
+  {
+    "id": "sis-393",
+    "nis": "147716325",
+    "nama": "RISKI MAULANA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081247716325",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-09-09"
+  },
+  {
+    "id": "sis-394",
+    "nis": "158491257",
+    "nama": "SALWA HOERUN NISA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081258491257",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-05-23"
+  },
+  {
+    "id": "sis-395",
+    "nis": "3158183363",
+    "nama": "SEPTIAN SAFUTRA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081258183363",
+    "tempatLahir": "SUKABUMI",
+    "tanggalLahir": "2015-03-14"
+  },
+  {
+    "id": "sis-396",
+    "nis": "141449658",
+    "nama": "SRI CITRA MAULANA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081241449658",
     "tempatLahir": "GARUT",
-    "tanggalLahir": "2016-09-16"
+    "tanggalLahir": "2014-02-06"
+  },
+  {
+    "id": "sis-397",
+    "nis": "3154278345",
+    "nama": "SYAHID MI'RAJ MANBAUL ULUM",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "L",
+    "waOrangTua": "081254278345",
+    "tempatLahir": "BANDUNG",
+    "tanggalLahir": "2015-04-29"
+  },
+  {
+    "id": "sis-398",
+    "nis": "3140227617",
+    "nama": "SYAHLA ASFIA",
+    "kelas": "Kelas 6-A",
+    "jenisKelamin": "P",
+    "waOrangTua": "081240227617",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-11-12"
+  },
+  {
+    "id": "sis-399",
+    "nis": "3147440015",
+    "nama": "ANTON FAUJIAN YUDHISTIRA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081247440015",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-10-09"
+  },
+  {
+    "id": "sis-400",
+    "nis": "149506590",
+    "nama": "FAUZAN FADILAH",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "089602076221",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2014-07-07"
+  },
+  {
+    "id": "sis-401",
+    "nis": "3156051652",
+    "nama": "HAMJAH ALPA NURIZWAN",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081256051652",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-03-11"
+  },
+  {
+    "id": "sis-402",
+    "nis": "3159573914",
+    "nama": "HANDIKA RADITYA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259573914",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-01"
+  },
+  {
+    "id": "sis-403",
+    "nis": "3148854506",
+    "nama": "HANIFAH KIRANA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081248854506",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-03-02"
+  },
+  {
+    "id": "sis-404",
+    "nis": "3145265668",
+    "nama": "HUSNI NURAZIZAH",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081245265668",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-09-22"
+  },
+  {
+    "id": "sis-405",
+    "nis": "3140307021",
+    "nama": "IQBAL MUHAMAD NUR",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081240307021",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-08-14"
+  },
+  {
+    "id": "sis-406",
+    "nis": "141327142",
+    "nama": "IRWANSYAH",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081241327142",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-02-28"
+  },
+  {
+    "id": "sis-407",
+    "nis": "153007082",
+    "nama": "KANIA KHOERUNISA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081222835200",
+    "tempatLahir": "GARUT",
+    "tanggalLahir": "2015-01-16"
+  },
+  {
+    "id": "sis-408",
+    "nis": "3144023469",
+    "nama": "MUHAMMAD DAFA MAULANA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081244023469",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-11-16"
+  },
+  {
+    "id": "sis-409",
+    "nis": "3159868009",
+    "nama": "MUHAMMAD IKBAL",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081259868009",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-04"
+  },
+  {
+    "id": "sis-410",
+    "nis": "3141254992",
+    "nama": "MUHAMMAD RIDWAN",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081241254992",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-06-24"
+  },
+  {
+    "id": "sis-411",
+    "nis": "3152810557",
+    "nama": "MUTIA AZAHRA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081252810557",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-03-11"
+  },
+  {
+    "id": "sis-412",
+    "nis": "3156254056",
+    "nama": "NABILA KHOIRUNISA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081256254056",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-04-15"
+  },
+  {
+    "id": "sis-413",
+    "nis": "3145120533",
+    "nama": "NADA SRIDAYANTI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081245120533",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-12-04"
+  },
+  {
+    "id": "sis-414",
+    "nis": "3149950635",
+    "nama": "NAIRA MARIYA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081249950635",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-09-10"
+  },
+  {
+    "id": "sis-415",
+    "nis": "147982764",
+    "nama": "NAJMI ALNA MAWAWI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081247982764",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-03-17"
+  },
+  {
+    "id": "sis-416",
+    "nis": "3143125763",
+    "nama": "NAUVAL SIDQI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081243125763",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-08-22"
+  },
+  {
+    "id": "sis-417",
+    "nis": "3140726429",
+    "nama": "NIKEN SELIA ANJANI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081240726429",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-05-25"
+  },
+  {
+    "id": "sis-418",
+    "nis": "3142743694",
+    "nama": "NURI NOPITA SARI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081242743694",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-09-21"
   },
   {
     "id": "sis-419",
-    "nis": "3172226395",
-    "nama": "YUNI YUNITA",
-    "kelas": "Kelas 3-B",
+    "nis": "3146041109",
+    "nama": "RAISA ADILA",
+    "kelas": "Kelas 6-B",
     "jenisKelamin": "P",
-    "waOrangTua": "081272226395",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-05-10"
+    "waOrangTua": "081246041109",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-05-16"
   },
   {
     "id": "sis-420",
-    "nis": "3171334817",
-    "nama": "ZAHWA AWALIA",
-    "kelas": "Kelas 4-A",
-    "jenisKelamin": "P",
-    "waOrangTua": "081271334817",
-    "tempatLahir": "GARUT",
-    "tanggalLahir": "2017-03-31"
+    "nis": "3141946297",
+    "nama": "RANGGA DENA MUHAMAD ALFAZRI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081241946297",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-10-01"
   },
   {
     "id": "sis-421",
-    "nis": "3177168957",
-    "nama": "ZULPIAN RISWANDI",
-    "kelas": "Kelas 3-B",
+    "nis": "141081998",
+    "nama": "SAENAL ABIDIN",
+    "kelas": "Kelas 6-B",
     "jenisKelamin": "L",
-    "waOrangTua": "081277168957",
+    "waOrangTua": "081241081998",
     "tempatLahir": "Garut",
-    "tanggalLahir": "2017-05-08"
+    "tanggalLahir": "2014-03-13"
+  },
+  {
+    "id": "sis-422",
+    "nis": "3142038565",
+    "nama": "SAEPUL RIJWAN",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081242038565",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-10-06"
+  },
+  {
+    "id": "sis-423",
+    "nis": "3149645374",
+    "nama": "SALPIA ANANDA PUTRI",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081249645374",
+    "tempatLahir": "Ciamis",
+    "tanggalLahir": "2014-12-15"
+  },
+  {
+    "id": "sis-424",
+    "nis": "146916110",
+    "nama": "SALWA NURLAILA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081246916110",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-08-18"
+  },
+  {
+    "id": "sis-425",
+    "nis": "144353709",
+    "nama": "SAN SAN ARIPAN",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "L",
+    "waOrangTua": "081244353709",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-12-22"
+  },
+  {
+    "id": "sis-426",
+    "nis": "3146984086",
+    "nama": "SITI NUR MELIA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081246984086",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2014-07-08"
+  },
+  {
+    "id": "sis-427",
+    "nis": "3155632401",
+    "nama": "SITI ROBIATUL ADAWIAH",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081255632401",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-16"
+  },
+  {
+    "id": "sis-428",
+    "nis": "3153519332",
+    "nama": "TARISA",
+    "kelas": "Kelas 6-B",
+    "jenisKelamin": "P",
+    "waOrangTua": "081253519332",
+    "tempatLahir": "Garut",
+    "tanggalLahir": "2015-01-30"
   }
 ]
