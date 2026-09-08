@@ -36,6 +36,15 @@ export const DAFTAR_KELAS = [
   'Kelas 6-A', 'Kelas 6-B'
 ];
 
+export interface WaliKelas {
+  kelas: string;
+  nama: string;
+  username: string;
+  pin: string;
+  noWa?: string; // Nomor WhatsApp Wali Kelas
+  nip?: string;
+}
+
 export type StatusKehadiran = 'Hadir' | 'Sakit' | 'Izin' | 'Alfa' | 'Terlambat';
 
 export interface JadwalPresensi {
@@ -84,6 +93,7 @@ export interface SystemSettings {
   garutLogoUrl?: string; // Logo Pemerintah Kabupaten Garut (Custom/Base64/URL)
   namaKepsek?: string; // Nama Kepala Sekolah untuk Tanda Tangan Laporan
   nipKepsek?: string; // NIP Kepala Sekolah
+  waliKelasList?: WaliKelas[]; // Data Wali Kelas per rombel & nomor WhatsApp
 }
 
 export interface ActivityLog {

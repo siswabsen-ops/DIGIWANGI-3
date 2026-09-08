@@ -4,12 +4,22 @@ import {
   PRESENSI_INITIAL,
   SETTINGS_INITIAL,
   LOGS_INITIAL,
-  USER_DEMO_ACCOUNTS
+  USER_DEMO_ACCOUNTS,
+  DAFTAR_WALI_KELAS
 } from './lib/demoData';
 import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
-import { Siswa, Presensi, SystemSettings, ActivityLog, User } from './types';
+import { Siswa, Presensi, SystemSettings, ActivityLog, User, WaliKelas } from './types';
 import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString } from './lib/attendanceUtils';
 import Header from './components/Header';
+import {
+  fetchCloudMasterData,
+  subscribeToMultiDeviceSync,
+  syncStudentsToCloud,
+  syncWaliKelasToCloud,
+  syncPresensiToCloud,
+  syncSettingsToCloud,
+  syncAccountsToCloud
+} from './lib/cloudSync';
 import { 
   db,
   ensureAuthenticated, 
@@ -150,6 +160,19 @@ export default function App() {
     return USER_DEMO_ACCOUNTS;
   });
 
+  const [waliKelasList, setWaliKelasList] = useState<WaliKelas[]>(() => {
+    const cached = safeGetItem('karapres3_wali_kelas_v1');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return DAFTAR_WALI_KELAS;
+  });
+
   // Navigation tab for overall app modules
   const [currentView, setCurrentView] = useState<'scan' | 'manajemen' | 'laporan' | 'panduan'>('scan');
 
@@ -188,69 +211,88 @@ export default function App() {
     };
   }, []);
 
-  // Real-time Cloud multi-device synchronizer (Instant sync on PC, Android, Tablet)
+  // Multi-Device Cloud Synchronizer (Instant sync across Android, PC, Laptop, Tablet)
   useEffect(() => {
     let isMounted = true;
-    let unsubCloud: (() => void) | undefined;
 
-    const startRealTimeSync = async () => {
-      try {
-        await ensureAuthenticated();
-        
-        // Lightweight check & seed if cloud master dataset is fresh
-        await seedInitialDataIfDocsEmpty(
-          SISWA_INITIAL,
-          USER_DEMO_ACCOUNTS,
-          SETTINGS_INITIAL,
-          LOGS_INITIAL,
-          PRESENSI_INITIAL
-        );
-
-        if (!isMounted) return;
-
-        // Master cloud sync subscription (1 atomic connection per category)
-        unsubCloud = subscribeToCloudSync({
-          onStudentsChange: (incomingStudents) => {
-            if (incomingStudents && Array.isArray(incomingStudents) && incomingStudents.length > 0) {
-              setSiswaList(incomingStudents);
-              safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
-            }
-          },
-          onPresensiChange: (incomingPresensi) => {
-            if (incomingPresensi && Array.isArray(incomingPresensi)) {
-              setPresensiList(incomingPresensi);
-              safeSetItem('karapres3_presensi_v5', JSON.stringify(incomingPresensi));
-            }
-          },
-          onSettingsChange: (incomingSettings) => {
-            if (incomingSettings) {
-              if (incomingSettings.appLogoUrl) {
-                safeSetItem(APP_LOGO_STORAGE_KEY, incomingSettings.appLogoUrl);
-              }
-              setSettings((prev) => {
-                const persistentLogo = incomingSettings.appLogoUrl || prev.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
-                return { ...incomingSettings, appLogoUrl: persistentLogo };
-              });
-              safeSetItem('karapres3_settings', JSON.stringify(incomingSettings));
-            }
-          },
-          onAccountsChange: (incomingAccounts) => {
-            if (incomingAccounts && Array.isArray(incomingAccounts) && incomingAccounts.length > 0) {
-              setAccountsList(incomingAccounts);
-              safeSetItem('karapres3_accounts_v4', JSON.stringify(incomingAccounts));
-            }
-          }
-        });
-      } catch (error) {
-        console.warn('Real-time database sync notice:', error);
+    // 1. Initial Cloud Master Load on Mount (When opened on Android or another PC)
+    fetchCloudMasterData().then((data) => {
+      if (!isMounted || !data) return;
+      if (data.students && Array.isArray(data.students) && data.students.length > 0) {
+        setSiswaList(data.students);
+        safeSetItem('karapres3_siswa_v5', JSON.stringify(data.students));
       }
-    };
+      if (data.waliKelas && Array.isArray(data.waliKelas) && data.waliKelas.length > 0) {
+        setWaliKelasList(data.waliKelas);
+        safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(data.waliKelas));
+      }
+      if (data.presensi && Array.isArray(data.presensi) && data.presensi.length > 0) {
+        setPresensiList(data.presensi);
+        safeSetItem('karapres3_presensi_v5', JSON.stringify(data.presensi));
+      }
+      if (data.settings) {
+        setSettings((prev) => ({ ...prev, ...data.settings }));
+        safeSetItem('karapres3_settings', JSON.stringify(data.settings));
+      }
+      if (data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
+        setAccountsList(data.accounts);
+        safeSetItem('karapres3_accounts_v4', JSON.stringify(data.accounts));
+      }
+    });
 
-    startRealTimeSync();
+    // 2. Real-time multi-device subscription (Server sync version + Firestore live)
+    const unsubMultiDevice = subscribeToMultiDeviceSync({
+      onStudentsChange: (incomingStudents) => {
+        if (!isMounted) return;
+        if (incomingStudents && Array.isArray(incomingStudents) && incomingStudents.length > 0) {
+          setSiswaList(incomingStudents);
+          safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
+        }
+      },
+      onWaliKelasChange: (incomingWaliKelas) => {
+        if (!isMounted) return;
+        if (incomingWaliKelas && Array.isArray(incomingWaliKelas) && incomingWaliKelas.length > 0) {
+          setWaliKelasList(incomingWaliKelas);
+          safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
+        }
+      },
+      onPresensiChange: (incomingPresensi) => {
+        if (!isMounted) return;
+        if (incomingPresensi && Array.isArray(incomingPresensi)) {
+          setPresensiList(incomingPresensi);
+          safeSetItem('karapres3_presensi_v5', JSON.stringify(incomingPresensi));
+        }
+      },
+      onSettingsChange: (incomingSettings) => {
+        if (!isMounted) return;
+        if (incomingSettings) {
+          if (incomingSettings.appLogoUrl) {
+            safeSetItem(APP_LOGO_STORAGE_KEY, incomingSettings.appLogoUrl);
+          }
+          setSettings((prev) => {
+            const persistentLogo = incomingSettings.appLogoUrl || prev.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
+            return { ...incomingSettings, appLogoUrl: persistentLogo };
+          });
+          safeSetItem('karapres3_settings', JSON.stringify(incomingSettings));
+        }
+      },
+      onAccountsChange: (incomingAccounts) => {
+        if (!isMounted) return;
+        if (incomingAccounts && Array.isArray(incomingAccounts) && incomingAccounts.length > 0) {
+          setAccountsList(incomingAccounts);
+          safeSetItem('karapres3_accounts_v4', JSON.stringify(incomingAccounts));
+        }
+      }
+    });
+
+    // 3. Secondary Firestore seed if empty
+    ensureAuthenticated()
+      .then(() => seedInitialDataIfDocsEmpty(SISWA_INITIAL, USER_DEMO_ACCOUNTS, SETTINGS_INITIAL, LOGS_INITIAL, PRESENSI_INITIAL))
+      .catch(() => {});
 
     return () => {
       isMounted = false;
-      if (unsubCloud) unsubCloud();
+      unsubMultiDevice();
     };
   }, []);
 
@@ -307,8 +349,9 @@ export default function App() {
       safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
       saveAccountToFirestore({ user: mergedUser, pin: mergedPin });
       syncMasterAccountsToCloud(newList);
+      syncAccountsToCloud(newList, 'Admin');
       addActivityLog('Update Akun', `Merubah detail profil akun: ${updatedUser.namaLengkap || userId}`);
-      triggerNotice('Akun berhasil diperbarui.', 'success');
+      triggerNotice('Akun berhasil diperbarui & disinkronkan ke seluruh perangkat.', 'success');
     }
   }, [accountsList, addActivityLog]);
 
@@ -318,8 +361,9 @@ export default function App() {
     safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
     saveAccountToFirestore({ user, pin });
     syncMasterAccountsToCloud(newList);
+    syncAccountsToCloud(newList, 'Admin');
     addActivityLog('Tambah Akun Baru', `Membuat akun operator baru: ${user.namaLengkap} [${user.role.toUpperCase()}]`);
-    triggerNotice('Akun baru berhasil ditambahkan.', 'success');
+    triggerNotice('Akun baru berhasil ditambahkan & disinkronkan.', 'success');
   }, [accountsList, addActivityLog]);
 
   const handleDeleteAccount = useCallback((userId: string) => {
@@ -332,8 +376,9 @@ export default function App() {
     safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
     deleteAccountFromFirestore(userId);
     syncMasterAccountsToCloud(newList);
+    syncAccountsToCloud(newList, 'Admin');
     addActivityLog('Hapus Akun', `Menghapus akun operator ID: ${userId}`);
-    triggerNotice('Akun berhasil dihapus.', 'success');
+    triggerNotice('Akun berhasil dihapus & disinkronkan.', 'success');
   }, [currentUser, accountsList, addActivityLog]);
 
   const handleLogin = useCallback((user: User) => {
@@ -562,6 +607,7 @@ export default function App() {
       const updated = [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)];
       safeSetItem('karapres3_siswa_v5', JSON.stringify(updated));
       syncMasterStudentsToCloud(updated, 'Admin');
+      syncStudentsToCloud(updated, 'Admin');
       return updated;
     });
     saveSiswaToFirestore(newSiswa);
@@ -574,6 +620,7 @@ export default function App() {
       const newList = prev.map(s => s.id === updated.id ? updated : s);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
       syncMasterStudentsToCloud(newList, 'Admin');
+      syncStudentsToCloud(newList, 'Admin');
       return newList;
     });
     saveSiswaToFirestore(updated);
@@ -590,10 +637,34 @@ export default function App() {
       const newList = prev.filter(s => s.id !== id);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
       syncMasterStudentsToCloud(newList, 'Admin');
+      syncStudentsToCloud(newList, 'Admin');
       return newList;
     });
     deleteSiswaFromFirestore(id);
     triggerNotice('Data siswa berhasil dihapus dari sistem & disinkronkan.', 'info');
+  }, [addActivityLog]);
+
+  // Wali Kelas CRUD action
+  const handleUpdateWaliKelas = useCallback((updatedList: WaliKelas[]) => {
+    setWaliKelasList(updatedList);
+    safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(updatedList));
+    syncWaliKelasToCloud(updatedList, 'Admin');
+    addActivityLog('Update Wali Kelas', `Memperbarui data dan nomor WhatsApp wali kelas`);
+    triggerNotice('Data & Nomor WhatsApp Wali Kelas berhasil disimpan & disinkronkan ke semua perangkat!', 'success');
+  }, [addActivityLog]);
+
+  // Batch update student WhatsApp numbers (e.g. from Class WhatsApp manager)
+  const handleBatchUpdateStudentWa = useCallback((updates: { id: string; waOrangTua: string }[]) => {
+    setSiswaList(prev => {
+      const map = new Map(updates.map(u => [u.id, u.waOrangTua]));
+      const newList = prev.map(s => map.has(s.id) ? { ...s, waOrangTua: map.get(s.id)! } : s);
+      safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
+      syncMasterStudentsToCloud(newList, 'Admin');
+      syncStudentsToCloud(newList, 'Admin');
+      return newList;
+    });
+    addActivityLog('Update WA Siswa', `Memperbarui ${updates.length} nomor WhatsApp wali murid`);
+    triggerNotice(`${updates.length} Nomor WhatsApp wali murid berhasil disimpan & disinkronkan ke seluruh perangkat!`, 'success');
   }, [addActivityLog]);
 
   // Settings Save action
@@ -604,7 +675,9 @@ export default function App() {
     setSettings(newSettings);
     safeSetItem('karapres3_settings', JSON.stringify(newSettings));
     saveSettingsToFirestore(newSettings);
+    syncSettingsToCloud(newSettings, 'Admin');
     addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, logo resmi, atau ID integrasi Google.');
+    triggerNotice('Pengaturan sistem berhasil disimpan & disinkronkan ke seluruh perangkat.', 'success');
   }, [addActivityLog]);
 
   // Record a scanned attendance
@@ -626,6 +699,7 @@ export default function App() {
       }
       safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
       syncMasterPresensiToCloud(updated, 'Presensi Live');
+      syncPresensiToCloud(updated, 'Presensi Live');
       return updated;
     });
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);
@@ -810,6 +884,9 @@ export default function App() {
                     onUpdateAccount={handleUpdateAccount}
                     onAddAccount={handleAddAccount}
                     onDeleteAccount={handleDeleteAccount}
+                    waliKelasList={waliKelasList}
+                    onUpdateWaliKelas={handleUpdateWaliKelas}
+                    onBatchUpdateStudentWa={handleBatchUpdateStudentWa}
                   />
                 )}
 

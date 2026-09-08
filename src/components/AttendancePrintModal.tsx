@@ -28,7 +28,7 @@ interface AttendancePrintModalProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
   settings?: SystemSettings;
-  defaultType?: 'harian' | 'mingguan' | 'bulanan' | 'rombel';
+  defaultType?: 'harian' | 'mingguan' | 'bulanan' | 'rombel' | 'semester';
   defaultKelas?: string;
   defaultDate?: string;
   defaultMonth?: string;
@@ -45,10 +45,12 @@ export default function AttendancePrintModal({
   defaultDate = '',
   defaultMonth = ''
 }: AttendancePrintModalProps) {
-  const [printType, setPrintType] = useState<'harian' | 'mingguan' | 'bulanan' | 'rombel'>(defaultType);
+  const [printType, setPrintType] = useState<'harian' | 'mingguan' | 'bulanan' | 'rombel' | 'semester'>(defaultType);
   const [selectedKelas, setSelectedKelas] = useState<string>(defaultKelas);
   const [targetDate, setTargetDate] = useState<string>(defaultDate || new Date().toISOString().slice(0, 10));
   const [targetMonth, setTargetMonth] = useState<string>(defaultMonth || new Date().toISOString().slice(0, 7));
+  const [targetSemesterType, setTargetSemesterType] = useState<'1' | '2'>('1');
+  const [targetTahunAjaran, setTargetTahunAjaran] = useState<string>('2026/2027');
 
   // Logo sources
   const appLogo = settings?.appLogoUrl || DEFAULT_DIGIWANGI_LOGO || DIGIWANGI_LOGO_BASE64;
@@ -117,6 +119,27 @@ export default function AttendancePrintModal({
     return Math.max(1, setDates.size || 20);
   }, [presensiList, targetMonth]);
 
+  // Semester metrics
+  const semesterEffectiveDays = useMemo(() => {
+    const parts = targetTahunAjaran.split('/');
+    const startYear = parseInt(parts[0]) || 2026;
+    const endYear = parseInt(parts[1]) || (startYear + 1);
+
+    const targetYearMonths = targetSemesterType === '1'
+      ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+      : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+
+    const setDates = new Set<string>();
+    presensiList.forEach(p => {
+      if (!p.tanggal) return;
+      const norm = normalizeDateKey(p.tanggal);
+      if (targetYearMonths.some(ym => norm.startsWith(ym))) {
+        setDates.add(norm);
+      }
+    });
+    return Math.max(1, setDates.size || 100);
+  }, [presensiList, targetTahunAjaran, targetSemesterType]);
+
   const formattedDateIndo = useMemo(() => {
     try {
       const d = new Date(targetDate);
@@ -184,7 +207,7 @@ export default function AttendancePrintModal({
         {/* MODAL CONFIGURATION FILTER TOOLBAR (Hidden on Print) */}
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-3 print:hidden text-xs">
           {/* Print Type Selector */}
-          <div className="flex items-center bg-white rounded-xl p-1 border border-slate-200 shadow-2xs">
+          <div className="flex items-center bg-white rounded-xl p-1 border border-slate-200 shadow-2xs flex-wrap">
             <button
               onClick={() => setPrintType('harian')}
               className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
@@ -217,6 +240,14 @@ export default function AttendancePrintModal({
             >
               Rekap Bulanan
             </button>
+            <button
+              onClick={() => setPrintType('semester')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                printType === 'semester' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Rekap Semester
+            </button>
           </div>
 
           {/* Class filter (Disabled on Rombel) */}
@@ -236,8 +267,39 @@ export default function AttendancePrintModal({
             </div>
           )}
 
-          {/* Date Picker */}
-          {printType !== 'bulanan' ? (
+          {/* Date Picker / Semester Picker */}
+          {printType === 'semester' ? (
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-500">Tahun:</span>
+              <select
+                value={targetTahunAjaran}
+                onChange={(e) => setTargetTahunAjaran(e.target.value)}
+                className="bg-white border border-slate-200 font-bold py-1 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs"
+              >
+                <option value="2026/2027">2026/2027</option>
+                <option value="2025/2026">2025/2026</option>
+                <option value="2024/2025">2024/2025</option>
+              </select>
+              <select
+                value={targetSemesterType}
+                onChange={(e) => setTargetSemesterType(e.target.value as '1' | '2')}
+                className="bg-white border border-slate-200 font-bold py-1 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs"
+              >
+                <option value="1">Sem 1 (Ganjil)</option>
+                <option value="2">Sem 2 (Genap)</option>
+              </select>
+            </div>
+          ) : printType === 'bulanan' ? (
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-slate-500">Bulan:</span>
+              <input
+                type="month"
+                value={targetMonth}
+                onChange={(e) => setTargetMonth(e.target.value)}
+                className="bg-white border border-slate-200 font-bold py-1 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs"
+              />
+            </div>
+          ) : (
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-slate-500">
                 {printType === 'mingguan' ? 'Minggu Mulai:' : 'Tanggal:'}
@@ -246,16 +308,6 @@ export default function AttendancePrintModal({
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                className="bg-white border border-slate-200 font-bold py-1 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs"
-              />
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-slate-500">Bulan:</span>
-              <input
-                type="month"
-                value={targetMonth}
-                onChange={(e) => setTargetMonth(e.target.value)}
                 className="bg-white border border-slate-200 font-bold py-1 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs"
               />
             </div>
@@ -315,6 +367,7 @@ export default function AttendancePrintModal({
               {printType === 'rombel' && `REKAPITULASI PRESENSI HARIAN SELURUH ROMBEL KELAS (1-A s/d 6-B)`}
               {printType === 'mingguan' && `JURNAL MATRIKS KEHADIRAN SISWA MINGGUAN`}
               {printType === 'bulanan' && `BUKU REKAPITULASI KEHADIRAN BULANAN SISWA`}
+              {printType === 'semester' && `BUKU INDUK REKAPITULASI PRESENSI SEMESTER SISWA`}
             </h1>
             
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs text-black font-bold mt-2">
@@ -333,7 +386,10 @@ export default function AttendancePrintModal({
               {printType === 'bulanan' && (
                 <span>Periode Bulan: <b>{formattedMonthIndo}</b></span>
               )}
-              <span>Tahun Pelajaran: <b>2025/2026</b></span>
+              {printType === 'semester' && (
+                <span>Semester: <b>{targetSemesterType === '1' ? '1 (Ganjil / Juli-Desember)' : '2 (Genap / Januari-Juni)'}</b></span>
+              )}
+              <span>Tahun Pelajaran: <b>{printType === 'semester' ? targetTahunAjaran : '2025/2026'}</b></span>
             </div>
           </div>
 
@@ -590,6 +646,90 @@ export default function AttendancePrintModal({
                         <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
                         <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
                         <td className="border border-black py-1 px-2 text-center font-mono">{bulananEffectiveDays}</td>
+                        <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
+                        <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
+                        <td className="border border-black py-1 px-2 text-center">{sakit}</td>
+                        <td className="border border-black py-1 px-2 text-center">{izin}</td>
+                        <td className="border border-black py-1 px-2 text-center">{alfa}</td>
+                        <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
+                        <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* TYPE E: SEMESTER REKAP */}
+          {printType === 'semester' && (
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full text-[11px] border-collapse border border-black">
+                <thead>
+                  <tr className="bg-slate-100 text-black font-black text-center border-b border-black">
+                    <th className="border border-black py-1.5 px-2 w-8">No</th>
+                    <th className="border border-black py-1.5 px-2 w-20">NIS</th>
+                    <th className="border border-black py-1.5 px-3 text-left">Nama Lengkap Siswa</th>
+                    <th className="border border-black py-1.5 px-2 w-14">Kelas</th>
+                    <th className="border border-black py-1.5 px-2 w-16">Hari Efektif</th>
+                    <th className="border border-black py-1.5 px-2 w-12">Hadir</th>
+                    <th className="border border-black py-1.5 px-2 w-12">Telat</th>
+                    <th className="border border-black py-1.5 px-2 w-12">Sakit</th>
+                    <th className="border border-black py-1.5 px-2 w-12">Izin</th>
+                    <th className="border border-black py-1.5 px-2 w-12">Alfa</th>
+                    <th className="border border-black py-1.5 px-2 w-16">Keaktifan</th>
+                    <th className="border border-black py-1.5 px-3 w-28">Predikat Raport</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStudents.map((siswa, idx) => {
+                    const parts = targetTahunAjaran.split('/');
+                    const startYear = parseInt(parts[0]) || 2026;
+                    const endYear = parseInt(parts[1]) || (startYear + 1);
+
+                    const targetYearMonths = targetSemesterType === '1'
+                      ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+                      : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+
+                    const studentRecords = presensiList.filter(p => {
+                      const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
+                                         (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
+                                         (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
+                      if (!matchSiswa || !p.tanggal) return false;
+                      const norm = normalizeDateKey(p.tanggal);
+                      return targetYearMonths.some(ym => norm.startsWith(ym));
+                    });
+
+                    let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
+                    const dateMap = new Map<string, string>();
+                    studentRecords.forEach(r => {
+                      const d = normalizeDateKey(r.tanggal);
+                      if (!dateMap.has(d)) dateMap.set(d, r.status);
+                    });
+
+                    dateMap.forEach(status => {
+                      if (status === 'Hadir') hadir++;
+                      else if (status === 'Terlambat') terlambat++;
+                      else if (status === 'Sakit') sakit++;
+                      else if (status === 'Izin') izin++;
+                      else if (status === 'Alfa') alfa++;
+                    });
+
+                    const totalMasuk = hadir + terlambat;
+                    const persen = Math.min(100, Math.round((totalMasuk / semesterEffectiveDays) * 100));
+
+                    let predikat = 'Perlu Bimbingan';
+                    if (persen >= 90) predikat = 'Sangat Baik';
+                    else if (persen >= 80) predikat = 'Baik';
+                    else if (persen >= 60) predikat = 'Cukup';
+
+                    return (
+                      <tr key={siswa.id} className="border-b border-black text-black">
+                        <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
+                        <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
+                        <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
+                        <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
+                        <td className="border border-black py-1 px-2 text-center font-mono">{semesterEffectiveDays}</td>
                         <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
                         <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
                         <td className="border border-black py-1 px-2 text-center">{sakit}</td>

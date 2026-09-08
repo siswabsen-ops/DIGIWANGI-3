@@ -33,6 +33,9 @@ import {
   isPresensiMatchSiswa,
   isPresensiDateMatch,
   calculateAllRombelSummaryList,
+  calculateWeeklyRombelSummaryList,
+  calculateMonthlyRombelSummaryList,
+  calculateSemesterRombelSummaryList,
   calculateClassAttendanceStats,
   calculateSchoolAttendanceStats,
   isSameClass,
@@ -48,7 +51,7 @@ interface ReportPanelProps {
   settings?: SystemSettings;
 }
 
-type ActiveTab = 'harian' | 'mingguan' | 'bulanan';
+type ActiveTab = 'harian' | 'mingguan' | 'bulanan' | 'semester';
 type StatusFilterType = 'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
 
 function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
@@ -60,7 +63,7 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
   // Modals state
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printConfig, setPrintConfig] = useState<{
-    type: 'harian' | 'mingguan' | 'bulanan' | 'rombel';
+    type: 'harian' | 'mingguan' | 'bulanan' | 'rombel' | 'semester';
     kelas: string;
     date: string;
     month: string;
@@ -72,7 +75,7 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
   });
 
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [downloadModalType, setDownloadModalType] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
+  const [downloadModalType, setDownloadModalType] = useState<'harian' | 'mingguan' | 'bulanan' | 'semester'>('harian');
 
   // 1. HARIAN STATE
   const [harianDate, setHarianDate] = useState<string>(() => getLocalDateString());
@@ -119,10 +122,29 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
     return `${year}-${month}`;
   });
 
+  // 4. SEMESTER STATE
+  const [semesterTahunAjaran, setSemesterTahunAjaran] = useState<string>('2026/2027');
+  const [semesterType, setSemesterType] = useState<'1' | '2'>('1');
+
   // Rekapitulasi Rombel Semua Kelas (1-A s/d 6-B) untuk tanggal terpilih
   const allRombelSummary = useMemo(() => {
     return calculateAllRombelSummaryList(siswaList, presensiList, harianDate);
   }, [siswaList, presensiList, harianDate]);
+
+  // Rekapitulasi Rombel Mingguan Semua Kelas (1-A s/d 6-B)
+  const weeklyRombelSummary = useMemo(() => {
+    return calculateWeeklyRombelSummaryList(siswaList, presensiList, mingguanDate);
+  }, [siswaList, presensiList, mingguanDate]);
+
+  // Rekapitulasi Rombel Bulanan Semua Kelas (1-A s/d 6-B)
+  const monthlyRombelSummary = useMemo(() => {
+    return calculateMonthlyRombelSummaryList(siswaList, presensiList, bulananMonth);
+  }, [siswaList, presensiList, bulananMonth]);
+
+  // Rekapitulasi Rombel Semester Semua Kelas (1-A s/d 6-B)
+  const semesterRombelSummary = useMemo(() => {
+    return calculateSemesterRombelSummaryList(siswaList, presensiList, semesterType, semesterTahunAjaran);
+  }, [siswaList, presensiList, semesterType, semesterTahunAjaran]);
 
   // Grand Total untuk Seluruh Sekolah pada tanggal terpilih
   const grandTotalSchool = useMemo(() => {
@@ -367,6 +389,112 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
     return { avgPersen, totalApresiasi };
   }, [bulananReportData]);
 
+  // 4. DATA REKAPITULASI SEMESTER
+  const semesterReportData = useMemo(() => {
+    if (activeTab !== 'semester') return [];
+
+    const parts = semesterTahunAjaran.split('/');
+    const startYear = parseInt(parts[0]) || 2026;
+    const endYear = parseInt(parts[1]) || (startYear + 1);
+
+    const targetYearMonths = semesterType === '1'
+      ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+      : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+
+    const semesterRecords = presensiList.filter(p => {
+      if (!p.tanggal) return false;
+      const norm = normalizeDateKey(p.tanggal);
+      return targetYearMonths.some(ym => norm.startsWith(ym));
+    });
+
+    const uniqueDaysWithAttendance = Array.from(new Set(semesterRecords.map(p => normalizeDateKey(p.tanggal)))).length;
+    const totalSchoolDays = Math.max(uniqueDaysWithAttendance, 1);
+
+    // Group records by student
+    const recordsByStudentKey = new Map<string, Presensi[]>();
+    for (const r of semesterRecords) {
+      if (r.siswaId) {
+        const arr = recordsByStudentKey.get(r.siswaId) || [];
+        arr.push(r);
+        recordsByStudentKey.set(r.siswaId, arr);
+      }
+      if (r.nis) {
+        const cleanNis = r.nis.trim();
+        const arr = recordsByStudentKey.get(`nis:${cleanNis}`) || [];
+        arr.push(r);
+        recordsByStudentKey.set(`nis:${cleanNis}`, arr);
+      }
+    }
+
+    return filteredStudents.map(siswa => {
+      let studentSemesterRecords = recordsByStudentKey.get(siswa.id);
+      if (!studentSemesterRecords && siswa.nis) {
+        studentSemesterRecords = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+      }
+      if (!studentSemesterRecords) {
+        studentSemesterRecords = semesterRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      }
+
+      const dateMap = new Map<string, Presensi>();
+      studentSemesterRecords.forEach(r => {
+        const dKey = normalizeDateKey(r.tanggal);
+        const existing = dateMap.get(dKey);
+        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+          dateMap.set(dKey, r);
+        }
+      });
+
+      const uniqueRecords = Array.from(dateMap.values());
+      let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
+
+      uniqueRecords.forEach(r => {
+        switch (r.status) {
+          case 'Hadir': hadir++; break;
+          case 'Terlambat': terlambat++; break;
+          case 'Sakit': sakit++; break;
+          case 'Izin': izin++; break;
+          case 'Alfa': alfa++; break;
+        }
+      });
+
+      const presentCount = hadir + terlambat;
+      const percentage = totalSchoolDays > 0 ? Math.min(100, Math.round((presentCount / totalSchoolDays) * 100)) : 0;
+
+      let predikat = 'Perlu Bimbingan';
+      if (percentage >= 90) predikat = 'Sangat Baik';
+      else if (percentage >= 80) predikat = 'Baik';
+      else if (percentage >= 60) predikat = 'Cukup';
+
+      return {
+        siswa,
+        metrics: {
+          registrasi: uniqueRecords.length,
+          hadir,
+          terlambat,
+          sakit,
+          izin,
+          alfa,
+          persen: percentage,
+          baseSchoolDays: totalSchoolDays,
+          predikat
+        }
+      };
+    });
+  }, [filteredStudents, presensiList, semesterType, semesterTahunAjaran, activeTab]);
+
+  // Semester stats overall
+  const semesterStats = useMemo(() => {
+    if (semesterReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0 };
+    const totalPercentage = semesterReportData.reduce((acc, curr) => acc + curr.metrics.persen, 0);
+    const avgPersen = Math.round(totalPercentage / semesterReportData.length);
+    const totalApresiasi = semesterReportData.filter(r => r.metrics.persen >= 90).length;
+    const totalSakit = semesterReportData.reduce((acc, curr) => acc + curr.metrics.sakit, 0);
+    const totalIzin = semesterReportData.reduce((acc, curr) => acc + curr.metrics.izin, 0);
+    const totalAlfa = semesterReportData.reduce((acc, curr) => acc + curr.metrics.alfa, 0);
+
+    return { avgPersen, totalApresiasi, totalSakit, totalIzin, totalAlfa };
+  }, [semesterReportData]);
+
   // -- DOWNLOAD TRIGGERS (Centralized CSV & ZIP Generators) --
 
   const handleDownloadHarian = () => {
@@ -385,8 +513,15 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
     downloadSingleClassReport('bulanan', selectedKelas, bulananMonth, siswaList, presensiList);
   };
 
+  const handleDownloadSemester = () => {
+    downloadSingleClassReport('semester', selectedKelas, `SEM_${semesterType}_${semesterTahunAjaran.replace('/', '_')}`, siswaList, presensiList, {
+      semesterType,
+      tahunAjaran: semesterTahunAjaran
+    });
+  };
+
   const handleOpenPrintModal = (
-    type: 'harian' | 'mingguan' | 'bulanan' | 'rombel' = activeTab, 
+    type: 'harian' | 'mingguan' | 'bulanan' | 'rombel' | 'semester' = activeTab, 
     kelas: string = selectedKelas, 
     date: string = activeTab === 'mingguan' ? mingguanDate : harianDate
   ) => {
@@ -399,7 +534,7 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
     setIsPrintModalOpen(true);
   };
 
-  const handleOpenDownloadModal = (type: 'harian' | 'mingguan' | 'bulanan' = activeTab) => {
+  const handleOpenDownloadModal = (type: 'harian' | 'mingguan' | 'bulanan' | 'semester' = activeTab) => {
     setDownloadModalType(type);
     setIsDownloadModalOpen(true);
   };
@@ -485,6 +620,16 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
             }`}
           >
             Laporan Bulanan
+          </button>
+          <button
+            onClick={() => setActiveTab('semester')}
+            className={`flex-1 xl:flex-none py-2 px-4 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'semester'
+                ? 'bg-blue-700 text-white shadow-sm'
+                : 'text-slate-650 hover:text-slate-800'
+            }`}
+          >
+            Laporan Semester
           </button>
         </div>
 
@@ -1074,6 +1219,111 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
               </div>
             </div>
 
+            {/* REKAPITULASI ROMBEL MINGGUAN SELURUH KELAS 1-A s/d 6-B */}
+            <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left">
+              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-indigo-50/40">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                    <Layers className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800 tracking-wide uppercase">
+                      Tabel Rekapitulasi Mingguan Per Rombel Kelas (1-A s/d 6-B)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Periode: <b>{weekDates[0].dateStr.split('-').reverse().join('/')} s/d {weekDates[4].dateStr.split('-').reverse().join('/')}</b> • Klik rombel untuk filter jurnal
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDownloadModal('mingguan')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                    <span>Unduh Rekap Semua Rombel</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-black text-left whitespace-nowrap">
+                      <th className="py-3 px-3 w-10 text-center">No</th>
+                      <th className="py-3 px-3 w-28">Rombel</th>
+                      <th className="py-3 px-3">Wali Kelas</th>
+                      <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
+                      <th className="py-3 px-2 text-center bg-emerald-100/60 text-emerald-900">Hadir</th>
+                      <th className="py-3 px-2 text-center bg-amber-100/60 text-amber-900">Telat</th>
+                      <th className="py-3 px-2 text-center bg-indigo-100/60 text-indigo-900">Sakit</th>
+                      <th className="py-3 px-2 text-center bg-sky-100/60 text-sky-900">Izin</th>
+                      <th className="py-3 px-2 text-center bg-rose-100/60 text-rose-900">Alfa</th>
+                      <th className="py-3 px-2.5 text-center bg-blue-100/70 text-blue-950 font-black">Total Masuk</th>
+                      <th className="py-3 px-2.5 text-center bg-emerald-50 text-emerald-900">% Keaktifan</th>
+                      <th className="py-3 px-2.5 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {weeklyRombelSummary.map((item, idx) => {
+                      const isSelected = selectedKelas === item.kelas;
+                      return (
+                        <tr
+                          key={item.kelas}
+                          onClick={() => setSelectedKelas(item.kelas)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? 'bg-indigo-50/70 font-semibold' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-black text-slate-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                            <span>{item.kelas}</span>
+                            {isSelected && (
+                              <span className="text-[9px] bg-indigo-200 text-indigo-800 px-1.5 py-0.2 rounded font-extrabold">Aktif</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 truncate max-w-[140px]">{item.waliKelas}</td>
+                          <td className="py-2.5 px-2.5 text-center font-bold font-mono text-slate-700 bg-slate-50/50">{item.totalSiswa}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-emerald-700">{item.hadir}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-amber-700">{item.terlambat}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-indigo-700">{item.sakit}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-sky-700">{item.izin}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-rose-700">{item.alfa}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black font-mono text-blue-900 bg-blue-50/30">{item.totalHadir}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black font-mono text-emerald-700 bg-emerald-50/30">
+                            {item.persentase}%
+                          </td>
+                          <td className="py-2.5 px-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPrintModal('mingguan', item.kelas, mingguanDate)}
+                                className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition"
+                                title="Cetak Jurnal Mingguan Kelas"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadSingleClassReport('mingguan', item.kelas, mingguanDate, siswaList, presensiList)}
+                                className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
+                                title="Unduh CSV Mingguan Kelas"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* Matrix Sheet Table for Monday - Friday */}
             <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -1242,6 +1492,111 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
               </div>
             </div>
 
+            {/* REKAPITULASI ROMBEL BULANAN SELURUH KELAS 1-A s/d 6-B */}
+            <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left font-sans">
+              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-emerald-50/40">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-emerald-600 text-white rounded-lg">
+                    <Layers className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800 tracking-wide uppercase">
+                      Tabel Rekapitulasi Bulanan Per Rombel Kelas (1-A s/d 6-B)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Bulan: <b>{new Date(`${bulananMonth}-02`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</b> • Klik rombel untuk filter akumulasi murid
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDownloadModal('bulanan')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                    <span>Unduh Rekap Semua Rombel</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-black text-left whitespace-nowrap">
+                      <th className="py-3 px-3 w-10 text-center">No</th>
+                      <th className="py-3 px-3 w-28">Rombel</th>
+                      <th className="py-3 px-3">Wali Kelas</th>
+                      <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
+                      <th className="py-3 px-2 text-center bg-emerald-100/60 text-emerald-900">Hadir</th>
+                      <th className="py-3 px-2 text-center bg-amber-100/60 text-amber-900">Telat</th>
+                      <th className="py-3 px-2 text-center bg-indigo-100/60 text-indigo-900">Sakit</th>
+                      <th className="py-3 px-2 text-center bg-sky-100/60 text-sky-900">Izin</th>
+                      <th className="py-3 px-2 text-center bg-rose-100/60 text-rose-900">Alfa</th>
+                      <th className="py-3 px-2.5 text-center bg-blue-100/70 text-blue-950 font-black">Total Masuk</th>
+                      <th className="py-3 px-2.5 text-center bg-emerald-50 text-emerald-900">% Keaktifan</th>
+                      <th className="py-3 px-2.5 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {monthlyRombelSummary.map((item, idx) => {
+                      const isSelected = selectedKelas === item.kelas;
+                      return (
+                        <tr
+                          key={item.kelas}
+                          onClick={() => setSelectedKelas(item.kelas)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? 'bg-emerald-50/70 font-semibold' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-black text-slate-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>{item.kelas}</span>
+                            {isSelected && (
+                              <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1.5 py-0.2 rounded font-extrabold">Aktif</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 truncate max-w-[140px]">{item.waliKelas}</td>
+                          <td className="py-2.5 px-2.5 text-center font-bold font-mono text-slate-700 bg-slate-50/50">{item.totalSiswa}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-emerald-700">{item.hadir}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-amber-700">{item.terlambat}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-indigo-700">{item.sakit}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-sky-700">{item.izin}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-rose-700">{item.alfa}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black font-mono text-blue-900 bg-blue-50/30">{item.totalHadir}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black font-mono text-emerald-700 bg-emerald-50/30">
+                            {item.persentase}%
+                          </td>
+                          <td className="py-2.5 px-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPrintModal('bulanan', item.kelas, bulananMonth)}
+                                className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition"
+                                title="Cetak Rekap Bulanan Kelas"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadSingleClassReport('bulanan', item.kelas, bulananMonth, siswaList, presensiList)}
+                                className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
+                                title="Unduh CSV Bulanan Kelas"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* List spreadsheet styled layout for Monthly rekap */}
             <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left font-sans">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -1314,6 +1669,282 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
                             <td className="py-2.5 px-4 border-l border-slate-150 text-center font-sans font-black">
                               <span className={`inline-block py-0.5 px-2 rounded-lg text-[9px] border font-black truncate max-w-full leading-relaxed ${qualificationBadge}`}>
                                 {qualificationText}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: SEMESTER */}
+        {activeTab === 'semester' && (
+          <div className="space-y-6">
+
+            {/* Sub-controls for selecting Academic Year & Semester */}
+            <div className="bg-white border border-slate-150 p-5 rounded-3xl shadow-sm text-left flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+                <div className="flex items-center gap-3">
+                  <span className="bg-blue-50 p-2.5 rounded-xl text-blue-700 shrink-0">
+                    <Calendar className="w-5 h-5 flex-shrink-0" />
+                  </span>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Tahun Pelajaran</label>
+                    <select
+                      value={semesterTahunAjaran}
+                      onChange={(e) => setSemesterTahunAjaran(e.target.value)}
+                      className="mt-0.5 font-bold text-xs text-slate-800 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                    >
+                      <option value="2026/2027">2026/2027</option>
+                      <option value="2025/2026">2025/2026</option>
+                      <option value="2024/2025">2024/2025</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Semester</label>
+                  <select
+                    value={semesterType}
+                    onChange={(e) => setSemesterType(e.target.value as '1' | '2')}
+                    className="mt-0.5 font-bold text-xs text-slate-800 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="1">Semester 1 (Ganjil / Juli - Desember)</option>
+                    <option value="2">Semester 2 (Genap / Januari - Juni)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Informative Stats & Action buttons */}
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+                <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-1.5 px-3 text-center sm:text-left flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <span className="text-[9px] text-blue-800 font-black tracking-tight block uppercase">Keaktifan Rata-rata</span>
+                    <p className="text-sm font-black text-slate-800 font-sans">{semesterStats.avgPersen}%</p>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl py-1.5 px-3 text-center sm:text-left flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="text-[9px] text-emerald-800 font-black tracking-tight block uppercase">Sangat Baik (≥90%)</span>
+                    <p className="text-sm font-black text-slate-800 font-sans">{semesterStats.totalApresiasi} Siswa</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenDownloadModal('semester')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500"
+                  title="Unduh rekap semester per kelas (ZIP / CSV)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                  <span>Unduh Rekap Per Kelas</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenPrintModal('semester', selectedKelas)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-700"
+                  title="Cetak format Buku Induk Rekapitulasi Semester A4 Landscape"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Cetak Buku Induk</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadSemester}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-teal-500"
+                >
+                  <Download className="w-3.5 h-3.5 text-teal-100 text-left" />
+                  <span>Download .CSV</span>
+                </button>
+              </div>
+            </div>
+
+            {/* REKAPITULASI ROMBEL SEMESTER SELURUH KELAS 1-A s/d 6-B */}
+            <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left font-sans">
+              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-blue-50/40">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-blue-600 text-white rounded-lg">
+                    <Layers className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800 tracking-wide uppercase">
+                      Tabel Rekapitulasi Presensi Semester Per Rombel Kelas (1-A s/d 6-B)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Semester: <b>{semesterType === '1' ? '1 (Ganjil)' : '2 (Genap)'}</b> • TP <b>{semesterTahunAjaran}</b> • Klik nama kelas untuk melihat buku induk siswa
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDownloadModal('semester')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+                    <span>Unduh Rekap Semua Rombel</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-black text-left whitespace-nowrap">
+                      <th className="py-3 px-3 w-10 text-center">No</th>
+                      <th className="py-3 px-3 w-28">Rombel</th>
+                      <th className="py-3 px-3">Wali Kelas</th>
+                      <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
+                      <th className="py-3 px-2 text-center bg-emerald-100/60 text-emerald-900">Hadir</th>
+                      <th className="py-3 px-2 text-center bg-amber-100/60 text-amber-900">Telat</th>
+                      <th className="py-3 px-2 text-center bg-indigo-100/60 text-indigo-900">Sakit</th>
+                      <th className="py-3 px-2 text-center bg-sky-100/60 text-sky-900">Izin</th>
+                      <th className="py-3 px-2 text-center bg-rose-100/60 text-rose-900">Alfa</th>
+                      <th className="py-3 px-2.5 text-center bg-blue-100/70 text-blue-950 font-black">Total Masuk</th>
+                      <th className="py-3 px-2.5 text-center bg-emerald-50 text-emerald-900">% Keaktifan</th>
+                      <th className="py-3 px-2.5 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {semesterRombelSummary.map((item, idx) => {
+                      const isSelected = selectedKelas === item.kelas;
+                      return (
+                        <tr
+                          key={item.kelas}
+                          onClick={() => setSelectedKelas(item.kelas)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? 'bg-blue-50/70 font-semibold' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-black text-slate-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span>{item.kelas}</span>
+                            {isSelected && (
+                              <span className="text-[9px] bg-blue-200 text-blue-800 px-1.5 py-0.2 rounded font-extrabold">Aktif</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 truncate max-w-[140px]">{item.waliKelas}</td>
+                          <td className="py-2.5 px-2.5 text-center font-bold font-mono text-slate-700 bg-slate-50/50">{item.totalSiswa}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-emerald-700">{item.hadir}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-amber-700">{item.terlambat}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-indigo-700">{item.sakit}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-sky-700">{item.izin}</td>
+                          <td className="py-2.5 px-2 text-center font-bold font-mono text-rose-700">{item.alfa}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black font-mono text-blue-900 bg-blue-50/30">{item.totalHadir}</td>
+                          <td className="py-2.5 px-2.5 text-center font-black font-mono text-emerald-700 bg-emerald-50/30">
+                            {item.persentase}%
+                          </td>
+                          <td className="py-2.5 px-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPrintModal('semester', item.kelas)}
+                                className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition"
+                                title="Cetak Rekap Semester Kelas"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadSingleClassReport('semester', item.kelas, `SEM_${semesterType}_${semesterTahunAjaran.replace('/', '_')}`, siswaList, presensiList, {
+                                  semesterType,
+                                  tahunAjaran: semesterTahunAjaran
+                                })}
+                                className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
+                                title="Unduh CSV Semester Kelas"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* List spreadsheet styled layout for Semester Buku Induk */}
+            <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left font-sans">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <span className="text-xs font-extrabold text-slate-750 tracking-wide uppercase">
+                  Buku Induk Presensi Siswa: {selectedKelas} • Semester {semesterType === '1' ? '1 (Ganjil)' : '2 (Genap)'} TP {semesterTahunAjaran}
+                </span>
+                <span className="text-[10px] text-gray-400 font-bold font-mono">Raport Mutu Kehadiran</span>
+              </div>
+
+              {semesterReportData.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 space-y-2">
+                  <Info className="w-8 h-8 text-slate-300 mx-auto" />
+                  <p className="text-xs">Tidak ada data siswa yang terekam pada semester ini.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-500 font-extrabold text-left">
+                        <th className="py-3 px-4 w-12 text-center">No</th>
+                        <th className="py-3 px-4 w-28 font-mono">NIS</th>
+                        <th className="py-3 px-4">Nama Lengkap Siswa</th>
+                        <th className="py-3 px-4 w-24">Kelas</th>
+                        <th className="py-3 px-3 text-center border-l border-slate-200 w-20 bg-slate-100 text-slate-700">Hari Efektif</th>
+                        <th className="py-3 px-3 text-center border-l border-slate-200 w-20 bg-green-50 text-green-800">Hadir</th>
+                        <th className="py-3 px-3 text-center border-l border-slate-200 w-20 bg-emerald-50 text-emerald-800">Late</th>
+                        <th className="py-3 px-3 text-center border-l border-slate-200 w-20 bg-amber-50 text-amber-800 mr-2">Izin</th>
+                        <th className="py-3 px-3 text-center border-l border-slate-200 w-20 bg-rose-50 text-rose-800 mr-2">Sakit</th>
+                        <th className="py-3 px-3 text-center border-l border-slate-200 w-20 bg-red-50 text-red-800">Alfa</th>
+                        <th className="py-3 px-4 text-center border-l border-slate-200 w-28 font-bold bg-slate-150">Keaktifan (%)</th>
+                        <th className="py-3 px-4 w-36 border-l border-slate-200 text-center">Predikat Raport</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {semesterReportData.map((row, idx) => {
+                        let qualificationBadge = 'bg-red-100 text-red-700 border-red-200';
+                        if (row.metrics.predikat === 'Sangat Baik') {
+                          qualificationBadge = 'bg-green-100 text-green-800 border-green-200';
+                        } else if (row.metrics.predikat === 'Baik') {
+                          qualificationBadge = 'bg-emerald-50 text-emerald-800 border-emerald-100';
+                        } else if (row.metrics.predikat === 'Cukup') {
+                          qualificationBadge = 'bg-amber-50 text-amber-800 border-amber-100';
+                        }
+
+                        return (
+                          <tr key={row.siswa.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-2.5 px-4 text-center text-slate-400 font-bold">{idx + 1}</td>
+                            <td className="py-2.5 px-4 font-mono font-bold text-slate-600">{row.siswa.nis}</td>
+                            <td className="py-2.5 px-4 font-extrabold text-slate-800 capitalize">{row.siswa.nama.toLowerCase()}</td>
+                            <td className="py-2.5 px-4 text-slate-500 font-bold">{row.siswa.kelas}</td>
+                            <td className="py-2.5 px-3 text-center font-bold border-l border-slate-200 text-slate-700 font-mono bg-slate-50/50">{row.metrics.baseSchoolDays}</td>
+                            <td className="py-2.5 px-3 text-center font-bold border-l border-slate-200 text-slate-700 font-mono bg-green-50/20">{row.metrics.hadir}</td>
+                            <td className="py-2.5 px-3 text-center font-bold border-l border-slate-200 text-slate-700 font-mono bg-emerald-50/25">{row.metrics.terlambat}</td>
+                            <td className="py-2.5 px-3 text-center font-bold border-l border-slate-200 text-slate-700 font-mono bg-amber-50/20">{row.metrics.izin}</td>
+                            <td className="py-2.5 px-3 text-center font-bold border-l border-slate-200 text-slate-700 font-mono bg-rose-50/20">{row.metrics.sakit}</td>
+                            <td className="py-2.5 px-3 text-center font-bold border-l border-slate-200 text-red-650 font-mono bg-red-50/20">{row.metrics.alfa}</td>
+                            
+                            {/* Score display */}
+                            <td className="py-2.5 px-4 text-center font-sans font-black text-blue-700 border-l border-slate-205 bg-slate-50">
+                              <div className="flex items-center justify-center gap-1">
+                                <TrendingUp className="w-3 h-3 text-blue-600" />
+                                <span>{row.metrics.persen}%</span>
+                              </div>
+                            </td>
+                            {/* Predikat badge */}
+                            <td className="py-2.5 px-4 border-l border-slate-150 text-center font-sans font-black">
+                              <span className={`inline-block py-0.5 px-2 rounded-lg text-[9px] border font-black truncate max-w-full leading-relaxed ${qualificationBadge}`}>
+                                {row.metrics.predikat}
                               </span>
                             </td>
                           </tr>

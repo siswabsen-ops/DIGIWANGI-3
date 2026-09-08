@@ -24,10 +24,10 @@ interface ClassReportDownloadModalProps {
   onClose: () => void;
   siswaList: Siswa[];
   presensiList: Presensi[];
-  initialType?: 'harian' | 'mingguan' | 'bulanan';
+  initialType?: 'harian' | 'mingguan' | 'bulanan' | 'semester';
   initialDate?: string;
   initialMonth?: string;
-  onOpenPrintModal?: (type: 'harian' | 'mingguan' | 'bulanan' | 'rombel', kelas: string, date: string) => void;
+  onOpenPrintModal?: (type: 'harian' | 'mingguan' | 'bulanan' | 'rombel' | 'semester', kelas: string, date: string) => void;
 }
 
 export default function ClassReportDownloadModal({
@@ -40,9 +40,11 @@ export default function ClassReportDownloadModal({
   initialMonth = '',
   onOpenPrintModal
 }: ClassReportDownloadModalProps) {
-  const [reportType, setReportType] = useState<'harian' | 'mingguan' | 'bulanan'>(initialType);
+  const [reportType, setReportType] = useState<'harian' | 'mingguan' | 'bulanan' | 'semester'>(initialType);
   const [targetDate, setTargetDate] = useState<string>(initialDate || getLocalDateString());
   const [targetMonth, setTargetMonth] = useState<string>(initialMonth || new Date().toISOString().slice(0, 7));
+  const [targetSemesterType, setTargetSemesterType] = useState<'1' | '2'>('1');
+  const [targetTahunAjaran, setTargetTahunAjaran] = useState<string>('2026/2027');
   const [searchClass, setSearchClass] = useState<string>('');
 
   // Bulk ZIP loading state
@@ -74,12 +76,23 @@ export default function ClassReportDownloadModal({
 
   if (!isOpen) return null;
 
-  const activePeriod = reportType === 'bulanan' ? targetMonth : targetDate;
+  const activePeriod = reportType === 'bulanan'
+    ? targetMonth
+    : reportType === 'semester'
+    ? `SEM_${targetSemesterType}_${targetTahunAjaran.replace('/', '_')}`
+    : targetDate;
 
   // Handle single class download
   const handleDownloadClass = (kelas: string) => {
     try {
-      downloadSingleClassReport(reportType, kelas, activePeriod, siswaList, presensiList);
+      downloadSingleClassReport(
+        reportType, 
+        kelas, 
+        activePeriod, 
+        siswaList, 
+        presensiList,
+        reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined
+      );
       setDownloadSuccess(`Rekap ${reportType} kelas ${kelas} berhasil diunduh!`);
       setTimeout(() => setDownloadSuccess(''), 3500);
     } catch (err: any) {
@@ -101,7 +114,8 @@ export default function ClassReportDownloadModal({
         presensiList,
         (current, total, className) => {
           setZipProgress({ current, total, className });
-        }
+        },
+        reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined
       );
 
       setDownloadSuccess(`Paket ZIP Rekap ${reportType} untuk seluruh kelas berhasil diunduh!`);
@@ -130,7 +144,7 @@ export default function ClassReportDownloadModal({
                 Pusat Unduh Rekap Absensi Per Kelas
               </h2>
               <p className="text-xs text-emerald-100 opacity-90">
-                Pilih format periode (Harian / Mingguan / Bulanan) dan unduh per rombel atau seluruh kelas sekaligus (.CSV / .ZIP)
+                Pilih format periode (Harian / Mingguan / Bulanan / Semester) dan unduh per rombel atau seluruh kelas sekaligus (.CSV / .ZIP)
               </p>
             </div>
           </div>
@@ -155,40 +169,46 @@ export default function ClassReportDownloadModal({
         <div className="p-5 border-b border-slate-150 bg-slate-50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           
           {/* Report Type Switcher */}
-          <div className="flex items-center p-1 bg-slate-200 rounded-2xl w-full md:w-auto">
+          <div className="flex items-center p-1 bg-slate-200 rounded-2xl w-full md:w-auto flex-wrap">
             <button
               onClick={() => setReportType('harian')}
-              className={`flex-1 md:flex-none py-1.5 px-4 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`flex-1 md:flex-none py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
                 reportType === 'harian' ? 'bg-white text-emerald-850 shadow-xs font-black' : 'text-slate-650 hover:text-slate-900'
               }`}
             >
-              Rekap Harian
+              Harian
             </button>
             <button
               onClick={() => setReportType('mingguan')}
-              className={`flex-1 md:flex-none py-1.5 px-4 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`flex-1 md:flex-none py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
                 reportType === 'mingguan' ? 'bg-white text-emerald-850 shadow-xs font-black' : 'text-slate-650 hover:text-slate-900'
               }`}
             >
-              Jurnal Mingguan
+              Mingguan
             </button>
             <button
               onClick={() => setReportType('bulanan')}
-              className={`flex-1 md:flex-none py-1.5 px-4 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`flex-1 md:flex-none py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
                 reportType === 'bulanan' ? 'bg-white text-emerald-850 shadow-xs font-black' : 'text-slate-650 hover:text-slate-900'
               }`}
             >
-              Rekap Bulanan
+              Bulanan
+            </button>
+            <button
+              onClick={() => setReportType('semester')}
+              className={`flex-1 md:flex-none py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                reportType === 'semester' ? 'bg-white text-emerald-850 shadow-xs font-black' : 'text-slate-650 hover:text-slate-900'
+              }`}
+            >
+              Semester
             </button>
           </div>
 
-          {/* Date Selector */}
+          {/* Date / Period Selector */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            {reportType !== 'bulanan' ? (
+            {reportType === 'harian' && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">
-                  {reportType === 'mingguan' ? 'Senin Mulai:' : 'Tanggal:'}
-                </span>
+                <span className="text-xs font-bold text-slate-500">Tanggal:</span>
                 <input
                   type="date"
                   value={targetDate}
@@ -196,7 +216,21 @@ export default function ClassReportDownloadModal({
                   className="bg-white border border-slate-200 font-bold text-xs py-1.5 px-3 rounded-xl text-slate-800 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
-            ) : (
+            )}
+
+            {reportType === 'mingguan' && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">Senin Mulai:</span>
+                <input
+                  type="date"
+                  value={targetDate}
+                  onChange={(e) => setTargetDate(e.target.value)}
+                  className="bg-white border border-slate-200 font-bold text-xs py-1.5 px-3 rounded-xl text-slate-800 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+            )}
+
+            {reportType === 'bulanan' && (
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-500">Bulan Rekap:</span>
                 <input
@@ -205,6 +239,28 @@ export default function ClassReportDownloadModal({
                   onChange={(e) => setTargetMonth(e.target.value)}
                   className="bg-white border border-slate-200 font-bold text-xs py-1.5 px-3 rounded-xl text-slate-800 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
+              </div>
+            )}
+
+            {reportType === 'semester' && (
+              <div className="flex items-center gap-2">
+                <select
+                  value={targetTahunAjaran}
+                  onChange={(e) => setTargetTahunAjaran(e.target.value)}
+                  className="bg-white border border-slate-200 font-bold text-xs py-1.5 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="2026/2027">TA 2026/2027</option>
+                  <option value="2025/2026">TA 2025/2026</option>
+                  <option value="2024/2025">TA 2024/2025</option>
+                </select>
+                <select
+                  value={targetSemesterType}
+                  onChange={(e) => setTargetSemesterType(e.target.value as '1' | '2')}
+                  className="bg-white border border-slate-200 font-bold text-xs py-1.5 px-2.5 rounded-xl text-slate-800 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="1">Sem 1 (Ganjil)</option>
+                  <option value="2">Sem 2 (Genap)</option>
+                </select>
               </div>
             )}
 
@@ -230,6 +286,7 @@ export default function ClassReportDownloadModal({
             </button>
           </div>
         </div>
+
 
         {/* CLASS SEARCH BAR */}
         <div className="px-5 pt-3 pb-1 flex items-center justify-between gap-3">

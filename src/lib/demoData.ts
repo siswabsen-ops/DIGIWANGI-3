@@ -1,4 +1,4 @@
-import { Siswa, User, SystemSettings, Presensi, ActivityLog, JadwalPresensi, DAFTAR_KELAS } from '../types';
+import { Siswa, User, SystemSettings, Presensi, ActivityLog, JadwalPresensi, DAFTAR_KELAS, WaliKelas } from '../types';
 import realStudents from './realStudents.json';
 
 export const DEFAULT_JADWAL_PRESENSI: JadwalPresensi[] = [
@@ -42,28 +42,38 @@ export const DEFAULT_JADWAL_PRESENSI: JadwalPresensi[] = [
   }
 ];
 
-export const DAFTAR_WALI_KELAS = [
-  { kelas: 'Kelas 1-A', nama: 'Rima Rohmatul Hasanah, S.Pd.', username: 'guru1a', pin: '28001' },
-  { kelas: 'Kelas 1-B', nama: 'Apriyanti Sri Habibah, S.Pd.Gr.', username: 'guru1b', pin: '28002' },
-  { kelas: 'Kelas 2-A', nama: 'Linda Safitri Indriyani, S.Pd.Gr.', username: 'guru2a', pin: '28003' },
-  { kelas: 'Kelas 2-B', nama: 'Rena Siti Napisah, S.Pd.Gr.', username: 'guru2b', pin: '28004' },
-  { kelas: 'Kelas 3-A', nama: 'Ayu Latifah Somantri, S.Pd.Gr.', username: 'guru3a', pin: '28005' },
-  { kelas: 'Kelas 3-B', nama: 'Ai Nursyifa, S.Pd.,MCE.', username: 'guru3b', pin: '28006' },
-  { kelas: 'Kelas 4-A', nama: 'Widia Siti Nuraeni, S.Pd.Gr.', username: 'guru4a', pin: '28007' },
-  { kelas: 'Kelas 4-B', nama: 'Mita Nurhasni Faujiah, S.Pd.,MCE.', username: 'guru4b', pin: '28008' },
-  { kelas: 'Kelas 5-A', nama: 'Tanti Maryam Kurnianti, S.Pd.Gr.', username: 'guru5a', pin: '28009' },
-  { kelas: 'Kelas 5-B', nama: 'Tedi Rismadiansah, S.Pd.Gr.', username: 'guru5b', pin: '28010' },
-  { kelas: 'Kelas 6-A', nama: 'Taufik Firdaus, S.Pd.Gr.', username: 'guru6a', pin: '28011' },
-  { kelas: 'Kelas 6-B', nama: 'Usman Fauzan Alan, S.Pd.Gr.', username: 'guru6b', pin: '28012' }
+export const DAFTAR_WALI_KELAS: WaliKelas[] = [
+  { kelas: 'Kelas 1-A', nama: 'Rima Rohmatul Hasanah, S.Pd.', username: 'guru1a', pin: '28001', noWa: '081223344551', nip: '198501152010012015' },
+  { kelas: 'Kelas 1-B', nama: 'Apriyanti Sri Habibah, S.Pd.Gr.', username: 'guru1b', pin: '28002', noWa: '081223344552', nip: '198802202012022008' },
+  { kelas: 'Kelas 2-A', nama: 'Linda Safitri Indriyani, S.Pd.Gr.', username: 'guru2a', pin: '28003', noWa: '081223344553', nip: '198904122014032005' },
+  { kelas: 'Kelas 2-B', nama: 'Rena Siti Napisah, S.Pd.Gr.', username: 'guru2b', pin: '28004', noWa: '081223344554', nip: '199006182015042007' },
+  { kelas: 'Kelas 3-A', nama: 'Ayu Latifah Somantri, S.Pd.Gr.', username: 'guru3a', pin: '28005', noWa: '081223344555', nip: '199108252016052003' },
+  { kelas: 'Kelas 3-B', nama: 'Ai Nursyifa, S.Pd.,MCE.', username: 'guru3b', pin: '28006', noWa: '081223344556', nip: '199210302018062002' },
+  { kelas: 'Kelas 4-A', nama: 'Widia Siti Nuraeni, S.Pd.Gr.', username: 'guru4a', pin: '28007', noWa: '081223344557', nip: '199312152019072006' },
+  { kelas: 'Kelas 4-B', nama: 'Mita Nurhasni Faujiah, S.Pd.,MCE.', username: 'guru4b', pin: '28008', noWa: '081223344558', nip: '199402012020082004' },
+  { kelas: 'Kelas 5-A', nama: 'Tanti Maryam Kurnianti, S.Pd.Gr.', username: 'guru5a', pin: '28009', noWa: '081223344559', nip: '199504102021092009' },
+  { kelas: 'Kelas 5-B', nama: 'Tedi Rismadiansah, S.Pd.Gr.', username: 'guru5b', pin: '28010', noWa: '081223344560', nip: '199606202022101001' },
+  { kelas: 'Kelas 6-A', nama: 'Taufik Firdaus, S.Pd.Gr.', username: 'guru6a', pin: '28011', noWa: '081223344561', nip: '199708152023111005' },
+  { kelas: 'Kelas 6-B', nama: 'Usman Fauzan Alan, S.Pd.Gr.', username: 'guru6b', pin: '28012', noWa: '081223344562', nip: '199810222024121008' }
 ];
 
-export const getWaliKelasByKelas = (kelasName: string): string => {
-  const item = DAFTAR_WALI_KELAS.find(
+export const getWaliKelasObject = (kelasName: string, customList?: WaliKelas[]): WaliKelas | undefined => {
+  const source = customList && customList.length > 0 ? customList : DAFTAR_WALI_KELAS;
+  return source.find(
     (w) =>
-      w.kelas.toLowerCase() === kelasName.toLowerCase() ||
-      w.kelas.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === kelasName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+      w.kelas.toLowerCase() === (kelasName || '').toLowerCase() ||
+      w.kelas.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === (kelasName || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   );
+};
+
+export const getWaliKelasByKelas = (kelasName: string, customList?: WaliKelas[]): string => {
+  const item = getWaliKelasObject(kelasName, customList);
   return item ? item.nama : 'Guru Kelas';
+};
+
+export const getWaliKelasPhoneByKelas = (kelasName: string, customList?: WaliKelas[]): string => {
+  const item = getWaliKelasObject(kelasName, customList);
+  return item?.noWa || '';
 };
 
 export const USER_DEMO_ACCOUNTS: { user: User; pin: string }[] = [

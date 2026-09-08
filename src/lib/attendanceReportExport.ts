@@ -430,14 +430,258 @@ export function generateMonthlyReportCSV(
 }
 
 /**
+ * Generate CSV for Semester Report per Class or All Classes
+ */
+export function generateSemesterReportCSV(
+  kelas: string,
+  semesterType: '1' | '2',
+  tahunAjaran: string,
+  siswaList: Siswa[],
+  presensiList: Presensi[]
+): string {
+  const isAll = !kelas || kelas === 'Semua Kelas' || kelas === 'SEMUA KELAS';
+  const filteredStudents = isAll
+    ? [...siswaList].sort((a, b) => a.kelas.localeCompare(b.kelas) || a.nama.localeCompare(b.nama))
+    : siswaList.filter(s => isSameClass(s.kelas, kelas)).sort((a, b) => a.nama.localeCompare(b.nama));
+
+  const parts = tahunAjaran.split('/');
+  const startYear = parseInt(parts[0]) || 2026;
+  const endYear = parseInt(parts[1]) || (startYear + 1);
+
+  const targetYearMonths = semesterType === '1'
+    ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+    : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+
+  const rawDatesInSemester = new Set<string>();
+  presensiList.forEach(p => {
+    if (!p.tanggal) return;
+    const norm = normalizeDateKey(p.tanggal);
+    if (targetYearMonths.some(ym => norm.startsWith(ym))) {
+      rawDatesInSemester.add(norm);
+    }
+  });
+
+  const effectiveDays = Math.max(1, rawDatesInSemester.size || 100);
+
+  const headers = [
+    'No',
+    'NIS',
+    'Nama Lengkap Siswa',
+    'Kelas',
+    'Hari Efektif Semester',
+    'Hadir Tepat (H)',
+    'Terlambat (T)',
+    'Sakit (S)',
+    'Izin (I)',
+    'Alfa (A)',
+    'Total Masuk',
+    'Persentase Kehadiran (%)',
+    'Predikat Raport'
+  ];
+
+  const rows = filteredStudents.map((siswa, idx) => {
+    const studentRecords = presensiList.filter(p => {
+      const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
+                         (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
+                         (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
+      if (!matchSiswa) return false;
+      const norm = normalizeDateKey(p.tanggal);
+      return targetYearMonths.some(ym => norm.startsWith(ym));
+    });
+
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+
+    const dateMap = new Map<string, string>();
+    studentRecords.forEach(r => {
+      const d = normalizeDateKey(r.tanggal);
+      if (!dateMap.has(d)) {
+        dateMap.set(d, r.status);
+      }
+    });
+
+    dateMap.forEach(status => {
+      if (status === 'Hadir') hadir++;
+      else if (status === 'Terlambat') terlambat++;
+      else if (status === 'Sakit') sakit++;
+      else if (status === 'Izin') izin++;
+      else if (status === 'Alfa') alfa++;
+    });
+
+    const totalMasuk = hadir + terlambat;
+    const persen = Math.min(100, Math.round((totalMasuk / effectiveDays) * 100));
+
+    let predikat = 'Perlu Bimbingan';
+    if (persen >= 90) predikat = 'Sangat Baik (A)';
+    else if (persen >= 80) predikat = 'Baik (B)';
+    else if (persen >= 60) predikat = 'Cukup (C)';
+
+    return [
+      idx + 1,
+      `'${siswa.nis || ''}`,
+      siswa.nama,
+      siswa.kelas,
+      effectiveDays,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      totalMasuk,
+      `${persen}%`,
+      predikat
+    ];
+  });
+
+  const semLabel = semesterType === '1' ? 'Semester 1 (Ganjil - Juli s/d Desember)' : 'Semester 2 (Genap - Januari s/d Juni)';
+
+  const headerLines = [
+    `BUKU REKAPITULASI PRESENSI SEMESTER SISWA - SDN 3 KARAMATWANGI`,
+    `Kelas: ${kelas} | Tahun Ajaran: ${tahunAjaran} | ${semLabel} | Total Siswa: ${filteredStudents.length}`,
+    ''
+  ];
+
+  const csvContent = "\uFEFF" + 
+    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headers.map(escapeCsvCell).join(',') + '\n' +
+    rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
+
+  return csvContent;
+}
+
+/**
+ * Generate Master School Rombel Summary CSV for Semester
+ */
+export function generateSemesterRombelSummaryCSV(
+  semesterType: '1' | '2',
+  tahunAjaran: string,
+  siswaList: Siswa[],
+  presensiList: Presensi[]
+): string {
+  const headers = [
+    'No',
+    'Rombel Kelas',
+    'Wali Kelas',
+    'Jumlah Siswa',
+    'Total Hadir',
+    'Terlambat',
+    'Sakit',
+    'Izin',
+    'Alfa',
+    'Total Kehadiran Fisik',
+    'Rata-rata Persentase Kehadiran (%)',
+    'Predikat Kinerja Rombel'
+  ];
+
+  const parts = tahunAjaran.split('/');
+  const startYear = parseInt(parts[0]) || 2026;
+  const endYear = parseInt(parts[1]) || (startYear + 1);
+
+  const targetYearMonths = semesterType === '1'
+    ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+    : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+
+  const rawDatesInSemester = new Set<string>();
+  presensiList.forEach(p => {
+    if (!p.tanggal) return;
+    const norm = normalizeDateKey(p.tanggal);
+    if (targetYearMonths.some(ym => norm.startsWith(ym))) {
+      rawDatesInSemester.add(norm);
+    }
+  });
+
+  const effectiveDays = Math.max(1, rawDatesInSemester.size || 100);
+
+  const rows = DAFTAR_KELAS.map((namaKelas, idx) => {
+    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
+    const totalSiswa = classStudents.length;
+
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+
+    classStudents.forEach(siswa => {
+      const studentRecords = presensiList.filter(p => {
+        const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
+                           (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
+                           (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
+        if (!matchSiswa) return false;
+        const norm = normalizeDateKey(p.tanggal);
+        return targetYearMonths.some(ym => norm.startsWith(ym));
+      });
+
+      const dateMap = new Map<string, string>();
+      studentRecords.forEach(r => {
+        const d = normalizeDateKey(r.tanggal);
+        if (!dateMap.has(d)) {
+          dateMap.set(d, r.status);
+        }
+      });
+
+      dateMap.forEach(status => {
+        if (status === 'Hadir') hadir++;
+        else if (status === 'Terlambat') terlambat++;
+        else if (status === 'Sakit') sakit++;
+        else if (status === 'Izin') izin++;
+        else if (status === 'Alfa') alfa++;
+      });
+    });
+
+    const totalMasuk = hadir + terlambat;
+    const totalPossible = totalSiswa * effectiveDays;
+    const persen = totalPossible > 0 ? Math.min(100, Math.round((totalMasuk / totalPossible) * 100)) : 0;
+
+    let predikat = 'Perlu Pendampingan';
+    if (persen >= 90) predikat = 'Sangat Tinggi (A)';
+    else if (persen >= 80) predikat = 'Tinggi (B)';
+    else if (persen >= 60) predikat = 'Cukup (C)';
+
+    return [
+      idx + 1,
+      namaKelas,
+      getWaliKelasByKelas(namaKelas),
+      totalSiswa,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      totalMasuk,
+      `${persen}%`,
+      predikat
+    ];
+  });
+
+  const semLabel = semesterType === '1' ? 'Semester 1 (Ganjil)' : 'Semester 2 (Genap)';
+
+  const headerLines = [
+    `REKAPITULASI PRESENSI SELURUH ROMBEL KELAS PER SEMESTER`,
+    `SDN 3 KARAMATWANGI - KEC. CISURUPAN KAB. GARUT`,
+    `Tahun Ajaran: ${tahunAjaran} | ${semLabel} | Hari Efektif: ${effectiveDays} Hari`,
+    ''
+  ];
+
+  return "\uFEFF" +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headers.map(escapeCsvCell).join(',') + '\n' +
+    rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
+}
+
+/**
  * Trigger download of Single Class CSV
  */
 export function downloadSingleClassReport(
-  type: 'harian' | 'mingguan' | 'bulanan',
+  type: 'harian' | 'mingguan' | 'bulanan' | 'semester',
   kelas: string,
   dateOrPeriod: string,
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string }
 ) {
   let content = '';
   let filename = '';
@@ -449,9 +693,14 @@ export function downloadSingleClassReport(
   } else if (type === 'mingguan') {
     content = generateWeeklyReportCSV(kelas, dateOrPeriod, siswaList, presensiList);
     filename = `REKAP_PRESENSI_MINGGUAN_${cleanKelas}_MULAI_${dateOrPeriod}.csv`;
-  } else {
+  } else if (type === 'bulanan') {
     content = generateMonthlyReportCSV(kelas, dateOrPeriod, siswaList, presensiList);
     filename = `REKAP_PRESENSI_BULANAN_${cleanKelas}_${dateOrPeriod}.csv`;
+  } else {
+    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
+    const thn = semesterOptions?.tahunAjaran || '2026/2027';
+    content = generateSemesterReportCSV(kelas, semType, thn, siswaList, presensiList);
+    filename = `REKAP_PRESENSI_SEMESTER_${semType}_${cleanKelas}_${thn.replace('/', '-')}.csv`;
   }
 
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -462,11 +711,12 @@ export function downloadSingleClassReport(
  * Trigger download of All Classes ZIP
  */
 export async function downloadAllClassesZip(
-  type: 'harian' | 'mingguan' | 'bulanan',
+  type: 'harian' | 'mingguan' | 'bulanan' | 'semester',
   dateOrPeriod: string,
   siswaList: Siswa[],
   presensiList: Presensi[],
-  onProgress?: (current: number, total: number, className: string) => void
+  onProgress?: (current: number, total: number, className: string) => void,
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string }
 ) {
   const zip = new JSZip();
   const classes = DAFTAR_KELAS;
@@ -508,7 +758,7 @@ export async function downloadAllClassesZip(
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     triggerFileDownload(zipBlob, `PAKET_REKAP_PRESENSI_MINGGUAN_SEMUA_KELAS_MULAI_${dateOrPeriod}.zip`);
 
-  } else {
+  } else if (type === 'bulanan') {
     // 1. Add All Students Master Bulanan
     onProgress?.(1, total, 'Rekapitulasi Bulanan Semua Siswa');
     const masterMonthly = generateMonthlyReportCSV('Semua Kelas', dateOrPeriod, siswaList, presensiList);
@@ -525,5 +775,29 @@ export async function downloadAllClassesZip(
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     triggerFileDownload(zipBlob, `PAKET_REKAP_PRESENSI_BULANAN_SEMUA_KELAS_${dateOrPeriod}.zip`);
+
+  } else {
+    // SEMESTER ZIP
+    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
+    const thn = semesterOptions?.tahunAjaran || '2026/2027';
+    const thnClean = thn.replace('/', '-');
+
+    // 1. Add Master School Rombel Summary for Semester
+    onProgress?.(1, total, 'Rekapitulasi Rombel Semester');
+    const semSummary = generateSemesterRombelSummaryCSV(semType, thn, siswaList, presensiList);
+    zip.file(`00_REKAPITULASI_ROMBEL_SEMESTER_${semType}_${thnClean}.csv`, semSummary);
+
+    // 2. Add each class file
+    for (let i = 0; i < classes.length; i++) {
+      const cls = classes[i];
+      onProgress?.(i + 2, total, `Rekap ${cls}`);
+      const cleanName = cls.replace(/[\s-]+/g, '_');
+      const csv = generateSemesterReportCSV(cls, semType, thn, siswaList, presensiList);
+      zip.file(`REKAP_SEMESTER_${semType}_${cleanName}_${thnClean}.csv`, csv);
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    triggerFileDownload(zipBlob, `PAKET_REKAP_PRESENSI_SEMESTER_${semType}_SEMUA_KELAS_${thnClean}.zip`);
   }
 }
+

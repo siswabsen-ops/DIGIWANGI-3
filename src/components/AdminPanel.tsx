@@ -36,10 +36,12 @@ import {
   Loader2,
   Image as ImageIcon,
   Upload,
-  RefreshCcw
+  RefreshCcw,
+  Phone,
+  MessageSquare
 } from 'lucide-react';
-import { Siswa, SystemSettings, ActivityLog, User, Role, DAFTAR_KELAS, StatusDapodik, QRIdentifierType, getStudentQRIdentifier, JadwalPresensi, normalizeKelasCode } from '../types';
-import { DAFTAR_WALI_KELAS, getWaliKelasByKelas, DEFAULT_JADWAL_PRESENSI } from '../lib/demoData';
+import { Siswa, SystemSettings, ActivityLog, User, Role, DAFTAR_KELAS, StatusDapodik, QRIdentifierType, getStudentQRIdentifier, JadwalPresensi, normalizeKelasCode, WaliKelas } from '../types';
+import { DAFTAR_WALI_KELAS, getWaliKelasByKelas, getWaliKelasObject, getWaliKelasPhoneByKelas, DEFAULT_JADWAL_PRESENSI } from '../lib/demoData';
 import { 
   DEFAULT_DIGIWANGI_LOGO 
 } from '../assets/officialLogos';
@@ -72,6 +74,9 @@ interface AdminPanelProps {
   onUpdateAccount: (userId: string, updatedUser: Partial<User>, newPin?: string) => void;
   onAddAccount: (user: User, pin: string) => void;
   onDeleteAccount: (userId: string) => void;
+  waliKelasList?: WaliKelas[];
+  onUpdateWaliKelas?: (updatedList: WaliKelas[]) => void;
+  onBatchUpdateStudentWa?: (updates: { id: string; waOrangTua: string }[]) => void;
 }
 
 type AdminTab = 'siswa' | 'jadwal' | 'kelas' | 'whatsapp' | 'logo' | 'google' | 'audit' | 'akun';
@@ -97,7 +102,10 @@ function AdminPanel({
   accountsList,
   onUpdateAccount,
   onAddAccount,
-  onDeleteAccount
+  onDeleteAccount,
+  waliKelasList = DAFTAR_WALI_KELAS,
+  onUpdateWaliKelas,
+  onBatchUpdateStudentWa
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('siswa');
   const [successMsg, setSuccessMsg] = useState('');
@@ -222,6 +230,97 @@ function AdminPanel({
   const [accountKelasSpesifik, setAccountKelasSpesifik] = useState('');
   const [isAddingNewAccount, setIsAddingNewAccount] = useState(false);
   const [studentPageLimit, setStudentPageLimit] = useState(40);
+
+  // Local state for editing Wali Kelas & Nomor WhatsApp
+  const [editingWaliKelas, setEditingWaliKelas] = useState<WaliKelas | null>(null);
+  const [editWaliNama, setEditWaliNama] = useState('');
+  const [editWaliNoWa, setEditWaliNoWa] = useState('');
+  const [editWaliNip, setEditWaliNip] = useState('');
+  const [editWaliPin, setEditWaliPin] = useState('');
+
+  // Local state for managing student WhatsApp numbers in a class
+  const [managingClassWa, setManagingClassWa] = useState<string | null>(null);
+  const [studentWaDraftMap, setStudentWaDraftMap] = useState<Record<string, string>>({});
+
+  const handleOpenEditWaliKelas = (targetKelas: string) => {
+    const existing = getWaliKelasObject(targetKelas, waliKelasList) || {
+      kelas: targetKelas,
+      nama: '',
+      username: `guru_${targetKelas.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+      pin: '28001',
+      noWa: '',
+      nip: ''
+    };
+    setEditingWaliKelas(existing);
+    setEditWaliNama(existing.nama || '');
+    setEditWaliNoWa(existing.noWa || '');
+    setEditWaliNip(existing.nip || '');
+    setEditWaliPin(existing.pin || '');
+  };
+
+  const handleSaveWaliKelas = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWaliKelas) return;
+    if (!editWaliNama.trim()) {
+      displayNotice('err', 'Nama Wali Kelas wajib diisi!');
+      return;
+    }
+    const currentList = waliKelasList && waliKelasList.length > 0 ? [...waliKelasList] : [...DAFTAR_WALI_KELAS];
+    const idx = currentList.findIndex(w => w.kelas.toLowerCase() === editingWaliKelas.kelas.toLowerCase());
+    const updatedObj: WaliKelas = {
+      ...editingWaliKelas,
+      nama: editWaliNama.trim(),
+      noWa: editWaliNoWa.trim(),
+      nip: editWaliNip.trim() || undefined,
+      pin: editWaliPin.trim() || editingWaliKelas.pin
+    };
+    if (idx >= 0) {
+      currentList[idx] = updatedObj;
+    } else {
+      currentList.push(updatedObj);
+    }
+    if (onUpdateWaliKelas) {
+      onUpdateWaliKelas(currentList);
+    }
+    displayNotice('success', `Data Wali Kelas & No. WhatsApp untuk ${editingWaliKelas.kelas} berhasil disimpan dan disinkronkan!`);
+    setEditingWaliKelas(null);
+  };
+
+  const handleOpenManageClassWa = (targetKelas: string) => {
+    setManagingClassWa(targetKelas);
+    const targetStudents = siswaList.filter(s => s.kelas === targetKelas);
+    const initialDraft: Record<string, string> = {};
+    targetStudents.forEach(s => {
+      initialDraft[s.id] = s.waOrangTua || '';
+    });
+    setStudentWaDraftMap(initialDraft);
+  };
+
+  const handleSaveClassStudentWa = () => {
+    if (!managingClassWa) return;
+    const updates: { id: string; waOrangTua: string }[] = [];
+    Object.entries(studentWaDraftMap).forEach(([id, wa]) => {
+      const original = siswaList.find(s => s.id === id);
+      if (original && (original.waOrangTua || '') !== wa) {
+        updates.push({ id, waOrangTua: wa.trim() });
+      }
+    });
+    if (updates.length === 0) {
+      displayNotice('success', 'Tidak ada perubahan nomor WhatsApp siswa.');
+      setManagingClassWa(null);
+      return;
+    }
+    if (onBatchUpdateStudentWa) {
+      onBatchUpdateStudentWa(updates);
+    } else {
+      updates.forEach(u => {
+        const s = siswaList.find(item => item.id === u.id);
+        if (s) onUpdateSiswa({ ...s, waOrangTua: u.waOrangTua });
+      });
+    }
+    displayNotice('success', `Berhasil memperbarui ${updates.length} nomor WhatsApp wali murid untuk ${managingClassWa}!`);
+    setManagingClassWa(null);
+  };
 
   // Fast memoized student filtering for zero-lag typing and tab switching
   const filteredSiswa = useMemo(() => {
@@ -1579,28 +1678,65 @@ function AdminPanel({
                 {DAFTAR_KELAS.map((targetKelas) => {
                   const filterSiswa = siswaByClassMap[targetKelas] || [];
                   const countSiswa = filterSiswa.length;
+                  const waliObj = getWaliKelasObject(targetKelas, waliKelasList);
+                  const waliNama = waliObj?.nama || getWaliKelasByKelas(targetKelas, waliKelasList);
+                  const waliWa = waliObj?.noWa || '';
 
                   return (
-                    <div key={targetKelas} className="p-4 bg-slate-50 border border-gray-200 rounded-2xl flex flex-col justify-between">
+                    <div key={targetKelas} className="p-4 bg-slate-50 border border-gray-200 rounded-2xl flex flex-col justify-between hover:shadow-md transition-shadow">
                       <div>
-                        <div className="flex justify-between items-start">
-                          <div>
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0 flex-1">
                             <span className="text-sm font-black text-rose-600 block">{targetKelas}</span>
-                            <span className="text-[10px] text-slate-500 font-medium">👤 Wali Kelas: {getWaliKelasByKelas(targetKelas)}</span>
+                            <span className="text-[11px] text-slate-800 font-bold block mt-0.5 truncate" title={waliNama}>
+                              👤 {waliNama}
+                            </span>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md font-bold ${
+                                waliWa ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                <Phone className="w-2.5 h-2.5" />
+                                {waliWa ? waliWa : 'No. WA belum diisi'}
+                              </span>
+                            </div>
                           </div>
                           <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-bold shrink-0">
                             {countSiswa} Murid
                           </span>
                         </div>
+
+                        {/* Quick action buttons: Ubah No. WA Wali & Kelola No. WA Siswa */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-200 grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditWaliKelas(targetKelas)}
+                            className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                            title={`Ubah data & nomor WhatsApp wali kelas ${targetKelas}`}
+                          >
+                            <Edit2 className="w-3 h-3 text-blue-600 shrink-0" />
+                            <span className="truncate">Ubah No. WA Wali</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenManageClassWa(targetKelas)}
+                            className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                            title={`Kelola nomor WhatsApp murid/orang tua di ${targetKelas}`}
+                          >
+                            <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span className="truncate">WA Siswa ({countSiswa})</span>
+                          </button>
+                        </div>
                         
                         {/* Compact list pupils */}
-                        <div className="mt-3 space-y-1 max-h-[88px] overflow-y-auto">
+                        <div className="mt-2.5 space-y-1 max-h-[88px] overflow-y-auto">
                           {filterSiswa.length === 0 ? (
                             <span className="text-[10px] text-gray-400 italic">Belum ada siswa terdaftar</span>
                           ) : (
                             filterSiswa.map((fs) => (
-                              <div key={fs.id} className="text-[10px] text-gray-600 truncate border-b border-gray-100 pb-0.5">
-                                • {fs.nama} ({fs.nis})
+                              <div key={fs.id} className="text-[10px] text-gray-600 flex items-center justify-between border-b border-gray-100 pb-0.5">
+                                <span className="truncate flex-1">• {fs.nama}</span>
+                                <span className="font-mono text-[9px] text-slate-400 shrink-0 ml-1">{fs.waOrangTua || '-'}</span>
                               </div>
                             ))
                           )}
@@ -1624,6 +1760,221 @@ function AdminPanel({
                   );
                 })}
               </div>
+
+              {/* MODAL 1: Sunting Data Wali Kelas & Nomor WhatsApp */}
+              {editingWaliKelas && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <span className="text-xs font-mono font-bold text-rose-600 uppercase tracking-wider block">
+                          PENGATURAN WALI KELAS & NO. WHATSAPP
+                        </span>
+                        <h4 className="text-lg font-black text-slate-800">
+                          {editingWaliKelas.kelas}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingWaliKelas(null)}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveWaliKelas} className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Nama Lengkap Wali Kelas <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editWaliNama}
+                          onChange={(e) => setEditWaliNama(e.target.value)}
+                          placeholder="Contoh: Rima Rohmatul Hasanah, S.Pd."
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Nomor WhatsApp Wali Kelas <span className="text-emerald-600 font-normal">(Aktif untuk Notifikasi)</span>
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
+                          <input
+                            type="tel"
+                            value={editWaliNoWa}
+                            onChange={(e) => setEditWaliNoWa(e.target.value)}
+                            placeholder="Contoh: 081223344551 atau 6281223344551"
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3.5 py-2 text-xs font-mono font-bold text-emerald-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Nomor ini otomatis disinkronkan ke seluruh HP Android dan komputer lain saat disimpan.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            NIP Wali Kelas
+                          </label>
+                          <input
+                            type="text"
+                            value={editWaliNip}
+                            onChange={(e) => setEditWaliNip(e.target.value)}
+                            placeholder="1985..."
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            PIN Akun Guru
+                          </label>
+                          <input
+                            type="text"
+                            value={editWaliPin}
+                            onChange={(e) => setEditWaliPin(e.target.value)}
+                            placeholder="28001"
+                            maxLength={8}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-start gap-2 text-xs text-blue-800">
+                        <Sparkles className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                        <span>
+                          Perubahan ini tersimpan di server cloud dan otomatis diperbarui di semua perangkat (HP Guru, Tablet, PC).
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setEditingWaliKelas(null)}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="submit"
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Simpan & Sinkronkan</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* MODAL 2: Kelola Nomor WhatsApp Seluruh Siswa di Kelas Ini */}
+              {managingClassWa && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+                  <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="p-5 border-b border-slate-200 flex items-center justify-between shrink-0">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-emerald-100 text-emerald-800 font-mono text-xs font-bold px-2 py-0.5 rounded-full">
+                            WhatsApp Orang Tua / Wali
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {siswaList.filter(s => s.kelas === managingClassWa).length} Siswa Terdaftar
+                          </span>
+                        </div>
+                        <h4 className="text-base font-black text-slate-800 mt-0.5">
+                          Kelola Kontak WhatsApp Siswa - {managingClassWa}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setManagingClassWa(null)}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="p-5 overflow-y-auto flex-1 space-y-3">
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Perbarui nomor WhatsApp wali murid untuk masing-masing siswa di bawah ini. Nomor ini digunakan oleh sistem WhatsApp Gateway untuk mengirim bukti hadir atau laporan presensi.
+                      </p>
+
+                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
+                        {siswaList.filter(s => s.kelas === managingClassWa).length === 0 ? (
+                          <div className="p-6 text-center text-xs text-slate-400">
+                            Belum ada siswa di {managingClassWa}.
+                          </div>
+                        ) : (
+                          siswaList
+                            .filter(s => s.kelas === managingClassWa)
+                            .map((siswa, idx) => (
+                              <div key={siswa.id} className="p-3 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-bold text-slate-400">{idx + 1}.</span>
+                                    <span className="font-bold text-xs text-slate-800 truncate">{siswa.nama}</span>
+                                    <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                                      NIS: {siswa.nis}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="w-full sm:w-60 shrink-0">
+                                  <div className="relative">
+                                    <Phone className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5 top-2.5" />
+                                    <input
+                                      type="tel"
+                                      value={studentWaDraftMap[siswa.id] ?? (siswa.waOrangTua || '')}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setStudentWaDraftMap(prev => ({
+                                          ...prev,
+                                          [siswa.id]: val
+                                        }));
+                                      }}
+                                      placeholder="08xxxxxxxxxx"
+                                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-1.5 text-xs font-mono font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-3xl flex items-center justify-between shrink-0">
+                      <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+                        Perubahan akan langsung disinkronkan ke cloud & perangkat lain.
+                      </span>
+                      <div className="flex items-center gap-2 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setManagingClassWa(null)}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 cursor-pointer"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveClassStudentWa}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Simpan Semua No. WA</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1694,6 +2045,61 @@ function AdminPanel({
                   </button>
                 </div>
               </form>
+
+              {/* DAFTAR KONTAK WHATSAPP WALI KELAS PER ROMBEL */}
+              <div className="mt-8 pt-6 border-t border-slate-200 space-y-3 font-sans">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider font-display flex items-center gap-1.5">
+                      📱 DAFTAR NOMOR WHATSAPP WALI PER KELAS (12 ROMBEL)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Nomor kontak WhatsApp resmi Wali Kelas di SDN 3 Karamatwangi. Tersinkronisasi otomatis di HP Android dan laptop.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-full shrink-0">
+                    Live Multi-Device Sync
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {DAFTAR_KELAS.map((targetKelas) => {
+                    const waliObj = getWaliKelasObject(targetKelas, waliKelasList);
+                    const waliNama = waliObj?.nama || getWaliKelasByKelas(targetKelas, waliKelasList);
+                    const waliWa = waliObj?.noWa || '';
+                    const pupilCount = (siswaByClassMap[targetKelas] || []).length;
+
+                    return (
+                      <div key={targetKelas} className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-2 shadow-2xs hover:bg-slate-100/70 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-extrabold text-rose-600 text-xs block">{targetKelas}</span>
+                          <span className="font-bold text-slate-800 text-[11px] truncate block mt-0.5" title={waliNama}>{waliNama}</span>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                              waliWa ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              <Phone className="w-2.5 h-2.5 shrink-0" />
+                              {waliWa ? waliWa : 'Belum diisi'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <span className="text-[9px] bg-white border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">
+                            {pupilCount} Siswa
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditWaliKelas(targetKelas)}
+                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                          >
+                            <Edit2 className="w-2.5 h-2.5" /> Ubah
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -2780,15 +3186,24 @@ function AdminPanel({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      {DAFTAR_WALI_KELAS.map((wk, idx) => (
+                      {(waliKelasList && waliKelasList.length > 0 ? waliKelasList : DAFTAR_WALI_KELAS).map((wk, idx) => (
                         <div key={wk.kelas} className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <span className="font-extrabold text-blue-800 text-[11px] block">{idx + 1}. {wk.kelas}</span>
-                            <span className="font-bold text-slate-800 text-xs">{wk.nama}</span>
+                            <span className="font-bold text-slate-800 text-xs truncate block">{wk.nama}</span>
+                            <span className="text-[10px] font-mono text-emerald-700 font-bold block mt-0.5">
+                              📞 WA: {wk.noWa || 'Belum diisi'}
+                            </span>
                           </div>
-                          <div className="text-right font-mono text-[10px] text-slate-500 shrink-0">
-                            <span className="bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-700 block">User: {wk.username}</span>
-                            <span className="text-emerald-700 font-bold block mt-0.5">PIN: {wk.pin}</span>
+                          <div className="text-right font-mono text-[10px] text-slate-500 shrink-0 flex flex-col items-end gap-1">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-700 block">PIN: {wk.pin}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditWaliKelas(wk.kelas)}
+                              className="text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded font-bold transition-colors cursor-pointer flex items-center gap-1"
+                            >
+                              <Edit2 className="w-2.5 h-2.5" /> Ubah WA
+                            </button>
                           </div>
                         </div>
                       ))}

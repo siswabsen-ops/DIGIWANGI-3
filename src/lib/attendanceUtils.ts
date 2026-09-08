@@ -381,6 +381,47 @@ export interface ClassRombelSummary {
 }
 
 /**
+ * Helper tanggal aman zona waktu: memecah string YYYY-MM-DD ke komponen numerik
+ */
+export const safeDateParts = (dateStr: string): { year: number; month: number; day: number } => {
+  const norm = normalizeDateKey(dateStr) || getLocalDateString();
+  const [y, m, d] = norm.split('-').map(Number);
+  return {
+    year: y || new Date().getFullYear(),
+    month: m || (new Date().getMonth() + 1),
+    day: d || new Date().getDate()
+  };
+};
+
+/**
+ * Format komponen numerik kembali ke YYYY-MM-DD
+ */
+export const safeFormatDate = (year: number, month: number, day: number): string => {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+/**
+ * Tambah hari secara aman tanpa pergeseran zona waktu UTC
+ */
+export const safeAddDays = (dateStr: string, days: number): string => {
+  const { year, month, day } = safeDateParts(dateStr);
+  const d = new Date(year, month - 1, day + days);
+  return safeFormatDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+};
+
+/**
+ * Menemukan tanggal hari Senin dari tanggal input
+ */
+export const getMondayOfWeek = (dateStr: string): string => {
+  const { year, month, day } = safeDateParts(dateStr);
+  const d = new Date(year, month - 1, day);
+  const dayOfWeek = d.getDay(); // 0 = Minggu, 1 = Senin, ...
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(year, month - 1, day + diff);
+  return safeFormatDate(monday.getFullYear(), monday.getMonth() + 1, monday.getDate());
+};
+
+/**
  * Menghitung ringkasan rekapitulasi untuk SEMUA rombel kelas 1-A sampai 6-B (O(N) super cepat)
  */
 export const calculateAllRombelSummaryList = (
@@ -408,6 +449,227 @@ export const calculateAllRombelSummaryList = (
       totalTidakHadir: stats.totalTidakHadir,
       totalHadir: stats.totalHadirSemua,
       persentase: stats.persentaseKeaktifan
+    };
+  });
+};
+
+/**
+ * Menghitung rekapitulasi kehadiran per rombel untuk periode MINGGUAN (Senin s/d Jumat)
+ */
+export const calculateWeeklyRombelSummaryList = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  mondayDateStr: string
+): ClassRombelSummary[] => {
+  const monday = getMondayOfWeek(mondayDateStr);
+  const weekDays = [0, 1, 2, 3, 4].map(offset => safeAddDays(monday, offset));
+  const weekIndexes = weekDays.map(dateStr => buildDailyAttendanceIndex(presensiList, dateStr));
+
+  return DAFTAR_KELAS.map((namaKelas) => {
+    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
+    const totalSiswa = classStudents.length;
+
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+    let belumAbsen = 0;
+
+    classStudents.forEach(siswa => {
+      weekIndexes.forEach(idx => {
+        const rec = getAttendanceFromIndex(siswa, idx);
+        if (!rec) {
+          belumAbsen++;
+        } else {
+          switch (rec.status) {
+            case 'Hadir': hadir++; break;
+            case 'Terlambat': terlambat++; break;
+            case 'Sakit': sakit++; break;
+            case 'Izin': izin++; break;
+            case 'Alfa': alfa++; break;
+            default: hadir++; break;
+          }
+        }
+      });
+    });
+
+    const totalHadir = hadir + terlambat;
+    const sakitDanIzin = sakit + izin;
+    const totalTidakHadir = sakit + izin + alfa + belumAbsen;
+    const totalSlots = totalSiswa * 5;
+    const persentase = totalSlots > 0 ? Math.min(100, Math.round((totalHadir / totalSlots) * 100)) : 0;
+
+    return {
+      kelas: namaKelas,
+      waliKelas: getWaliKelasByKelas(namaKelas),
+      totalSiswa,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      sakitDanIzin,
+      belumAbsen,
+      totalTidakHadir,
+      totalHadir,
+      persentase
+    };
+  });
+};
+
+/**
+ * Menghitung rekapitulasi kehadiran per rombel untuk periode BULANAN (YYYY-MM)
+ */
+export const calculateMonthlyRombelSummaryList = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  yearMonthStr: string
+): ClassRombelSummary[] => {
+  const ym = yearMonthStr.slice(0, 7);
+  const monthRecords = presensiList.filter(p => p.tanggal && normalizeDateKey(p.tanggal).startsWith(ym));
+  const uniqueDays = Array.from(new Set(monthRecords.map(p => normalizeDateKey(p.tanggal)))).length;
+  const schoolDays = Math.max(uniqueDays, 1);
+
+  return DAFTAR_KELAS.map((namaKelas) => {
+    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
+    const totalSiswa = classStudents.length;
+
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+
+    classStudents.forEach(siswa => {
+      const studentRecs = monthRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      const dateMap = new Map<string, Presensi>();
+      studentRecs.forEach(r => {
+        const dKey = normalizeDateKey(r.tanggal);
+        const existing = dateMap.get(dKey);
+        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+          dateMap.set(dKey, r);
+        }
+      });
+
+      dateMap.forEach(rec => {
+        switch (rec.status) {
+          case 'Hadir': hadir++; break;
+          case 'Terlambat': terlambat++; break;
+          case 'Sakit': sakit++; break;
+          case 'Izin': izin++; break;
+          case 'Alfa': alfa++; break;
+        }
+      });
+    });
+
+    const totalHadir = hadir + terlambat;
+    const sakitDanIzin = sakit + izin;
+    const totalPossibleSlots = totalSiswa * schoolDays;
+    const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
+    const totalTidakHadir = sakit + izin + alfa + belumAbsen;
+    const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
+
+    return {
+      kelas: namaKelas,
+      waliKelas: getWaliKelasByKelas(namaKelas),
+      totalSiswa,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      sakitDanIzin,
+      belumAbsen,
+      totalTidakHadir,
+      totalHadir,
+      persentase
+    };
+  });
+};
+
+/**
+ * Menghitung rekapitulasi kehadiran per rombel untuk periode SEMESTER
+ * Semester 1 (Ganjil): Juli - Desember
+ * Semester 2 (Genap): Januari - Juni
+ */
+export const calculateSemesterRombelSummaryList = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  semesterType: '1' | '2',
+  tahunAjaran: string = '2026/2027'
+): ClassRombelSummary[] => {
+  const parts = tahunAjaran.split('/');
+  const startYear = parseInt(parts[0]) || 2026;
+  const endYear = parseInt(parts[1]) || (startYear + 1);
+
+  // Prefix bulan target
+  const targetYearMonths = semesterType === '1'
+    ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+    : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+
+  const semesterRecords = presensiList.filter(p => {
+    if (!p.tanggal) return false;
+    const dKey = normalizeDateKey(p.tanggal);
+    return targetYearMonths.some(ym => dKey.startsWith(ym));
+  });
+
+  const uniqueDays = Array.from(new Set(semesterRecords.map(p => normalizeDateKey(p.tanggal)))).length;
+  const schoolDays = Math.max(uniqueDays, 1);
+
+  return DAFTAR_KELAS.map((namaKelas) => {
+    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
+    const totalSiswa = classStudents.length;
+
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+
+    classStudents.forEach(siswa => {
+      const studentRecs = semesterRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      const dateMap = new Map<string, Presensi>();
+      studentRecs.forEach(r => {
+        const dKey = normalizeDateKey(r.tanggal);
+        const existing = dateMap.get(dKey);
+        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+          dateMap.set(dKey, r);
+        }
+      });
+
+      dateMap.forEach(rec => {
+        switch (rec.status) {
+          case 'Hadir': hadir++; break;
+          case 'Terlambat': terlambat++; break;
+          case 'Sakit': sakit++; break;
+          case 'Izin': izin++; break;
+          case 'Alfa': alfa++; break;
+        }
+      });
+    });
+
+    const totalHadir = hadir + terlambat;
+    const sakitDanIzin = sakit + izin;
+    const totalPossibleSlots = totalSiswa * schoolDays;
+    const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
+    const totalTidakHadir = sakit + izin + alfa + belumAbsen;
+    const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
+
+    return {
+      kelas: namaKelas,
+      waliKelas: getWaliKelasByKelas(namaKelas),
+      totalSiswa,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      sakitDanIzin,
+      belumAbsen,
+      totalTidakHadir,
+      totalHadir,
+      persentase
     };
   });
 };
