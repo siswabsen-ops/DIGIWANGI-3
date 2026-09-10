@@ -18,11 +18,13 @@ import {
   syncWaliKelasToCloud,
   syncPresensiToCloud,
   syncSettingsToCloud,
-  syncAccountsToCloud
+  syncAccountsToCloud,
+  forceSyncNow
 } from './lib/cloudSync';
 import { 
   db,
   ensureAuthenticated, 
+  validateFirestoreConnection,
   saveSiswaToFirestore, 
   deleteSiswaFromFirestore, 
   savePresensiToFirestore, 
@@ -38,7 +40,8 @@ import {
   syncMasterStudentsToCloud,
   syncMasterPresensiToCloud,
   syncMasterAccountsToCloud,
-  subscribeToCloudSync
+  subscribeToCloudSync,
+  getIsQuotaExhausted
 } from './lib/firebase';
 import { onSnapshot, collection, doc } from 'firebase/firestore';
 import {
@@ -194,6 +197,7 @@ export default function App() {
 
   // Listen to Google/Firebase auth initialization
   useEffect(() => {
+    validateFirestoreConnection().catch(() => {});
     const unsub = initAuth(
       (user, token) => {
         setGoogleToken(token);
@@ -287,7 +291,11 @@ export default function App() {
 
     // 3. Secondary Firestore seed if empty
     ensureAuthenticated()
-      .then(() => seedInitialDataIfDocsEmpty(SISWA_INITIAL, USER_DEMO_ACCOUNTS, SETTINGS_INITIAL, LOGS_INITIAL, PRESENSI_INITIAL))
+      .then(() => {
+        if (!getIsQuotaExhausted()) {
+          seedInitialDataIfDocsEmpty(SISWA_INITIAL, USER_DEMO_ACCOUNTS, SETTINGS_INITIAL, LOGS_INITIAL, PRESENSI_INITIAL);
+        }
+      })
       .catch(() => {});
 
     return () => {
@@ -554,6 +562,53 @@ export default function App() {
     }
   }, [googleToken, settings.googleDriveFolderId, presensiList, addActivityLog]);
 
+  const handleCloudSyncRefresh = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const refreshed = await forceSyncNow({
+        onStudentsChange: (incomingStudents) => {
+          if (incomingStudents && incomingStudents.length > 0) {
+            setSiswaList(incomingStudents);
+            safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
+          }
+        },
+        onWaliKelasChange: (incomingWaliKelas) => {
+          if (incomingWaliKelas && incomingWaliKelas.length > 0) {
+            setWaliKelasList(incomingWaliKelas);
+            safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
+          }
+        },
+        onPresensiChange: (incomingPresensi) => {
+          if (incomingPresensi) {
+            setPresensiList(incomingPresensi);
+            safeSetItem('karapres3_presensi_v5', JSON.stringify(incomingPresensi));
+          }
+        },
+        onSettingsChange: (incomingSettings) => {
+          if (incomingSettings) {
+            setSettings(incomingSettings);
+            safeSetItem('karapres3_settings', JSON.stringify(incomingSettings));
+          }
+        },
+        onAccountsChange: (incomingAccounts) => {
+          if (incomingAccounts && incomingAccounts.length > 0) {
+            setAccountsList(incomingAccounts);
+            safeSetItem('karapres3_accounts_v4', JSON.stringify(incomingAccounts));
+          }
+        }
+      });
+      if (refreshed) {
+        triggerNotice('Sinkronisasi multi-perangkat berhasil! Data terkini telah dimuat.', 'success');
+      } else {
+        triggerNotice('Data sudah tersinkronisasi dengan server.', 'info');
+      }
+    } catch {
+      triggerNotice('Gagal melakukan sinkronisasi data', 'info');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
   const handleGoogleManualSync = useCallback(async (): Promise<boolean> => {
     if (!googleToken) {
       triggerNotice('Hubungkan Akun Google terlebih dahulu di menu Admin > Google Cloud Sync.', 'info');
@@ -698,7 +753,6 @@ export default function App() {
         updated = [newPresensi, ...prev];
       }
       safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
-      syncMasterPresensiToCloud(updated, 'Presensi Live');
       syncPresensiToCloud(updated, 'Presensi Live');
       return updated;
     });
@@ -715,6 +769,8 @@ export default function App() {
     setShowClearPresensiConfirm(true);
   };
 
+  const isQuotaExhausted = getIsQuotaExhausted();
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-blue-200">
       
@@ -724,10 +780,11 @@ export default function App() {
         onLogout={handleLogout}
         isGoogleConnected={settings.isGoogleConnected}
         isWhatsAppConnected={settings.isWhatsAppConnected}
-        onSyncNow={currentUser ? handleGoogleManualSync : undefined}
+        onSyncNow={handleCloudSyncRefresh}
         isSyncing={isSyncing}
         settings={settings}
         onSaveSettings={handleSaveSettings}
+        isQuotaExhausted={isQuotaExhausted}
       />
 
       {/* Slogan Ticker Bar under Header for Premium Vibe */}

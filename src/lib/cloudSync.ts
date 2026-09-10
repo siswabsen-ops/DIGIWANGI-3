@@ -3,6 +3,7 @@ import {
   syncMasterStudentsToCloud as syncToFirestoreStudents,
   syncMasterPresensiToCloud as syncToFirestorePresensi,
   syncMasterAccountsToCloud as syncToFirestoreAccounts,
+  syncMasterWaliKelasToCloud as syncToFirestoreWaliKelas,
   saveSettingsToFirestore,
   subscribeToCloudSync as subscribeToFirestoreSync
 } from './firebase';
@@ -33,7 +34,13 @@ let localSyncVersion = 0;
  */
 export async function fetchCloudMasterData(): Promise<CloudMasterPayload | null> {
   try {
-    const res = await fetch('/api/sync/data', { cache: 'no-store' });
+    const res = await fetch(`/api/sync/data?t=${Date.now()}`, { 
+      cache: 'no-store',
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache'
+      }
+    });
     if (!res.ok) return null;
     const data: CloudMasterPayload = await res.json();
     if (data && typeof data.version === 'number') {
@@ -87,11 +94,15 @@ export async function syncWaliKelasToCloud(waliKelas: WaliKelas[], updatedBy: st
       const respJson = await res.json();
       if (respJson?.version) localSyncVersion = respJson.version;
     }
-    return true;
   } catch (err) {
     console.warn('[CloudSync] Server wali kelas sync notice:', err);
-    return false;
   }
+
+  try {
+    syncToFirestoreWaliKelas(waliKelas, updatedBy).catch(() => {});
+  } catch {}
+
+  return true;
 }
 
 /**
@@ -182,7 +193,10 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
     isChecking = true;
 
     try {
-      const res = await fetch('/api/sync/version', { cache: 'no-store' });
+      const res = await fetch(`/api/sync/version?t=${Date.now()}`, { 
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
       if (res.ok) {
         const { version } = await res.json();
         if (typeof version === 'number' && version > localSyncVersion) {
@@ -215,8 +229,17 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
     }
   };
 
-  // Poll interval 2.5 seconds for instant multi-device responsiveness
-  const intervalId = setInterval(checkVersionAndSync, 2500);
+  // Poll interval 2 seconds for high-speed multi-device responsiveness
+  const intervalId = setInterval(checkVersionAndSync, 2000);
+
+  // Instant trigger when user returns to tab / unlocks Android screen
+  const handleWindowFocus = () => {
+    checkVersionAndSync();
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('visibilitychange', handleWindowFocus);
+    window.addEventListener('focus', handleWindowFocus);
+  }
 
   // Parallel Firestore listener (for Firestore live stream if active)
   let unsubFirestore: (() => void) | undefined;
@@ -225,6 +248,11 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
       onStudentsChange: (stu) => {
         if (isSubscribed && stu && stu.length > 0 && callbacks.onStudentsChange) {
           callbacks.onStudentsChange(stu);
+        }
+      },
+      onWaliKelasChange: (wk) => {
+        if (isSubscribed && wk && wk.length > 0 && callbacks.onWaliKelasChange) {
+          callbacks.onWaliKelasChange(wk);
         }
       },
       onPresensiChange: (pre) => {
@@ -250,6 +278,41 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
   return () => {
     isSubscribed = false;
     clearInterval(intervalId);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('visibilitychange', handleWindowFocus);
+      window.removeEventListener('focus', handleWindowFocus);
+    }
     if (unsubFirestore) unsubFirestore();
   };
+}
+
+/**
+ * Paksa penyegaran data sekarang dari Cloud Master Data
+ */
+export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
+  try {
+    const fullData = await fetchCloudMasterData();
+    if (fullData) {
+      localSyncVersion = fullData.version;
+      if (fullData.students && callbacks.onStudentsChange) {
+        callbacks.onStudentsChange(fullData.students);
+      }
+      if (fullData.waliKelas && callbacks.onWaliKelasChange) {
+        callbacks.onWaliKelasChange(fullData.waliKelas);
+      }
+      if (fullData.presensi && callbacks.onPresensiChange) {
+        callbacks.onPresensiChange(fullData.presensi);
+      }
+      if (fullData.settings && callbacks.onSettingsChange) {
+        callbacks.onSettingsChange(fullData.settings);
+      }
+      if (fullData.accounts && callbacks.onAccountsChange) {
+        callbacks.onAccountsChange(fullData.accounts);
+      }
+      return true;
+    }
+  } catch (err) {
+    console.warn('[CloudSync] Force sync notice:', err);
+  }
+  return false;
 }

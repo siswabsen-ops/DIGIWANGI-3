@@ -129,6 +129,9 @@ async function startServer() {
 
   // 1. Lightweight version poll for multi-device sync check
   app.get("/api/sync/version", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.json({
       version: syncVersion,
       updatedAt: lastUpdatedAt
@@ -137,6 +140,10 @@ async function startServer() {
 
   // 2. Full synchronization payload for initial load on Android / PC / other browser
   app.get("/api/sync/data", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
     const waliKelas = readJsonFile<any[]>(WALI_KELAS_FILE, DEFAULT_WALI_KELAS);
     const presensi = readJsonFile<any[]>(PRESENSI_FILE, []);

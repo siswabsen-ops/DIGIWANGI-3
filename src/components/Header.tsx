@@ -16,6 +16,7 @@ interface HeaderProps {
   isSyncing?: boolean;
   settings?: SystemSettings;
   onSaveSettings?: (newSettings: SystemSettings) => void;
+  isQuotaExhausted?: boolean;
 }
 
 export default function Header({
@@ -26,7 +27,8 @@ export default function Header({
   onSyncNow,
   isSyncing = false,
   settings,
-  onSaveSettings
+  onSaveSettings,
+  isQuotaExhausted = false
 }: HeaderProps) {
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
@@ -169,13 +171,23 @@ export default function Header({
             {/* Cloud Database Badge */}
             <div
               id="badge-cloud-db-status"
-              title="Real-time Cloud Firestore Database Aktif & Terhubung"
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold border bg-blue-900/50 text-blue-100 border-blue-500/30 transition-all shadow-xs"
+              title={
+                isQuotaExhausted 
+                  ? "Multi-Device Sync Aktif via Cloud Dedicated Server (Kuota Harian Firestore tercapai, auto-reset besok)" 
+                  : "Real-time Cloud Database Aktif & Terhubung"
+              }
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-xs ${
+                isQuotaExhausted 
+                  ? "bg-amber-950/60 text-amber-200 border-amber-500/40" 
+                  : "bg-blue-900/50 text-blue-100 border-blue-500/30"
+              }`}
             >
-              <Flame className="w-3.5 h-3.5 text-amber-400" />
+              <Flame className={`w-3.5 h-3.5 ${isQuotaExhausted ? "text-amber-400" : "text-amber-400"}`} />
               <span className="hidden md:inline opacity-80 text-[11px]">Cloud:</span>
-              <span className="text-[10.5px] font-semibold text-emerald-300">Live</span>
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className={`text-[10.5px] font-semibold ${isQuotaExhausted ? "text-amber-300" : "text-emerald-300"}`}>
+                {isQuotaExhausted ? "Server Sync" : "Live"}
+              </span>
+              <div className={`w-2 h-2 rounded-full ${isQuotaExhausted ? "bg-amber-400" : "bg-emerald-400 animate-pulse"}`} />
             </div>
 
             {/* Integrasi Google Badge */}
