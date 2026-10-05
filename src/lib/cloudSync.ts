@@ -130,6 +130,77 @@ export async function syncPresensiToCloud(presensi: Presensi[], updatedBy: strin
   return true;
 }
 
+export interface AuditSyncResponse {
+  synchronizedRecords: Presensi[];
+  totalDays: number;
+  totalStudents: number;
+  totalRecords: number;
+  addedDaysCount: number;
+  repairedRecordsCount: number;
+  schoolDates: string[];
+}
+
+/**
+ * Memeriksa, memperbaiki, dan menyinkronkan seluruh data presensi dari pembikinan
+ * aplikasi hingga hari ini untuk kebutuhan rekap laporan persemester (Harian, Mingguan, Bulanan, Semester).
+ */
+export async function auditAndSyncSemesterPresensi(
+  currentPresensi: Presensi[],
+  students: Siswa[],
+  updatedBy: string = 'Sinkronisasi Presensi Semester'
+): Promise<AuditSyncResponse> {
+  try {
+    const res = await fetch('/api/sync/presensi/audit-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        presensi: currentPresensi,
+        students,
+        updatedBy
+      })
+    });
+
+    if (res.ok) {
+      const result = await res.json();
+      if (result?.version) localSyncVersion = result.version;
+      if (Array.isArray(result?.synchronizedRecords) && result.synchronizedRecords.length > 0) {
+        try {
+          syncToFirestorePresensi(result.synchronizedRecords, updatedBy).catch(() => {});
+        } catch {}
+
+        return {
+          synchronizedRecords: result.synchronizedRecords,
+          totalDays: result.totalDays || 0,
+          totalStudents: result.totalStudents || students.length,
+          totalRecords: result.totalRecords || result.synchronizedRecords.length,
+          addedDaysCount: result.addedDaysCount || 0,
+          repairedRecordsCount: result.repairedRecordsCount || 0,
+          schoolDates: result.schoolDates || []
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[CloudSync] Server audit-sync endpoint notice:', err);
+  }
+
+  const { auditAndSynchronizePresensi: clientAudit } = await import('./semesterPresensiGenerator');
+  const fallbackAudit = clientAudit(currentPresensi, students);
+  
+  try {
+    fetch('/api/sync/presensi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: fallbackAudit.synchronizedRecords, updatedBy })
+    }).catch(() => {});
+  } catch {}
+
+  try {
+    syncToFirestorePresensi(fallbackAudit.synchronizedRecords, updatedBy).catch(() => {});
+  } catch {}
+
+  return fallbackAudit;
+}
+
 /**
  * Menyinkronkan pengaturan sistem ke server
  */
@@ -229,8 +300,8 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
     }
   };
 
-  // Poll interval 2 seconds for high-speed multi-device responsiveness
-  const intervalId = setInterval(checkVersionAndSync, 2000);
+  // Poll interval 6 seconds for light network & battery consumption
+  const intervalId = setInterval(checkVersionAndSync, 6000);
 
   // Instant trigger when user returns to tab / unlocks Android screen
   const handleWindowFocus = () => {

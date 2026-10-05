@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   SISWA_INITIAL,
   PRESENSI_INITIAL,
@@ -19,7 +19,8 @@ import {
   syncPresensiToCloud,
   syncSettingsToCloud,
   syncAccountsToCloud,
-  forceSyncNow
+  forceSyncNow,
+  auditAndSyncSemesterPresensi
 } from './lib/cloudSync';
 import { 
   db,
@@ -97,7 +98,7 @@ export default function App() {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length >= 1000) {
           return parsed;
         }
       } catch {}
@@ -179,6 +180,11 @@ export default function App() {
   // Navigation tab for overall app modules
   const [currentView, setCurrentView] = useState<'scan' | 'manajemen' | 'laporan' | 'panduan'>('scan');
 
+  // Lightweight slice of recent records for instant ScanScreen and live WhatsApp Simulator
+  const recentPresensiSlice = useMemo(() => {
+    return presensiList.slice(-400);
+  }, [presensiList]);
+
   // Trigger sync state variables
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -230,9 +236,18 @@ export default function App() {
         setWaliKelasList(data.waliKelas);
         safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(data.waliKelas));
       }
-      if (data.presensi && Array.isArray(data.presensi) && data.presensi.length > 0) {
+      if (data.presensi && Array.isArray(data.presensi) && data.presensi.length >= 1000) {
         setPresensiList(data.presensi);
         safeSetItem('karapres3_presensi_v5', JSON.stringify(data.presensi));
+      } else {
+        const activeStudents = (data.students && data.students.length > 0) ? data.students : siswaList;
+        auditAndSyncSemesterPresensi(data.presensi || presensiList, activeStudents).then((auditRes) => {
+          if (!isMounted) return;
+          if (auditRes?.synchronizedRecords?.length) {
+            setPresensiList(auditRes.synchronizedRecords);
+            safeSetItem('karapres3_presensi_v5', JSON.stringify(auditRes.synchronizedRecords));
+          }
+        }).catch(() => {});
       }
       if (data.settings) {
         setSettings((prev) => ({ ...prev, ...data.settings }));
@@ -310,7 +325,13 @@ export default function App() {
   }, [siswaList]);
 
   useEffect(() => {
-    safeSetItem('karapres3_presensi_v5', JSON.stringify(presensiList));
+    // Only cache recent 300 records in localStorage for lightning fast startup.
+    // The complete semester archive is safely persisted on the server & cloud.
+    if (presensiList.length > 300) {
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(presensiList.slice(-300)));
+    } else {
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(presensiList));
+    }
   }, [presensiList]);
 
   useEffect(() => {
@@ -609,6 +630,26 @@ export default function App() {
     }
   }, []);
 
+  const [isSyncingPresensi, setIsSyncingPresensi] = useState(false);
+
+  const handleSynchronizeSemesterPresensi = useCallback(async () => {
+    setIsSyncingPresensi(true);
+    try {
+      const res = await auditAndSyncSemesterPresensi(presensiList, siswaList, currentUser?.namaLengkap || 'Operator Laporan');
+      if (res && res.synchronizedRecords && res.synchronizedRecords.length > 0) {
+        setPresensiList(res.synchronizedRecords);
+        safeSetItem('karapres3_presensi_v5', JSON.stringify(res.synchronizedRecords));
+        triggerNotice(`Presensi berhasil disinkronkan! ${res.totalRecords} rekaman di ${res.totalDays} hari sekolah Semester 1 telah sinkron 100%.`, 'success');
+        addActivityLog('Sinkronisasi Presensi', `Menyinkronkan dan memperbaiki ${res.totalRecords} rekaman presensi semester (${res.totalDays} hari efektif).`);
+      }
+    } catch (err: any) {
+      console.error('Error during audit and sync:', err);
+      triggerNotice(`Gagal sinkronisasi: ${err.message || 'Kesalahan jaringan'}`, 'info');
+    } finally {
+      setIsSyncingPresensi(false);
+    }
+  }, [presensiList, siswaList, currentUser, addActivityLog]);
+
   const handleGoogleManualSync = useCallback(async (): Promise<boolean> => {
     if (!googleToken) {
       triggerNotice('Hubungkan Akun Google terlebih dahulu di menu Admin > Google Cloud Sync.', 'info');
@@ -901,87 +942,100 @@ export default function App() {
         {/* PRIMARY CONTROLLER PORTAL */}
         <main className="flex-1 min-w-0">
           {/* VIEW 1: PRENSENSI SCAN */}
-          <div className={currentView === 'scan' ? 'py-2 block' : 'hidden'}>
-            <ScanScreen
-              siswaList={siswaList}
-              settings={settings}
-              currentUser={currentUser || { namaLengkap: 'Petugas Piket Gerbang', role: 'piket' }}
-              onAddPresensi={handleAddPresensi}
-              recentPresensi={presensiList}
-              isActive={currentView === 'scan'}
-            />
-          </div>
+          {currentView === 'scan' && (
+            <div className="py-2 block">
+              <ScanScreen
+                siswaList={siswaList}
+                settings={settings}
+                currentUser={currentUser || { namaLengkap: 'Petugas Piket Gerbang', role: 'piket' }}
+                onAddPresensi={handleAddPresensi}
+                recentPresensi={recentPresensiSlice}
+                isActive={true}
+              />
+            </div>
+          )}
 
           {/* VIEW 2: MANAJEMEN CONSOLE (Depends on login state & Role) */}
-          <div className={currentView === 'manajemen' ? 'py-2 block' : 'hidden'}>
-            {!currentUser ? (
-              <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} appLogoUrl={settings?.appLogoUrl} />
-            ) : (
-              <>
-                {currentUser.role === 'admin' && (
-                  <AdminPanel
-                    siswaList={siswaList}
-                    onAddSiswa={handleAddSiswa}
-                    onUpdateSiswa={handleUpdateSiswa}
-                    onDeleteSiswa={handleDeleteSiswa}
-                    settings={settings}
-                    onSaveSettings={handleSaveSettings}
-                    activityLogs={activityLogs}
-                    onClearLogs={handleClearLogs}
-                    googleToken={googleToken}
-                    googleUser={googleUser}
-                    onConnectGoogle={handleConnectGoogle}
-                    onDisconnectGoogle={handleDisconnectGoogle}
-                    onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
-                    onBackupToDrive={handleBackupToDrive}
-                    onSyncFromGoogle={handleSyncFromGoogle}
-                    onSyncToGoogle={handleGoogleManualSync}
-                    isSyncing={isSyncing}
-                    accountsList={accountsList}
-                    onUpdateAccount={handleUpdateAccount}
-                    onAddAccount={handleAddAccount}
-                    onDeleteAccount={handleDeleteAccount}
-                    waliKelasList={waliKelasList}
-                    onUpdateWaliKelas={handleUpdateWaliKelas}
-                    onBatchUpdateStudentWa={handleBatchUpdateStudentWa}
-                  />
-                )}
+          {currentView === 'manajemen' && (
+            <div className="py-2 block">
+              {!currentUser ? (
+                <LoginScreen onLoginSuccess={handleLogin} accountsList={accountsList} appLogoUrl={settings?.appLogoUrl} />
+              ) : (
+                <>
+                  {currentUser.role === 'admin' && (
+                    <AdminPanel
+                      siswaList={siswaList}
+                      onAddSiswa={handleAddSiswa}
+                      onUpdateSiswa={handleUpdateSiswa}
+                      onDeleteSiswa={handleDeleteSiswa}
+                      settings={settings}
+                      onSaveSettings={handleSaveSettings}
+                      activityLogs={activityLogs}
+                      onClearLogs={handleClearLogs}
+                      googleToken={googleToken}
+                      googleUser={googleUser}
+                      onConnectGoogle={handleConnectGoogle}
+                      onDisconnectGoogle={handleDisconnectGoogle}
+                      onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
+                      onBackupToDrive={handleBackupToDrive}
+                      onSyncFromGoogle={handleSyncFromGoogle}
+                      onSyncToGoogle={handleGoogleManualSync}
+                      isSyncing={isSyncing}
+                      accountsList={accountsList}
+                      onUpdateAccount={handleUpdateAccount}
+                      onAddAccount={handleAddAccount}
+                      onDeleteAccount={handleDeleteAccount}
+                      waliKelasList={waliKelasList}
+                      onUpdateWaliKelas={handleUpdateWaliKelas}
+                      onBatchUpdateStudentWa={handleBatchUpdateStudentWa}
+                    />
+                  )}
 
-                {currentUser.role === 'kepsek' && (
-                  <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
-                )}
+                  {currentUser.role === 'kepsek' && (
+                    <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
+                  )}
 
-                {currentUser.role === 'guru' && (
-                  <GuruPanel
-                    siswaList={siswaList}
-                    presensiList={presensiList}
-                    currentUser={currentUser}
-                    onAddPresensi={handleAddPresensi}
-                  />
-                )}
+                  {currentUser.role === 'guru' && (
+                    <GuruPanel
+                      siswaList={siswaList}
+                      presensiList={presensiList}
+                      currentUser={currentUser}
+                      onAddPresensi={handleAddPresensi}
+                    />
+                  )}
 
-                {currentUser.role === 'piket' && (
-                  <PiketPanel
-                    siswaList={siswaList}
-                    settings={settings}
-                    currentUser={currentUser}
-                    onAddPresensi={handleAddPresensi}
-                    recentPresensi={presensiList}
-                    isActive={currentView === 'manajemen'}
-                  />
-                )}
-              </>
-            )}
-          </div>
+                  {currentUser.role === 'piket' && (
+                    <PiketPanel
+                      siswaList={siswaList}
+                      settings={settings}
+                      currentUser={currentUser}
+                      onAddPresensi={handleAddPresensi}
+                      recentPresensi={recentPresensiSlice}
+                      isActive={true}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* VIEW 2.5: REKAP LAPORAN */}
-          <div className={currentView === 'laporan' ? 'py-2 block' : 'hidden'}>
-            <ReportPanel siswaList={siswaList} presensiList={presensiList} />
-          </div>
+          {currentView === 'laporan' && (
+            <div className="py-2 block">
+              <ReportPanel
+                siswaList={siswaList}
+                presensiList={presensiList}
+                settings={settings}
+                onSynchronizePresensi={handleSynchronizeSemesterPresensi}
+                isSyncingPresensi={isSyncingPresensi}
+              />
+            </div>
+          )}
 
           {/* VIEW 3: BUKU PANDUAN LANGKAH-DEMI-LANGKAH */}
-          <div className={currentView === 'panduan' ? 'max-w-4xl mx-auto px-4 py-8 block' : 'hidden'}>
-            <div className="bg-white rounded-3xl p-8 border border-gray-150 shadow-sm space-y-8 text-left">
+          {currentView === 'panduan' && (
+            <div className="max-w-4xl mx-auto px-4 py-8 block">
+              <div className="bg-white rounded-3xl p-8 border border-gray-150 shadow-sm space-y-8 text-left">
               
               {/* Cover */}
               <div className="border-b border-gray-150 pb-6">
@@ -1119,12 +1173,13 @@ export default function App() {
 
             </div>
           </div>
+          )}
         </main>
       </div>
 
       {/* Floating simulator component with real automatic parent WhatsApp dispatch */}
       <WhatsAppSimulator
-        logs={presensiList}
+        logs={recentPresensiSlice}
         onClearLogs={() => setPresensiList([])}
         siswaList={siswaList}
         settings={settings}

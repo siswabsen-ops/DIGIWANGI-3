@@ -38,11 +38,22 @@ export function safeSetItem(key: string, value: string): boolean {
       } catch {}
     }
 
+    // Optimization: prevent storing multi-megabyte datasets in localStorage.
+    // The master store is the high-speed server & cloud; localStorage only needs a lightweight recent window.
+    if (key === 'karapres3_presensi_v5' && value.length > 200000) {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed) && parsed.length > 300) {
+          const compactSlice = parsed.slice(-300);
+          localStorage.setItem(key, JSON.stringify(compactSlice));
+          return true;
+        }
+      } catch {}
+    }
+
     localStorage.setItem(key, value);
     return true;
   } catch (error: any) {
-    console.warn(`[Storage] Quota exceeded or error setting key "${key}". Freeing temporary space...`, error);
-    
     // Purge temporary or legacy items to immediately free local storage space
     try {
       const purgeableKeys = [
@@ -63,12 +74,22 @@ export function safeSetItem(key: string, value: string): boolean {
           localStorage.removeItem(k);
         }
       }
+    } catch {}
 
-      // Retry saving
+    // Retry saving compact version
+    try {
+      if (key === 'karapres3_presensi_v5') {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          const windowSlice = parsed.slice(-200);
+          localStorage.setItem(key, JSON.stringify(windowSlice));
+          return true;
+        }
+      }
       localStorage.setItem(key, value);
       return true;
-    } catch (retryError) {
-      console.warn(`[Storage] Storage quota exhausted for "${key}". State remains intact in memory and Cloud Firestore.`, retryError);
+    } catch {
+      // Memory state is intact, so failing localStorage write is non-fatal
       return false;
     }
   }

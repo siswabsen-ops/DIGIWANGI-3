@@ -409,12 +409,14 @@ export const syncMasterPresensiToCloud = async (presensiList: Presensi[], update
   if (getIsQuotaExhausted()) return;
   const path = 'sync/presensi';
   try {
-    const cleaned = presensiList.map(cleanPresensiForFirestore);
+    // Keep safely within Firestore 1MB document limit: sync the latest 350 active records (~60KB)
+    const recentWindow = presensiList.length > 350 ? presensiList.slice(-350) : presensiList;
+    const cleaned = recentWindow.map(cleanPresensiForFirestore);
     await setDoc(doc(db, 'sync', 'presensi'), {
       data: cleaned,
       updatedAt: Date.now(),
       updatedBy: updatedBy || 'Client Device',
-      total: cleaned.length
+      total: presensiList.length
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -627,7 +629,7 @@ export const seedInitialDataIfDocsEmpty = async (
     if (presensiSource && presensiSource.length > 0) {
       const syncPresensiDoc = await getDoc(doc(db, 'sync', 'presensi'));
       if (!syncPresensiDoc.exists()) {
-        await syncMasterPresensiToCloud(presensiSource, 'Initial Seeding');
+        await syncMasterPresensiToCloud(presensiSource.slice(-350), 'Initial Seeding');
       }
     }
   } catch (err: any) {

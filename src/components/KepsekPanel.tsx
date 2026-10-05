@@ -35,6 +35,7 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
   const [filterType, setFilterType] = useState<LaporanFilterType>('hari');
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [exportError, setExportError] = useState('');
+  const [logLimit, setLogLimit] = useState(50);
 
   const todayStr = getLocalDateString();
 
@@ -484,7 +485,7 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
                     </td>
                   </tr>
                 ) : (
-                  filteredLogs.map((p) => {
+                  filteredLogs.slice(0, logLimit).map((p) => {
                     const statusStyles =
                       p.status === 'Hadir'
                         ? 'bg-emerald-100 text-emerald-800'
@@ -512,6 +513,18 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
               </tbody>
             </table>
           </div>
+
+          {filteredLogs.length > logLimit && (
+            <div className="pt-3 text-center">
+              <button
+                type="button"
+                onClick={() => setLogLimit(prev => prev + 50)}
+                className="text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 py-1.5 px-4 rounded-xl transition cursor-pointer"
+              >
+                Tampilkan 50 Arsip Lagi ({logLimit} dari {filteredLogs.length})
+              </button>
+            </div>
+          )}
         </div>
 
       </div>

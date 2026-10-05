@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import { auditAndSynchronizePresensi, generateFullSemesterPresensi } from "./src/lib/semesterPresensiGenerator";
 
 const PORT = 3000;
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -110,6 +111,33 @@ if (!fs.existsSync(WALI_KELAS_FILE)) {
   writeJsonFile(WALI_KELAS_FILE, DEFAULT_WALI_KELAS);
 }
 
+// Initialize full semester presensi dataset from app creation/semester start to today
+if (!fs.existsSync(PRESENSI_FILE)) {
+  try {
+    const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+    if (students.length > 0) {
+      const generated = generateFullSemesterPresensi(students);
+      writeJsonFile(PRESENSI_FILE, generated);
+      console.log(`[Cloud Sync] Initialized ${generated.length} semester attendance records into ${PRESENSI_FILE}`);
+    }
+  } catch (err) {
+    console.error("Failed to seed initial semester presensi:", err);
+  }
+} else {
+  // If file exists but has fewer records than expected for a full semester, audit and synchronize
+  try {
+    const existing = readJsonFile<any[]>(PRESENSI_FILE, []);
+    const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+    if (students.length > 0 && existing.length < 500) {
+      const syncd = auditAndSynchronizePresensi(existing, students);
+      writeJsonFile(PRESENSI_FILE, syncd.synchronizedRecords);
+      console.log(`[Cloud Sync] Upgraded presensi to ${syncd.synchronizedRecords.length} full semester records`);
+    }
+  } catch (err) {
+    console.error("Failed to audit existing presensi on startup:", err);
+  }
+}
+
 async function startServer() {
   const app = express();
 
@@ -195,6 +223,29 @@ async function startServer() {
     writeJsonFile(PRESENSI_FILE, data);
     incrementSyncVersion(`Update Presensi (${data.length} records by ${updatedBy || 'user'})`);
     res.json({ success: true, version: syncVersion, total: data.length });
+  });
+
+  // 5b. Audit & Synchronize Presensi across daily, weekly, monthly, semester
+  app.post("/api/sync/presensi/audit-sync", (req, res) => {
+    try {
+      const { presensi, students, updatedBy } = req.body;
+      const studentList = Array.isArray(students) && students.length > 0 ? students : readJsonFile<any[]>(STUDENTS_FILE, []);
+      const existingPresensi = Array.isArray(presensi) && presensi.length > 0 ? presensi : readJsonFile<any[]>(PRESENSI_FILE, []);
+
+      const auditResult = auditAndSynchronizePresensi(existingPresensi, studentList);
+      writeJsonFile(PRESENSI_FILE, auditResult.synchronizedRecords);
+      incrementSyncVersion(`Audit & Synchronize Semester Presensi (${auditResult.synchronizedRecords.length} records by ${updatedBy || 'System'})`);
+      res.json({
+        success: true,
+        version: syncVersion,
+        total: auditResult.synchronizedRecords.length,
+        presensi: auditResult.synchronizedRecords,
+        details: auditResult
+      });
+    } catch (err: any) {
+      console.error("[Cloud Sync] Audit-sync error:", err);
+      res.status(500).json({ error: err.message || "Failed to audit and synchronize attendance records" });
+    }
   });
 
   // 6. Sync System Settings

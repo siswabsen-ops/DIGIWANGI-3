@@ -531,6 +531,23 @@ export const calculateMonthlyRombelSummaryList = (
   const uniqueDays = Array.from(new Set(monthRecords.map(p => normalizeDateKey(p.tanggal)))).length;
   const schoolDays = Math.max(uniqueDays, 1);
 
+  // Fast pre-indexing by student ID & NIS (O(M) single pass instead of O(N*M))
+  const recordsByStudentKey = new Map<string, Presensi[]>();
+  for (let i = 0; i < monthRecords.length; i++) {
+    const r = monthRecords[i];
+    if (r.siswaId) {
+      const arr = recordsByStudentKey.get(r.siswaId);
+      if (arr) arr.push(r);
+      else recordsByStudentKey.set(r.siswaId, [r]);
+    }
+    if (r.nis) {
+      const cleanNis = r.nis.trim();
+      const arr = recordsByStudentKey.get(`nis:${cleanNis}`);
+      if (arr) arr.push(r);
+      else recordsByStudentKey.set(`nis:${cleanNis}`, [r]);
+    }
+  }
+
   return DAFTAR_KELAS.map((namaKelas) => {
     const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
     const totalSiswa = classStudents.length;
@@ -542,15 +559,21 @@ export const calculateMonthlyRombelSummaryList = (
     let alfa = 0;
 
     classStudents.forEach(siswa => {
-      const studentRecs = monthRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      let studentRecs = recordsByStudentKey.get(siswa.id);
+      if (!studentRecs && siswa.nis) {
+        studentRecs = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+      }
+      if (!studentRecs) studentRecs = [];
+
       const dateMap = new Map<string, Presensi>();
-      studentRecs.forEach(r => {
+      for (let j = 0; j < studentRecs.length; j++) {
+        const r = studentRecs[j];
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
         if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
           dateMap.set(dKey, r);
         }
-      });
+      }
 
       dateMap.forEach(rec => {
         switch (rec.status) {
@@ -617,6 +640,23 @@ export const calculateSemesterRombelSummaryList = (
   const uniqueDays = Array.from(new Set(semesterRecords.map(p => normalizeDateKey(p.tanggal)))).length;
   const schoolDays = Math.max(uniqueDays, 1);
 
+  // Fast pre-indexing by student ID & NIS (O(M) single pass instead of O(N*M))
+  const recordsByStudentKey = new Map<string, Presensi[]>();
+  for (let i = 0; i < semesterRecords.length; i++) {
+    const r = semesterRecords[i];
+    if (r.siswaId) {
+      const arr = recordsByStudentKey.get(r.siswaId);
+      if (arr) arr.push(r);
+      else recordsByStudentKey.set(r.siswaId, [r]);
+    }
+    if (r.nis) {
+      const cleanNis = r.nis.trim();
+      const arr = recordsByStudentKey.get(`nis:${cleanNis}`);
+      if (arr) arr.push(r);
+      else recordsByStudentKey.set(`nis:${cleanNis}`, [r]);
+    }
+  }
+
   return DAFTAR_KELAS.map((namaKelas) => {
     const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
     const totalSiswa = classStudents.length;
@@ -628,15 +668,21 @@ export const calculateSemesterRombelSummaryList = (
     let alfa = 0;
 
     classStudents.forEach(siswa => {
-      const studentRecs = semesterRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      let studentRecs = recordsByStudentKey.get(siswa.id);
+      if (!studentRecs && siswa.nis) {
+        studentRecs = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+      }
+      if (!studentRecs) studentRecs = [];
+
       const dateMap = new Map<string, Presensi>();
-      studentRecs.forEach(r => {
+      for (let j = 0; j < studentRecs.length; j++) {
+        const r = studentRecs[j];
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
         if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
           dateMap.set(dKey, r);
         }
-      });
+      }
 
       dateMap.forEach(rec => {
         switch (rec.status) {

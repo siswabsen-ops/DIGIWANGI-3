@@ -21,7 +21,8 @@ import {
   ArrowUpDown,
   Sparkles,
   School,
-  FileDown
+  FileDown,
+  RefreshCcw
 } from 'lucide-react';
 import { Siswa, Presensi, StatusKehadiran, SystemSettings, DAFTAR_KELAS } from '../types';
 import AttendanceBarChart from './AttendanceBarChart';
@@ -44,21 +45,38 @@ import {
   normalizeDateKey,
 } from '../lib/attendanceUtils';
 import { downloadSingleClassReport } from '../lib/attendanceReportExport';
+import { auditAndSyncSemesterPresensi } from '../lib/cloudSync';
+import { getSchoolDaysRange, SEMESTER_1_START_DATE, CURRENT_SEMESTER_DATE } from '../lib/semesterPresensiGenerator';
 
 interface ReportPanelProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
   settings?: SystemSettings;
+  onSynchronizePresensi?: () => Promise<void>;
+  isSyncingPresensi?: boolean;
 }
 
 type ActiveTab = 'harian' | 'mingguan' | 'bulanan' | 'semester';
 type StatusFilterType = 'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
 
-function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
+function ReportPanel({
+  siswaList,
+  presensiList,
+  settings,
+  onSynchronizePresensi,
+  isSyncingPresensi = false
+}: ReportPanelProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('harian');
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<StatusFilterType>('semua');
+  const [localSyncing, setLocalSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  // Expected active school days in Semester 1
+  const semesterSchoolDays = useMemo(() => {
+    return getSchoolDaysRange(SEMESTER_1_START_DATE, CURRENT_SEMESTER_DATE);
+  }, []);
 
   // Modals state
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -128,23 +146,27 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
 
   // Rekapitulasi Rombel Semua Kelas (1-A s/d 6-B) untuk tanggal terpilih
   const allRombelSummary = useMemo(() => {
+    if (activeTab !== 'harian') return [];
     return calculateAllRombelSummaryList(siswaList, presensiList, harianDate);
-  }, [siswaList, presensiList, harianDate]);
+  }, [siswaList, presensiList, harianDate, activeTab]);
 
   // Rekapitulasi Rombel Mingguan Semua Kelas (1-A s/d 6-B)
   const weeklyRombelSummary = useMemo(() => {
+    if (activeTab !== 'mingguan') return [];
     return calculateWeeklyRombelSummaryList(siswaList, presensiList, mingguanDate);
-  }, [siswaList, presensiList, mingguanDate]);
+  }, [siswaList, presensiList, mingguanDate, activeTab]);
 
   // Rekapitulasi Rombel Bulanan Semua Kelas (1-A s/d 6-B)
   const monthlyRombelSummary = useMemo(() => {
+    if (activeTab !== 'bulanan') return [];
     return calculateMonthlyRombelSummaryList(siswaList, presensiList, bulananMonth);
-  }, [siswaList, presensiList, bulananMonth]);
+  }, [siswaList, presensiList, bulananMonth, activeTab]);
 
   // Rekapitulasi Rombel Semester Semua Kelas (1-A s/d 6-B)
   const semesterRombelSummary = useMemo(() => {
+    if (activeTab !== 'semester') return [];
     return calculateSemesterRombelSummaryList(siswaList, presensiList, semesterType, semesterTahunAjaran);
-  }, [siswaList, presensiList, semesterType, semesterTahunAjaran]);
+  }, [siswaList, presensiList, semesterType, semesterTahunAjaran, activeTab]);
 
   // Grand Total untuk Seluruh Sekolah pada tanggal terpilih
   const grandTotalSchool = useMemo(() => {
@@ -201,11 +223,13 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
 
   // Daily index memoized for instant O(1) student matching
   const harianDailyIndex = useMemo(() => {
+    if (activeTab !== 'harian') return buildDailyAttendanceIndex([], '');
     return buildDailyAttendanceIndex(presensiList, harianDate);
-  }, [presensiList, harianDate]);
+  }, [presensiList, harianDate, activeTab]);
 
   // HARIAN: Calculate attendance state per student for the selected date
   const harianReportDataRaw = useMemo(() => {
+    if (activeTab !== 'harian') return [];
     return filteredStudents.map(siswa => {
       const record = getAttendanceFromIndex(siswa, harianDailyIndex);
       return {
@@ -215,7 +239,7 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
         hasPresensi: !!record
       };
     });
-  }, [filteredStudents, harianDailyIndex]);
+  }, [filteredStudents, harianDailyIndex, activeTab]);
 
   // Apply Status Filter
   const [harianPageLimit, setHarianPageLimit] = useState(40);
@@ -359,7 +383,7 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
         }
       });
 
-      const computedAlfa = Math.max(0, totalSchoolDays - (hadir + terlambat + sakit + izin));
+      const belumAbsen = Math.max(0, totalSchoolDays - (hadir + terlambat + sakit + izin + alfa));
       const presentCount = hadir + terlambat;
       const percentage = totalSchoolDays > 0 ? Math.round((presentCount / totalSchoolDays) * 100) : 0;
 
@@ -371,7 +395,9 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
           terlambat,
           sakit,
           izin,
-          alfa: computedAlfa,
+          alfa,
+          belumAbsen,
+          totalMasuk: presentCount,
           persen: percentage,
           baseSchoolDays: totalSchoolDays
         }
@@ -381,12 +407,18 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
 
   // Bulanan stats overall
   const bulananStats = useMemo(() => {
-    if (bulananReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0 };
+    if (bulananReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0, totalHadir: 0, totalTerlambat: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0, totalMasuk: 0 };
     const totalPercentage = bulananReportData.reduce((acc, curr) => acc + curr.metrics.persen, 0);
     const avgPersen = Math.round(totalPercentage / bulananReportData.length);
     const totalApresiasi = bulananReportData.filter(r => r.metrics.persen >= 90).length;
+    const totalHadir = bulananReportData.reduce((acc, curr) => acc + curr.metrics.hadir, 0);
+    const totalTerlambat = bulananReportData.reduce((acc, curr) => acc + curr.metrics.terlambat, 0);
+    const totalSakit = bulananReportData.reduce((acc, curr) => acc + curr.metrics.sakit, 0);
+    const totalIzin = bulananReportData.reduce((acc, curr) => acc + curr.metrics.izin, 0);
+    const totalAlfa = bulananReportData.reduce((acc, curr) => acc + curr.metrics.alfa, 0);
+    const totalMasuk = totalHadir + totalTerlambat;
 
-    return { avgPersen, totalApresiasi };
+    return { avgPersen, totalApresiasi, totalHadir, totalTerlambat, totalSakit, totalIzin, totalAlfa, totalMasuk };
   }, [bulananReportData]);
 
   // 4. DATA REKAPITULASI SEMESTER
@@ -457,13 +489,14 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
         }
       });
 
+      const belumAbsen = Math.max(0, totalSchoolDays - (hadir + terlambat + sakit + izin + alfa));
       const presentCount = hadir + terlambat;
       const percentage = totalSchoolDays > 0 ? Math.min(100, Math.round((presentCount / totalSchoolDays) * 100)) : 0;
 
-      let predikat = 'Perlu Bimbingan';
-      if (percentage >= 90) predikat = 'Sangat Baik';
-      else if (percentage >= 80) predikat = 'Baik';
-      else if (percentage >= 60) predikat = 'Cukup';
+      let predikat = 'Perlu Bimbingan (D)';
+      if (percentage >= 90) predikat = 'Sangat Baik (A)';
+      else if (percentage >= 80) predikat = 'Baik (B)';
+      else if (percentage >= 60) predikat = 'Cukup (C)';
 
       return {
         siswa,
@@ -474,6 +507,8 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
           sakit,
           izin,
           alfa,
+          belumAbsen,
+          totalMasuk: presentCount,
           persen: percentage,
           baseSchoolDays: totalSchoolDays,
           predikat
@@ -484,15 +519,19 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
 
   // Semester stats overall
   const semesterStats = useMemo(() => {
-    if (semesterReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0 };
+    if (semesterReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0, totalHadir: 0, totalTerlambat: 0, totalMasuk: 0, totalBelumAbsen: 0 };
     const totalPercentage = semesterReportData.reduce((acc, curr) => acc + curr.metrics.persen, 0);
     const avgPersen = Math.round(totalPercentage / semesterReportData.length);
     const totalApresiasi = semesterReportData.filter(r => r.metrics.persen >= 90).length;
+    const totalHadir = semesterReportData.reduce((acc, curr) => acc + curr.metrics.hadir, 0);
+    const totalTerlambat = semesterReportData.reduce((acc, curr) => acc + curr.metrics.terlambat, 0);
     const totalSakit = semesterReportData.reduce((acc, curr) => acc + curr.metrics.sakit, 0);
     const totalIzin = semesterReportData.reduce((acc, curr) => acc + curr.metrics.izin, 0);
     const totalAlfa = semesterReportData.reduce((acc, curr) => acc + curr.metrics.alfa, 0);
+    const totalBelumAbsen = semesterReportData.reduce((acc, curr) => acc + curr.metrics.belumAbsen, 0);
+    const totalMasuk = totalHadir + totalTerlambat;
 
-    return { avgPersen, totalApresiasi, totalSakit, totalIzin, totalAlfa };
+    return { avgPersen, totalApresiasi, totalSakit, totalIzin, totalAlfa, totalHadir, totalTerlambat, totalMasuk, totalBelumAbsen };
   }, [semesterReportData]);
 
   // -- DOWNLOAD TRIGGERS (Centralized CSV & ZIP Generators) --
@@ -539,6 +578,24 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
     setIsDownloadModalOpen(true);
   };
 
+  const handleSyncSemesterPresensi = async () => {
+    if (onSynchronizePresensi) {
+      await onSynchronizePresensi();
+      return;
+    }
+    try {
+      setLocalSyncing(true);
+      const auditResult = await auditAndSyncSemesterPresensi(presensiList, siswaList, 'Operator Laporan');
+      setSyncFeedback(`Sinkronisasi Berhasil: ${auditResult.totalRecords} rekaman di ${auditResult.totalDays} hari sekolah Semester 1 telah diperbaiki & disinkronkan 100%!`);
+      setTimeout(() => setSyncFeedback(null), 6000);
+    } catch (err: any) {
+      setSyncFeedback(`Gagal sinkronisasi: ${err.message || 'Kesalahan'}`);
+      setTimeout(() => setSyncFeedback(null), 6000);
+    } finally {
+      setLocalSyncing(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       
@@ -552,18 +609,32 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-black uppercase tracking-widest leading-none flex items-center gap-1">
               <Check className="w-3 h-3" /> Real-time Sinkron
             </span>
+            <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-black uppercase tracking-widest leading-none">
+              Semester 1 • {semesterSchoolDays.length} Hari Efektif
+            </span>
           </div>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1.5 flex items-center gap-2">
             <FileSpreadsheet className="w-6 h-6 text-blue-600 shrink-0" />
             <span>Pusat Laporan & Rekap Absensi Siswa</span>
           </h2>
           <p className="text-gray-500 text-xs mt-1.5">
-            Hasil rekapitulasi data presensi siswa SDN 3 Karamatwangi secara harian per rombel, mingguan, maupun bulanan. Diperbarui secara riil dan siap diekspor ke format .CSV per kelas atau dicetak langsung dengan format kop surat resmi.
+            Hasil rekapitulasi data presensi siswa SDN 3 Karamatwangi secara harian per rombel, mingguan, bulanan, dan semester. Diperbarui secara riil dan sinkron 100% antarperiode, siap diekspor ke format .CSV per kelas atau dicetak langsung dengan format resmi.
           </p>
         </div>
 
-        {/* Global Print / Download shortcut */}
+        {/* Global Print / Download / Sync shortcut */}
         <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-auto">
+          <button
+            type="button"
+            onClick={handleSyncSemesterPresensi}
+            disabled={localSyncing || isSyncingPresensi}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black py-2.5 px-4 rounded-xl shadow transition-all cursor-pointer flex items-center gap-1.5 border border-indigo-500"
+            title="Sinkronkan & perbaiki seluruh data presensi dari awal pembikinan aplikasi hingga sekarang"
+          >
+            <RefreshCcw className={`w-4 h-4 text-indigo-100 ${localSyncing || isSyncingPresensi ? 'animate-spin' : ''}`} />
+            <span>{localSyncing || isSyncingPresensi ? 'Menyinkronkan...' : 'Sinkronkan Data Semester'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleOpenDownloadModal(activeTab)}
@@ -585,6 +656,23 @@ function ReportPanel({ siswaList, presensiList, settings }: ReportPanelProps) {
           </button>
         </div>
       </div>
+
+      {/* SYNCHRONIZATION ALERT BANNER */}
+      {syncFeedback && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs font-bold animate-in fade-in duration-200 text-left">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{syncFeedback}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSyncFeedback(null)}
+            className="text-emerald-700 hover:text-emerald-900 text-xs cursor-pointer font-bold px-2 py-1 rounded"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* FILTER & MENU TAB CONTROL BOX */}
       <div className="bg-white rounded-3xl border border-slate-150 shadow-sm p-4 flex flex-col xl:flex-row items-center gap-4 justify-between">

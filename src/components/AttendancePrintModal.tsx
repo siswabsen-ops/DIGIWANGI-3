@@ -18,6 +18,7 @@ import {
   getAttendanceFromIndex, 
   isSameClass, 
   calculateAllRombelSummaryList,
+  calculateSemesterRombelSummaryList,
   normalizeDateKey
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
@@ -75,6 +76,11 @@ export default function AttendancePrintModal({
   const rombelSummary = useMemo(() => {
     return calculateAllRombelSummaryList(siswaList, presensiList, targetDate);
   }, [siswaList, presensiList, targetDate]);
+
+  // Semester rombel summary list
+  const semesterRombelSummary = useMemo(() => {
+    return calculateSemesterRombelSummaryList(siswaList, presensiList, targetSemesterType, targetTahunAjaran);
+  }, [siswaList, presensiList, targetSemesterType, targetTahunAjaran]);
 
   // Weekly dates
   const weekDates = useMemo(() => {
@@ -664,84 +670,158 @@ export default function AttendancePrintModal({
           {/* TYPE E: SEMESTER REKAP */}
           {printType === 'semester' && (
             <div className="overflow-x-auto mb-6">
-              <table className="w-full text-[11px] border-collapse border border-black">
-                <thead>
-                  <tr className="bg-slate-100 text-black font-black text-center border-b border-black">
-                    <th className="border border-black py-1.5 px-2 w-8">No</th>
-                    <th className="border border-black py-1.5 px-2 w-20">NIS</th>
-                    <th className="border border-black py-1.5 px-3 text-left">Nama Lengkap Siswa</th>
-                    <th className="border border-black py-1.5 px-2 w-14">Kelas</th>
-                    <th className="border border-black py-1.5 px-2 w-16">Hari Efektif</th>
-                    <th className="border border-black py-1.5 px-2 w-12">Hadir</th>
-                    <th className="border border-black py-1.5 px-2 w-12">Telat</th>
-                    <th className="border border-black py-1.5 px-2 w-12">Sakit</th>
-                    <th className="border border-black py-1.5 px-2 w-12">Izin</th>
-                    <th className="border border-black py-1.5 px-2 w-12">Alfa</th>
-                    <th className="border border-black py-1.5 px-2 w-16">Keaktifan</th>
-                    <th className="border border-black py-1.5 px-3 w-28">Predikat Raport</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.map((siswa, idx) => {
-                    const parts = targetTahunAjaran.split('/');
-                    const startYear = parseInt(parts[0]) || 2026;
-                    const endYear = parseInt(parts[1]) || (startYear + 1);
+              {selectedKelas === 'Semua Kelas' ? (
+                /* SEMESTER REKAPITULASI SELURUH ROMBEL (1-A s/d 6-B) */
+                <table className="w-full text-[11px] border-collapse border border-black">
+                  <thead>
+                    <tr className="bg-slate-100 text-black font-black text-center border-b border-black">
+                      <th className="border border-black py-1.5 px-2 w-8">No</th>
+                      <th className="border border-black py-1.5 px-3 text-left w-28">Rombel Kelas</th>
+                      <th className="border border-black py-1.5 px-3 text-left">Nama Wali Kelas</th>
+                      <th className="border border-black py-1.5 px-2 w-16">Jml Siswa</th>
+                      <th className="border border-black py-1.5 px-2 w-14">Hadir</th>
+                      <th className="border border-black py-1.5 px-2 w-14">Telat</th>
+                      <th className="border border-black py-1.5 px-2 w-14">Sakit</th>
+                      <th className="border border-black py-1.5 px-2 w-14">Izin</th>
+                      <th className="border border-black py-1.5 px-2 w-14">Alfa</th>
+                      <th className="border border-black py-1.5 px-2 w-20">Total Masuk</th>
+                      <th className="border border-black py-1.5 px-2 w-16">Keaktifan</th>
+                      <th className="border border-black py-1.5 px-3 w-28">Predikat Kinerja</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {semesterRombelSummary.map((item, idx) => {
+                      let predikat = 'Perlu Pendampingan';
+                      if (item.persentase >= 90) predikat = 'Sangat Tinggi (A)';
+                      else if (item.persentase >= 80) predikat = 'Tinggi (B)';
+                      else if (item.persentase >= 60) predikat = 'Cukup (C)';
 
-                    const targetYearMonths = targetSemesterType === '1'
-                      ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
-                      : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+                      return (
+                        <tr key={item.kelas} className="border-b border-black text-black">
+                          <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
+                          <td className="border border-black py-1 px-3 font-bold text-left">{item.kelas}</td>
+                          <td className="border border-black py-1 px-3 text-left">{item.waliKelas}</td>
+                          <td className="border border-black py-1 px-2 text-center font-mono">{item.totalSiswa}</td>
+                          <td className="border border-black py-1 px-2 text-center font-bold">{item.hadir}</td>
+                          <td className="border border-black py-1 px-2 text-center">{item.terlambat}</td>
+                          <td className="border border-black py-1 px-2 text-center">{item.sakit}</td>
+                          <td className="border border-black py-1 px-2 text-center">{item.izin}</td>
+                          <td className="border border-black py-1 px-2 text-center">{item.alfa}</td>
+                          <td className="border border-black py-1 px-2 text-center font-bold">{item.totalHadir}</td>
+                          <td className="border border-black py-1 px-2 text-center font-black">{item.persentase}%</td>
+                          <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
+                        </tr>
+                      );
+                    })}
+                    {/* BARIS TOTAL SEKOLAH */}
+                    {(() => {
+                      const totalS = semesterRombelSummary.reduce((a, c) => a + c.totalSiswa, 0);
+                      const totalH = semesterRombelSummary.reduce((a, c) => a + c.hadir, 0);
+                      const totalT = semesterRombelSummary.reduce((a, c) => a + c.terlambat, 0);
+                      const totalSkt = semesterRombelSummary.reduce((a, c) => a + c.sakit, 0);
+                      const totalI = semesterRombelSummary.reduce((a, c) => a + c.izin, 0);
+                      const totalA = semesterRombelSummary.reduce((a, c) => a + c.alfa, 0);
+                      const totalM = totalH + totalT;
+                      const grandP = totalS > 0 ? Math.round((totalM / (totalS * semesterEffectiveDays)) * 100) : 0;
 
-                    const studentRecords = presensiList.filter(p => {
-                      const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
-                                         (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-                                         (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
-                      if (!matchSiswa || !p.tanggal) return false;
-                      const norm = normalizeDateKey(p.tanggal);
-                      return targetYearMonths.some(ym => norm.startsWith(ym));
-                    });
+                      return (
+                        <tr className="bg-slate-100 border-t-2 border-black text-black font-black">
+                          <td colSpan={3} className="border border-black py-2 px-3 text-center">TOTAL KESELURUHAN SEKOLAH</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalS}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalH}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalT}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalSkt}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalI}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalA}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{totalM}</td>
+                          <td className="border border-black py-2 px-2 text-center font-mono">{grandP}%</td>
+                          <td className="border border-black py-2 px-3 text-center">Sangat Baik (A)</td>
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              ) : (
+                /* SEMESTER BUKU INDUK PER KELAS */
+                <table className="w-full text-[11px] border-collapse border border-black">
+                  <thead>
+                    <tr className="bg-slate-100 text-black font-black text-center border-b border-black">
+                      <th className="border border-black py-1.5 px-2 w-8">No</th>
+                      <th className="border border-black py-1.5 px-2 w-20">NIS</th>
+                      <th className="border border-black py-1.5 px-3 text-left">Nama Lengkap Siswa</th>
+                      <th className="border border-black py-1.5 px-2 w-14">Kelas</th>
+                      <th className="border border-black py-1.5 px-2 w-16">Hari Efektif</th>
+                      <th className="border border-black py-1.5 px-2 w-12">Hadir</th>
+                      <th className="border border-black py-1.5 px-2 w-12">Telat</th>
+                      <th className="border border-black py-1.5 px-2 w-12">Sakit</th>
+                      <th className="border border-black py-1.5 px-2 w-12">Izin</th>
+                      <th className="border border-black py-1.5 px-2 w-12">Alfa</th>
+                      <th className="border border-black py-1.5 px-2 w-16">Keaktifan</th>
+                      <th className="border border-black py-1.5 px-3 w-28">Predikat Raport</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredStudents.map((siswa, idx) => {
+                      const parts = targetTahunAjaran.split('/');
+                      const startYear = parseInt(parts[0]) || 2026;
+                      const endYear = parseInt(parts[1]) || (startYear + 1);
 
-                    let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
-                    const dateMap = new Map<string, string>();
-                    studentRecords.forEach(r => {
-                      const d = normalizeDateKey(r.tanggal);
-                      if (!dateMap.has(d)) dateMap.set(d, r.status);
-                    });
+                      const targetYearMonths = targetSemesterType === '1'
+                        ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
+                        : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
 
-                    dateMap.forEach(status => {
-                      if (status === 'Hadir') hadir++;
-                      else if (status === 'Terlambat') terlambat++;
-                      else if (status === 'Sakit') sakit++;
-                      else if (status === 'Izin') izin++;
-                      else if (status === 'Alfa') alfa++;
-                    });
+                      const studentRecords = presensiList.filter(p => {
+                        const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
+                                           (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
+                                           (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
+                        if (!matchSiswa || !p.tanggal) return false;
+                        const norm = normalizeDateKey(p.tanggal);
+                        return targetYearMonths.some(ym => norm.startsWith(ym));
+                      });
 
-                    const totalMasuk = hadir + terlambat;
-                    const persen = Math.min(100, Math.round((totalMasuk / semesterEffectiveDays) * 100));
+                      let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
+                      const dateMap = new Map<string, string>();
+                      studentRecords.forEach(r => {
+                        const d = normalizeDateKey(r.tanggal);
+                        if (!dateMap.has(d)) dateMap.set(d, r.status);
+                      });
 
-                    let predikat = 'Perlu Bimbingan';
-                    if (persen >= 90) predikat = 'Sangat Baik';
-                    else if (persen >= 80) predikat = 'Baik';
-                    else if (persen >= 60) predikat = 'Cukup';
+                      dateMap.forEach(status => {
+                        if (status === 'Hadir') hadir++;
+                        else if (status === 'Terlambat') terlambat++;
+                        else if (status === 'Sakit') sakit++;
+                        else if (status === 'Izin') izin++;
+                        else if (status === 'Alfa') alfa++;
+                      });
 
-                    return (
-                      <tr key={siswa.id} className="border-b border-black text-black">
-                        <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
-                        <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
-                        <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
-                        <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
-                        <td className="border border-black py-1 px-2 text-center font-mono">{semesterEffectiveDays}</td>
-                        <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
-                        <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
-                        <td className="border border-black py-1 px-2 text-center">{sakit}</td>
-                        <td className="border border-black py-1 px-2 text-center">{izin}</td>
-                        <td className="border border-black py-1 px-2 text-center">{alfa}</td>
-                        <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
-                        <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      const totalMasuk = hadir + terlambat;
+                      const persen = Math.min(100, Math.round((totalMasuk / semesterEffectiveDays) * 100));
+
+                      let predikat = 'Perlu Bimbingan (D)';
+                      if (persen >= 90) predikat = 'Sangat Baik (A)';
+                      else if (persen >= 80) predikat = 'Baik (B)';
+                      else if (persen >= 60) predikat = 'Cukup (C)';
+
+                      return (
+                        <tr key={siswa.id} className="border-b border-black text-black">
+                          <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
+                          <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
+                          <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
+                          <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
+                          <td className="border border-black py-1 px-2 text-center font-mono">{semesterEffectiveDays}</td>
+                          <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
+                          <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
+                          <td className="border border-black py-1 px-2 text-center">{sakit}</td>
+                          <td className="border border-black py-1 px-2 text-center">{izin}</td>
+                          <td className="border border-black py-1 px-2 text-center">{alfa}</td>
+                          <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
+                          <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
 

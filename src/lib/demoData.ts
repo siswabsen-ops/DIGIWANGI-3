@@ -1,5 +1,6 @@
 import { Siswa, User, SystemSettings, Presensi, ActivityLog, JadwalPresensi, DAFTAR_KELAS, WaliKelas } from '../types';
 import realStudents from './realStudents.json';
+import { generateFullSemesterPresensi } from './semesterPresensiGenerator';
 
 export const DEFAULT_JADWAL_PRESENSI: JadwalPresensi[] = [
   {
@@ -278,9 +279,5 @@ const getTodayDateStr = (): string => {
 
 const todayDate = getTodayDateStr();
 
-export const PRESENSI_INITIAL: Presensi[] = [
-  ...generateRealisticAttendanceForDate(SISWA_INITIAL, todayDate),
-  ...generateRealisticAttendanceForDate(SISWA_INITIAL, '2026-08-17'),
-  ...generateRealisticAttendanceForDate(SISWA_INITIAL, '2026-08-16'),
-  ...generateRealisticAttendanceForDate(SISWA_INITIAL, '2026-08-15'),
-];
+export const PRESENSI_INITIAL: Presensi[] = generateFullSemesterPresensi(SISWA_INITIAL);
+

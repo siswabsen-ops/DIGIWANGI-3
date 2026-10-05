@@ -54,6 +54,13 @@ function ScanScreen({
     return map;
   }, [recentPresensi]);
 
+  // Display only recent 30 scans of today to prevent rendering thousands of elements
+  const displayRecentPresensi = useMemo(() => {
+    const todayDate = getLocalDateString();
+    const todayList = recentPresensi.filter((p) => isPresensiDateMatch(p.tanggal, todayDate));
+    return todayList.slice(-30);
+  }, [recentPresensi]);
+
   // Fast filtered simulation pupils list
   const filteredSimSiswa = useMemo(() => {
     if (!simSearch.trim()) return siswaList;
@@ -706,12 +713,12 @@ function ScanScreen({
           </h3>
           
           <div className="space-y-2 max-h-[195px] overflow-y-auto pr-1">
-            {recentPresensi.length === 0 ? (
+            {displayRecentPresensi.length === 0 ? (
               <div className="text-center py-6 text-gray-400 text-xs">
                 Belum ada presensi yang masuk pada tanggal hari ini.
               </div>
             ) : (
-              [...recentPresensi].reverse().map((p) => {
+              [...displayRecentPresensi].reverse().map((p) => {
                 const isLate = p.status === 'Terlambat';
                 const statusColor =
                   p.status === 'Hadir'
