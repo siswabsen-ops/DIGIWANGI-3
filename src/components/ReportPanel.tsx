@@ -1525,13 +1525,51 @@ function ReportPanel({
                   <Calendar className="w-5 h-5" />
                 </span>
                 <div className="w-full">
-                  <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Periode Bulan Jurnal</label>
-                  <input
-                    type="month"
-                    value={bulananMonth}
-                    onChange={(e) => setBulananMonth(e.target.value)}
-                    className="mt-0.5 max-w-full font-bold text-xs text-slate-755 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                  />
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Periode Bulan Jurnal</label>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">Arsip 3 Bulan Lengkap</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <input
+                      type="month"
+                      value={bulananMonth}
+                      onChange={(e) => setBulananMonth(e.target.value)}
+                      className="font-bold text-xs text-slate-755 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBulananMonth('2026-08')}
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        bulananMonth === '2026-08'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs font-black'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      📅 Agustus 2026
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulananMonth('2026-09')}
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        bulananMonth === '2026-09'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs font-black'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      📅 September 2026
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulananMonth('2026-10')}
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        bulananMonth === '2026-10'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs font-black'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      📅 Oktober 2026
+                    </button>
+                  </div>
                 </div>
               </div>
 

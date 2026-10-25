@@ -1,0 +1,13 @@
+[
+  {
+    "id": "wa-msg-1792939073722-3020",
+    "studentName": "ADE MILDA NURAENI",
+    "kelas": "Kelas 1-A",
+    "status": "Hadir",
+    "phone": "081297201275",
+    "message": "Presensi ADE MILDA NURAENI (Kelas 1-A): Hadir",
+    "deliveryStatus": "DELIVERED",
+    "gateway": "DIGIWANGI3_WA_GATEWAY_NODE",
+    "timestamp": "2026-10-25T14:37:53.722Z"
+  }
+]

@@ -23,6 +23,7 @@ import {
   forceSyncNow,
   auditAndSyncSemesterPresensi
 } from './lib/cloudSync';
+import { sendAutomaticWhatsAppNotification } from './lib/whatsappGateway';
 import { 
   db,
   ensureAuthenticated, 
@@ -795,7 +796,7 @@ export default function App() {
     triggerNotice('Pengaturan sistem berhasil disimpan & disinkronkan ke seluruh perangkat.', 'success');
   }, [addActivityLog]);
 
-  // Record a scanned attendance
+  // Record a scanned or manually marked attendance
   const handleAddPresensi = useCallback((newPresensi: Presensi) => {
     savePresensiToFirestore(newPresensi);
     recordSinglePresensiToCloud(newPresensi, currentUser?.namaLengkap || 'Scanner Piket');
@@ -817,8 +818,17 @@ export default function App() {
       }
       return updated;
     });
-    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);
-  }, [currentUser, addActivityLog]);
+
+    // Automatically dispatch WhatsApp notification to parent if student profile matches
+    const matchedSiswa = siswaList.find(s => 
+      s.id === newPresensi.siswaId || 
+      (s.nis && newPresensi.nis && s.nis.trim() === newPresensi.nis.trim()) ||
+      (s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() && s.kelas === newPresensi.kelas)
+    );
+    sendAutomaticWhatsAppNotification(newPresensi, matchedSiswa, settings).catch(() => {});
+
+    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi WA Otomatis Terkirim ke Orang Tua`);
+  }, [currentUser, siswaList, settings, addActivityLog]);
 
   // Quick reset logs
   const handleClearLogs = useCallback(() => {

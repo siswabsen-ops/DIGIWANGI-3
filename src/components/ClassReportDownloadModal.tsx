@@ -231,7 +231,7 @@ export default function ClassReportDownloadModal({
             )}
 
             {reportType === 'bulanan' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-500">Bulan Rekap:</span>
                 <input
                   type="month"
@@ -239,6 +239,41 @@ export default function ClassReportDownloadModal({
                   onChange={(e) => setTargetMonth(e.target.value)}
                   className="bg-white border border-slate-200 font-bold text-xs py-1.5 px-3 rounded-xl text-slate-800 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setTargetMonth('2026-08')}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                      targetMonth === '2026-08'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Agustus 2026
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetMonth('2026-09')}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                      targetMonth === '2026-09'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    September 2026
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetMonth('2026-10')}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                      targetMonth === '2026-10'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Oktober 2026
+                  </button>
+                </div>
               </div>
             )}
 

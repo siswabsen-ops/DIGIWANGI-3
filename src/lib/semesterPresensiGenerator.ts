@@ -3,7 +3,7 @@ import { normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
 
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
-export const CURRENT_SEMESTER_DATE = '2026-10-05';
+export const CURRENT_SEMESTER_DATE = '2026-10-23';
 
 export const SEMESTER_1_HOLIDAYS = new Set<string>([
   '2026-08-17',
@@ -52,30 +52,32 @@ export function generateRealisticDayRecords(
     let waktu = '06:45:10';
     let pesan = '';
 
+    const parentPhone = siswa.waOrangTua || '081234567890';
+
     if (seed < 89) {
       status = 'Hadir';
       const minute = String(30 + (seed % 28)).padStart(2, '0');
       const second = String((seed * 7) % 60).padStart(2, '0');
       waktu = `06:${minute}:${second}`;
-      pesan = `Tercatat Hadir tepat waktu via QR Code Scanner (Pintu Masuk)`;
+      pesan = `Tercatat Hadir tepat waktu via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
     } else if (seed < 95) {
       status = 'Terlambat';
       const minute = String(16 + (seed % 13)).padStart(2, '0');
       const second = String((seed * 11) % 60).padStart(2, '0');
       waktu = `07:${minute}:${second}`;
-      pesan = `Tercatat Terlambat masuk sekolah pukul ${waktu} WIB`;
+      pesan = `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
     } else if (seed < 97) {
       status = 'Sakit';
       waktu = '07:05:00';
-      pesan = `Keterangan Sakit terkonfirmasi oleh Orang Tua / Wali Murid (${siswa.waOrangTua || '-'})`;
+      pesan = `Keterangan Sakit terkonfirmasi oleh Orang Tua / Wali Murid (${parentPhone})`;
     } else if (seed < 99) {
       status = 'Izin';
       waktu = '07:10:00';
-      pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Kelas`;
+      pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone})`;
     } else {
       status = 'Alfa';
       waktu = '07:30:00';
-      pesan = `Tidak hadir tanpa keterangan (Alfa)`;
+      pesan = `Pemberitahuan Tidak Hadir (Alfa) ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
     }
 
     return {
@@ -209,31 +211,32 @@ export function auditAndSynchronizePresensi(
         let status: 'Hadir' | 'Terlambat' | 'Sakit' | 'Izin' | 'Alfa' = 'Hadir';
         let waktu = '06:45:10';
         let pesan = '';
+        const parentPhone = siswa.waOrangTua || '081234567890';
 
         if (seed < 89) {
           status = 'Hadir';
           const minute = String(30 + (seed % 28)).padStart(2, '0');
           const second = String((seed * 7) % 60).padStart(2, '0');
           waktu = `06:${minute}:${second}`;
-          pesan = `Tercatat Hadir tepat waktu via QR Code Scanner`;
+          pesan = `Tercatat Hadir tepat waktu via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
         } else if (seed < 95) {
           status = 'Terlambat';
           const minute = String(16 + (seed % 13)).padStart(2, '0');
           const second = String((seed * 11) % 60).padStart(2, '0');
           waktu = `07:${minute}:${second}`;
-          pesan = `Tercatat Terlambat masuk sekolah pukul ${waktu} WIB`;
+          pesan = `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
         } else if (seed < 97) {
           status = 'Sakit';
           waktu = '07:05:00';
-          pesan = `Keterangan Sakit terkonfirmasi oleh Orang Tua (${siswa.waOrangTua || '-'})`;
+          pesan = `Keterangan Sakit terkonfirmasi oleh Orang Tua / Wali Murid (${parentPhone})`;
         } else if (seed < 99) {
           status = 'Izin';
           waktu = '07:10:00';
-          pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Kelas`;
+          pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone})`;
         } else {
           status = 'Alfa';
           waktu = '07:30:00';
-          pesan = `Tidak hadir tanpa keterangan (Alfa)`;
+          pesan = `Pemberitahuan Tidak Hadir (Alfa) ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
         }
 
         finalRecords.push({

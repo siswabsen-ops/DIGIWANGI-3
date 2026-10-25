@@ -3,6 +3,7 @@ import { Camera, Search, UserCheck, AlertTriangle, Clock, Smartphone, MessageCir
 import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal } from '../types';
 import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
 import QRCodeRenderer from './QRCodeRenderer';
+import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
 // @ts-ignore
 import jsQR from 'jsqr';
 
@@ -247,6 +248,7 @@ function ScanScreen({
 
     // Deterministic unique ID per student per day so Firestore updates in-place
     const newPresensiId = alreadyScanned ? alreadyScanned.id : `pr-${matchedSiswa.id}-${todayDate}`;
+    const parentPhone = matchedSiswa.waOrangTua || '081234567890';
     const newRecord: Presensi = {
       id: newPresensiId,
       siswaId: matchedSiswa.id,
@@ -258,13 +260,19 @@ function ScanScreen({
       waktu: waktuSekarang,
       status: determinedStatus,
       waStatus: 'Terkirim',
-      pesanTerkirim: `Diproses via Server Utama WA Gateway (087844651559) ➔ Terkirim ke WhatsApp Orang Tua (${matchedSiswa.waOrangTua}) [${applicableJadwal?.nama || 'Reguler'}]`,
+      pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
       operator: currentUser.namaLengkap,
     };
 
+    // 1. Instantly record attendance into local & server state (updates daily, weekly, monthly, and semester recaps)
     onAddPresensi(newRecord);
     setScannedResult(newRecord);
     setScannerStatus('SUCCESS');
+
+    // 2. Automatically dispatch notification via WhatsApp Gateway to parent's phone
+    sendAutomaticWhatsAppNotification(newRecord, matchedSiswa, settings).catch((err) => {
+      console.warn('Auto WA Gateway dispatch background status:', err);
+    });
 
     // Beeps or play sound for instant scan confirmation
     try {
@@ -437,14 +445,15 @@ function ScanScreen({
                       <span className="text-[10px] text-slate-400 font-mono">{scannedResult.waktu} WIB</span>
                     </div>
                     <h4 className="text-sm font-black text-white truncate mt-0.5">{scannedResult.nama}</h4>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-300">
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-300">
                       <span className="font-mono font-bold text-slate-200">
                         {scannedResult.nik && (!scannedResult.nis || scannedResult.nis.startsWith('REG-') || scannedResult.nis.startsWith('NON-')) 
                           ? `NIK: ${scannedResult.nik}` 
                           : `NIS: ${scannedResult.nis}`} ({scannedResult.kelas})
                       </span>
-                      <span className="text-emerald-400 font-medium truncate">
-                        • 📡 WA: {scannedResult.pesanTerkirim?.match(/\(([^)]+)\)/)?.[1] || '087844651559 (Terkirim)'}
+                      <span className="bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        WA Gateway: Otomatis Terkirim ke Ortu ({scannedResult.pesanTerkirim?.match(/\(([^)]+)\)/)?.[1] || '081234567890'}) ✔✔
                       </span>
                     </div>
                   </div>

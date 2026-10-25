@@ -147,6 +147,24 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
     }
   }, [isOpen]);
 
+  // Real-time custom event listener for automatic WhatsApp Gateway dispatch
+  useEffect(() => {
+    const handleWaSent = (e: any) => {
+      if (e.detail?.presensi) {
+        setHasNewMessage(true);
+        if (!isOpen) {
+          setActiveToast(e.detail.presensi);
+          const timer = setTimeout(() => {
+            setActiveToast(null);
+          }, 4000);
+          return () => clearTimeout(timer);
+        }
+      }
+    };
+    window.addEventListener('karapres:whatsapp_sent', handleWaSent);
+    return () => window.removeEventListener('karapres:whatsapp_sent', handleWaSent);
+  }, [isOpen]);
+
   // Copy message to clipboard
   const handleCopyMessage = useCallback(async (p: Presensi) => {
     const text = formatPesanWhatsApp(p);
