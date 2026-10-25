@@ -1,5 +1,5 @@
 import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS, normalizeKelasCode } from '../types';
-import { getWaliKelasByKelas } from './demoData';
+import { getWaliKelasByKelas } from './waliKelasData';
 
 /**
  * Mendapatkan string tanggal hari ini (YYYY-MM-DD) berdasarkan zona waktu WIB (Asia/Jakarta)

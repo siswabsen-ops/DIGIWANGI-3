@@ -213,16 +213,75 @@ async function startServer() {
     res.json({ success: true, version: syncVersion, total: data.length });
   });
 
-  // 5. Sync Attendance records
+  // 5. Sync Attendance records (with archive safeguarding)
   app.post("/api/sync/presensi", (req, res) => {
     const { data, updatedBy } = req.body;
     if (!Array.isArray(data)) {
       res.status(400).json({ error: "Invalid data format. Expected an array of attendance records." });
       return;
     }
-    writeJsonFile(PRESENSI_FILE, data);
-    incrementSyncVersion(`Update Presensi (${data.length} records by ${updatedBy || 'user'})`);
-    res.json({ success: true, version: syncVersion, total: data.length });
+
+    const existing = readJsonFile<any[]>(PRESENSI_FILE, []);
+    let finalRecords: any[];
+
+    if (data.length < existing.length && existing.length > 500 && data.length <= 500) {
+      // Client sent a lightweight recent slice; merge updates into existing master archive
+      const existingMap = new Map<string, any>();
+      for (const item of existing) {
+        const d = (item.tanggal || '').slice(0, 10);
+        const sid = item.siswaId || item.nis || item.nama;
+        existingMap.set(`${sid}__${d}`, item);
+      }
+      for (const item of data) {
+        const d = (item.tanggal || '').slice(0, 10);
+        const sid = item.siswaId || item.nis || item.nama;
+        existingMap.set(`${sid}__${d}`, item);
+      }
+      finalRecords = Array.from(existingMap.values());
+    } else {
+      finalRecords = data;
+    }
+
+    writeJsonFile(PRESENSI_FILE, finalRecords);
+    incrementSyncVersion(`Update Presensi (${finalRecords.length} records by ${updatedBy || 'user'})`);
+    res.json({ success: true, version: syncVersion, total: finalRecords.length });
+  });
+
+  // 5a. Atomic single attendance record upsert (for live QR scans & manual marks)
+  app.post("/api/presensi/record", (req, res) => {
+    try {
+      const { record, updatedBy } = req.body;
+      if (!record || !record.tanggal || !record.nama) {
+        res.status(400).json({ error: "Invalid attendance record payload." });
+        return;
+      }
+
+      const existingRecords = readJsonFile<any[]>(PRESENSI_FILE, []);
+      const normDate = (record.tanggal || '').slice(0, 10);
+      
+      const idx = existingRecords.findIndex((p: any) => 
+        p.id === record.id ||
+        (
+          ((p.siswaId && record.siswaId && p.siswaId === record.siswaId) ||
+           (p.nis && record.nis && p.nis === record.nis) ||
+           (p.nama === record.nama && p.kelas === record.kelas)) &&
+          (p.tanggal && p.tanggal.slice(0, 10) === normDate)
+        )
+      );
+
+      if (idx >= 0) {
+        existingRecords[idx] = { ...existingRecords[idx], ...record };
+      } else {
+        existingRecords.unshift(record);
+      }
+
+      writeJsonFile(PRESENSI_FILE, existingRecords);
+      incrementSyncVersion(`Record Presensi: ${record.nama} (${record.kelas} - ${record.status}) by ${updatedBy || 'Scanner'}`);
+      res.json({ success: true, version: syncVersion, total: existingRecords.length });
+    } catch (err: any) {
+      console.error("[Server Presensi Record Error]:", err);
+      res.status(500).json({ error: err.message || "Failed to record attendance" });
+    }
   });
 
   // 5b. Audit & Synchronize Presensi across daily, weekly, monthly, semester

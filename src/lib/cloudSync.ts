@@ -130,6 +130,28 @@ export async function syncPresensiToCloud(presensi: Presensi[], updatedBy: strin
   return true;
 }
 
+/**
+ * Mencatat satu presensi harian secara atomic ke server (/api/presensi/record)
+ * Sangat cepat dan menghemat bandwidth saat pemindaian QR massal di gerbang/kelas
+ */
+export async function recordSinglePresensiToCloud(record: Presensi, updatedBy: string = 'Presensi Live'): Promise<boolean> {
+  try {
+    const res = await fetch('/api/presensi/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record, updatedBy })
+    });
+    if (res.ok) {
+      const respJson = await res.json();
+      if (respJson?.version) localSyncVersion = respJson.version;
+      return true;
+    }
+  } catch (err) {
+    console.warn('[CloudSync] Fast presensi record notice:', err);
+  }
+  return false;
+}
+
 export interface AuditSyncResponse {
   synchronizedRecords: Presensi[];
   totalDays: number;

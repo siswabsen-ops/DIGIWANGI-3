@@ -9,7 +9,7 @@ import {
 } from './lib/demoData';
 import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User, WaliKelas } from './types';
-import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString } from './lib/attendanceUtils';
+import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normalizeDateKey } from './lib/attendanceUtils';
 import Header from './components/Header';
 import {
   fetchCloudMasterData,
@@ -17,6 +17,7 @@ import {
   syncStudentsToCloud,
   syncWaliKelasToCloud,
   syncPresensiToCloud,
+  recordSinglePresensiToCloud,
   syncSettingsToCloud,
   syncAccountsToCloud,
   forceSyncNow,
@@ -277,9 +278,27 @@ export default function App() {
       },
       onPresensiChange: (incomingPresensi) => {
         if (!isMounted) return;
-        if (incomingPresensi && Array.isArray(incomingPresensi)) {
-          setPresensiList(incomingPresensi);
-          safeSetItem('karapres3_presensi_v5', JSON.stringify(incomingPresensi));
+        if (incomingPresensi && Array.isArray(incomingPresensi) && incomingPresensi.length > 0) {
+          setPresensiList((prev) => {
+            if (incomingPresensi.length >= prev.length) {
+              return incomingPresensi;
+            }
+            // If incoming is smaller (e.g. Firestore sync slice of recent scans), merge into existing
+            const map = new Map<string, Presensi>();
+            for (let i = 0; i < prev.length; i++) {
+              const p = prev[i];
+              const sid = p.siswaId || p.nis || p.nama;
+              const d = normalizeDateKey(p.tanggal);
+              map.set(`${sid}__${d}`, p);
+            }
+            for (let i = 0; i < incomingPresensi.length; i++) {
+              const p = incomingPresensi[i];
+              const sid = p.siswaId || p.nis || p.nama;
+              const d = normalizeDateKey(p.tanggal);
+              map.set(`${sid}__${d}`, p);
+            }
+            return Array.from(map.values());
+          });
         }
       },
       onSettingsChange: (incomingSettings) => {
@@ -779,12 +798,15 @@ export default function App() {
   // Record a scanned attendance
   const handleAddPresensi = useCallback((newPresensi: Presensi) => {
     savePresensiToFirestore(newPresensi);
+    recordSinglePresensiToCloud(newPresensi, currentUser?.namaLengkap || 'Scanner Piket');
+
     setPresensiList((prev) => {
+      const targetNormDate = normalizeDateKey(newPresensi.tanggal);
       const idx = prev.findIndex(
         (p) =>
           p.id === newPresensi.id ||
-          ((p.siswaId === newPresensi.siswaId || p.nis === newPresensi.nis || (p.nama === newPresensi.nama && p.kelas === newPresensi.kelas)) &&
-           isPresensiDateMatch(p.tanggal, newPresensi.tanggal))
+          ((p.siswaId === newPresensi.siswaId || (p.nis && newPresensi.nis && p.nis === newPresensi.nis) || (p.nama === newPresensi.nama && p.kelas === newPresensi.kelas)) &&
+           normalizeDateKey(p.tanggal) === targetNormDate)
       );
       let updated: Presensi[];
       if (idx >= 0) {
@@ -793,12 +815,10 @@ export default function App() {
       } else {
         updated = [newPresensi, ...prev];
       }
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
-      syncPresensiToCloud(updated, 'Presensi Live');
       return updated;
     });
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas})`);
-  }, [addActivityLog]);
+  }, [currentUser, addActivityLog]);
 
   // Quick reset logs
   const handleClearLogs = useCallback(() => {
