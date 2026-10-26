@@ -465,7 +465,12 @@ export const calculateWeeklyRombelSummaryList = (
   const weekDays = [0, 1, 2, 3, 4].map(offset => safeAddDays(monday, offset));
   const weekIndexes = weekDays.map(dateStr => buildDailyAttendanceIndex(presensiList, dateStr));
 
-  return DAFTAR_KELAS.map((namaKelas) => {
+  // Hitung jumlah hari kerja sekolah yang sudah terisi data presensi pada minggu ini
+  const daysWithRecordsCount = weekDays.filter((_, idx) => weekIndexes[idx].bySiswaId.size > 0).length;
+  // Jika minggu berjalan (misal hari Senin, baru 1 hari aktif), evaluasi hari yang aktif (min 1)
+  const effectiveDaysCount = Math.max(daysWithRecordsCount, 1);
+
+  return DAFTAR_KELAS.map((namaKelas, classIdx) => {
     const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
     const totalSiswa = classStudents.length;
 
@@ -497,8 +502,10 @@ export const calculateWeeklyRombelSummaryList = (
     const totalHadir = hadir + terlambat;
     const sakitDanIzin = sakit + izin;
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
-    const totalSlots = totalSiswa * 5;
-    const persentase = totalSlots > 0 ? Math.min(100, Math.round((totalHadir / totalSlots) * 100)) : 0;
+
+    // Evaluasi persentase kehadiran berdasarkan hari aktif/berjalan di minggu tersebut
+    const evaluatedSlots = totalSiswa * effectiveDaysCount;
+    const persentase = evaluatedSlots > 0 ? Math.min(100, Math.round((totalHadir / evaluatedSlots) * 100)) : 0;
 
     return {
       kelas: namaKelas,

@@ -3,7 +3,7 @@ import { normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
 
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
-export const CURRENT_SEMESTER_DATE = '2026-10-23';
+export const CURRENT_SEMESTER_DATE = '2026-10-30';
 
 export const SEMESTER_1_HOLIDAYS = new Set<string>([
   '2026-08-17',
@@ -44,57 +44,84 @@ export function generateRealisticDayRecords(
   const [y, m, d] = targetDate.split('-').map(Number);
   const dateVal = (y || 2026) * 372 + (m || 8) * 31 + (d || 18);
 
-  return students.map((siswa, idx) => {
-    const charCodeSum = (siswa.id || siswa.nama || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    const seed = Math.abs((idx * 43 + charCodeSum * 7 + dateVal * 19) % 100);
+  // Kelompokkan siswa per rombel kelas agar distribusi status perkelasnya proporsional & presisi ~92%
+  const studentsByClass = new Map<string, Siswa[]>();
+  for (let i = 0; i < students.length; i++) {
+    const s = students[i];
+    const k = s.kelas || 'Kelas 1-A';
+    const list = studentsByClass.get(k) || [];
+    list.push(s);
+    studentsByClass.set(k, list);
+  }
 
-    let status: 'Hadir' | 'Terlambat' | 'Sakit' | 'Izin' | 'Alfa' = 'Hadir';
-    let waktu = '06:45:10';
-    let pesan = '';
+  const allDayRecords: Presensi[] = [];
 
-    const parentPhone = siswa.waOrangTua || '081234567890';
+  studentsByClass.forEach((classStudents) => {
+    const classCount = classStudents.length;
+    // Target 92% tingkat kehadiran (8% tidak masuk: Sakit, Izin, Alfa)
+    // Minimal 3 siswa tidak masuk per hari di tiap kelas (1 Sakit, 1 Izin, 1 Alfa)
+    // dan 2-3 siswa terlambat (~7%), sisanya Hadir tepat waktu (~85%)
+    const numAbsent = Math.max(3, Math.round(classCount * 0.08));
+    const numTelat = Math.max(2, Math.round(classCount * 0.07));
 
-    if (seed < 89) {
-      status = 'Hadir';
-      const minute = String(30 + (seed % 28)).padStart(2, '0');
-      const second = String((seed * 7) % 60).padStart(2, '0');
-      waktu = `06:${minute}:${second}`;
-      pesan = `Tercatat Hadir tepat waktu via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
-    } else if (seed < 95) {
-      status = 'Terlambat';
-      const minute = String(16 + (seed % 13)).padStart(2, '0');
-      const second = String((seed * 11) % 60).padStart(2, '0');
-      waktu = `07:${minute}:${second}`;
-      pesan = `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
-    } else if (seed < 97) {
-      status = 'Sakit';
-      waktu = '07:05:00';
-      pesan = `Keterangan Sakit terkonfirmasi oleh Orang Tua / Wali Murid (${parentPhone})`;
-    } else if (seed < 99) {
-      status = 'Izin';
-      waktu = '07:10:00';
-      pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone})`;
-    } else {
-      status = 'Alfa';
-      waktu = '07:30:00';
-      pesan = `Pemberitahuan Tidak Hadir (Alfa) ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
-    }
+    // Urutan deterministik harian agar giliran Sakit, Izin, dan Alfa berputar alami tiap hari
+    const ranked = classStudents.map((siswa, sIdx) => {
+      const charSum = (siswa.id || siswa.nama || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const score = (sIdx * 43 + charSum * 17 + dateVal * 31) % 1000;
+      return { siswa, score };
+    }).sort((a, b) => a.score - b.score);
 
-    return {
-      id: `pr-${targetDate}-${siswa.id}`,
-      siswaId: siswa.id,
-      nis: siswa.nis || '',
-      nik: siswa.nik || '',
-      nama: siswa.nama,
-      kelas: siswa.kelas,
-      tanggal: targetDate,
-      waktu,
-      status,
-      waStatus: 'Terkirim',
-      pesanTerkirim: pesan,
-      operator: 'Cecep Mulyana (Piket)'
-    };
+    ranked.forEach((item, rIdx) => {
+      const { siswa } = item;
+      let status: 'Hadir' | 'Terlambat' | 'Sakit' | 'Izin' | 'Alfa' = 'Hadir';
+      let waktu = '06:45:10';
+      let pesan = '';
+      const parentPhone = siswa.waOrangTua || '081234567890';
+
+      if (rIdx === 0) {
+        status = 'Sakit';
+        waktu = '07:05:00';
+        pesan = `Keterangan Sakit (Demam/Flu) terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`;
+      } else if (rIdx === 1) {
+        status = 'Izin';
+        waktu = '07:10:00';
+        pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`;
+      } else if (rIdx < numAbsent) {
+        status = 'Alfa';
+        waktu = '07:30:00';
+        pesan = `Pemberitahuan Tidak Hadir (Alfa) ➔ Notifikasi live gateway otomatis terkirim ke No HP Orang Tua (${parentPhone})`;
+      } else if (rIdx < numAbsent + numTelat) {
+        status = 'Terlambat';
+        const minute = String(16 + ((rIdx * 3 + dateVal) % 13)).padStart(2, '0');
+        const second = String((rIdx * 17) % 60).padStart(2, '0');
+        waktu = `07:${minute}:${second}`;
+        pesan = `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
+      } else {
+        status = 'Hadir';
+        const minute = String(30 + ((rIdx * 2 + dateVal) % 28)).padStart(2, '0');
+        const second = String((rIdx * 13) % 60).padStart(2, '0');
+        waktu = `06:${minute}:${second}`;
+        pesan = `Tercatat Hadir tepat waktu pukul ${waktu} WIB via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke (${parentPhone})`;
+      }
+
+      allDayRecords.push({
+        id: `pr-${targetDate}-${siswa.id}`,
+        siswaId: siswa.id,
+        nis: siswa.nis || '',
+        nik: siswa.nik || '',
+        nama: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: targetDate,
+        waktu,
+        status,
+        waStatus: 'Terkirim',
+        pesanTerkirim: pesan,
+        operator: 'Cecep Mulyana (Piket)'
+      });
+    });
   });
+
+  return allDayRecords;
 }
 
 export function generateFullSemesterPresensi(students: Siswa[]): Presensi[] {
@@ -193,6 +220,8 @@ export function auditAndSynchronizePresensi(
   for (let d = 0; d < schoolDays.length; d++) {
     const targetDate = schoolDays[d];
     let dayHadAnyExisting = false;
+    const dayDefaults = generateRealisticDayRecords(students, targetDate);
+    const defaultByStudentId = new Map<string, Presensi>(dayDefaults.map(r => [r.siswaId, r]));
 
     for (let s = 0; s < students.length; s++) {
       const siswa = students[s];
@@ -203,57 +232,11 @@ export function auditAndSynchronizePresensi(
         dayHadAnyExisting = true;
         finalRecords.push(found);
       } else {
-        const [y, m, dayNum] = targetDate.split('-').map(Number);
-        const dateVal = (y || 2026) * 372 + (m || 8) * 31 + (dayNum || 18);
-        const charCodeSum = (siswa.id || siswa.nama || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-        const seed = Math.abs((s * 43 + charCodeSum * 7 + dateVal * 19) % 100);
-
-        let status: 'Hadir' | 'Terlambat' | 'Sakit' | 'Izin' | 'Alfa' = 'Hadir';
-        let waktu = '06:45:10';
-        let pesan = '';
-        const parentPhone = siswa.waOrangTua || '081234567890';
-
-        if (seed < 89) {
-          status = 'Hadir';
-          const minute = String(30 + (seed % 28)).padStart(2, '0');
-          const second = String((seed * 7) % 60).padStart(2, '0');
-          waktu = `06:${minute}:${second}`;
-          pesan = `Tercatat Hadir tepat waktu via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
-        } else if (seed < 95) {
-          status = 'Terlambat';
-          const minute = String(16 + (seed % 13)).padStart(2, '0');
-          const second = String((seed * 11) % 60).padStart(2, '0');
-          waktu = `07:${minute}:${second}`;
-          pesan = `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
-        } else if (seed < 97) {
-          status = 'Sakit';
-          waktu = '07:05:00';
-          pesan = `Keterangan Sakit terkonfirmasi oleh Orang Tua / Wali Murid (${parentPhone})`;
-        } else if (seed < 99) {
-          status = 'Izin';
-          waktu = '07:10:00';
-          pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone})`;
-        } else {
-          status = 'Alfa';
-          waktu = '07:30:00';
-          pesan = `Pemberitahuan Tidak Hadir (Alfa) ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
+        const fallback = defaultByStudentId.get(siswa.id);
+        if (fallback) {
+          finalRecords.push(fallback);
+          repairedRecordsCount++;
         }
-
-        finalRecords.push({
-          id: `pr-${targetDate}-${siswa.id}`,
-          siswaId: siswa.id,
-          nis: siswa.nis || '',
-          nik: siswa.nik || '',
-          nama: siswa.nama,
-          kelas: siswa.kelas,
-          tanggal: targetDate,
-          waktu,
-          status,
-          waStatus: 'Terkirim',
-          pesanTerkirim: pesan,
-          operator: 'Cecep Mulyana (Piket)'
-        });
-        repairedRecordsCount++;
       }
     }
 

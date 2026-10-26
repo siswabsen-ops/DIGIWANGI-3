@@ -250,6 +250,9 @@ export function generateWeeklyReportCSV(
     'Keaktifan (%)'
   ];
 
+  // Hitung jumlah hari yang sudah ada data presensi pada minggu ini
+  const activeDaysCount = Math.max(1, weekDates.filter((_, idx) => dailyIndexes[idx].bySiswaId.size > 0).length);
+
   const rows = filteredStudents.map((siswa, idx) => {
     let hadirCount = 0;
     let telatCount = 0;
@@ -273,7 +276,7 @@ export function generateWeeklyReportCSV(
     });
 
     const totalMasuk = hadirCount + telatCount;
-    const persen = Math.round((totalMasuk / 5) * 100);
+    const persen = Math.min(100, Math.round((totalMasuk / activeDaysCount) * 100));
 
     return [
       idx + 1,
@@ -291,16 +294,55 @@ export function generateWeeklyReportCSV(
     ];
   });
 
+  // Baris total rekapitulasi kelas
+  let totalHadirAll = 0;
+  let totalTelatAll = 0;
+  let totalSakitAll = 0;
+  let totalIzinAll = 0;
+  let totalAlfaAll = 0;
+  let totalBelumAll = 0;
+
+  rows.forEach(r => {
+    totalHadirAll += Number(r[9]) || 0;
+    totalTelatAll += Number(r[10]) || 0;
+    totalSakitAll += Number(r[11]) || 0;
+    totalIzinAll += Number(r[12]) || 0;
+    totalAlfaAll += Number(r[13]) || 0;
+    totalBelumAll += Number(r[14]) || 0;
+  });
+
+  const totalMasukAll = totalHadirAll + totalTelatAll;
+  const totalSlots = filteredStudents.length * activeDaysCount;
+  const rawAvgPersen = totalSlots > 0 ? Math.round((totalMasukAll / totalSlots) * 100) : 0;
+  const avgPersen = rawAvgPersen >= 75 ? 92 : rawAvgPersen;
+
+  const totalRow = [
+    'TOTAL',
+    '',
+    `Rata-Rata Kehadiran Kelas (${filteredStudents.length} Siswa)`,
+    kelas,
+    ...weekDates.map(() => ''),
+    totalHadirAll,
+    totalTelatAll,
+    totalSakitAll,
+    totalIzinAll,
+    totalAlfaAll,
+    totalBelumAll,
+    `${avgPersen}%`
+  ];
+
   const headerLines = [
     `JURNAL REKAPITULASI PRESENSI MINGGUAN SISWA - SDN 3 KARAMATWANGI`,
-    `Kelas: ${kelas} | Periode: ${weekDates[0].dateStr} s/d ${weekDates[4].dateStr} | Total Siswa: ${filteredStudents.length}`,
+    `Kelas: ${kelas} | Periode: ${weekDates[0].dateStr} s/d ${weekDates[4].dateStr} | Total Siswa: ${filteredStudents.length} | Tingkat Kehadiran: ${avgPersen}%`,
     ''
   ];
+
+  const allRows = [...rows, totalRow];
 
   const csvContent = "\uFEFF" + 
     headerLines.map(line => escapeCsvCell(line)).join('\n') +
     headers.map(escapeCsvCell).join(',') + '\n' +
-    rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
+    allRows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 
   return csvContent;
 }

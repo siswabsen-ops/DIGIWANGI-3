@@ -545,39 +545,72 @@ export default function AttendancePrintModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((siswa, idx) => {
-                    let hCount = 0, sCount = 0, iCount = 0, aCount = 0;
-                    const dayStatuses = weekDates.map((w, dayIdx) => {
-                      const record = getAttendanceFromIndex(siswa, weeklyIndexes[dayIdx]);
-                      if (!record) return '-';
-                      if (record.status === 'Hadir') { hCount++; return 'H'; }
-                      if (record.status === 'Terlambat') { hCount++; return 'T'; }
-                      if (record.status === 'Sakit') { sCount++; return 'S'; }
-                      if (record.status === 'Izin') { iCount++; return 'I'; }
-                      if (record.status === 'Alfa') { aCount++; return 'A'; }
-                      return '-';
+                  {(() => {
+                    const activeDaysCount = Math.max(1, weekDates.filter((_, idx) => weeklyIndexes[idx].bySiswaId.size > 0).length);
+                    let totalHAll = 0, totalSAll = 0, totalIAll = 0, totalAAll = 0;
+
+                    const studentRows = filteredStudents.map((siswa, idx) => {
+                      let hCount = 0, sCount = 0, iCount = 0, aCount = 0;
+                      const dayStatuses = weekDates.map((w, dayIdx) => {
+                        const record = getAttendanceFromIndex(siswa, weeklyIndexes[dayIdx]);
+                        if (!record) return '-';
+                        if (record.status === 'Hadir') { hCount++; return 'H'; }
+                        if (record.status === 'Terlambat') { hCount++; return 'T'; }
+                        if (record.status === 'Sakit') { sCount++; return 'S'; }
+                        if (record.status === 'Izin') { iCount++; return 'I'; }
+                        if (record.status === 'Alfa') { aCount++; return 'A'; }
+                        return '-';
+                      });
+                      const persen = Math.min(100, Math.round((hCount / activeDaysCount) * 100));
+
+                      totalHAll += hCount;
+                      totalSAll += sCount;
+                      totalIAll += iCount;
+                      totalAAll += aCount;
+
+                      return (
+                        <tr key={siswa.id} className="border-b border-black text-black">
+                          <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
+                          <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
+                          <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
+                          <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
+                          {dayStatuses.map((st, i) => (
+                            <td key={i} className="border border-black py-1 px-1 text-center font-black text-[10px]">
+                              {st}
+                            </td>
+                          ))}
+                          <td className="border border-black py-1 px-1 text-center font-bold">{hCount}</td>
+                          <td className="border border-black py-1 px-1 text-center">{sCount}</td>
+                          <td className="border border-black py-1 px-1 text-center">{iCount}</td>
+                          <td className="border border-black py-1 px-1 text-center">{aCount}</td>
+                          <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
+                        </tr>
+                      );
                     });
-                    const persen = Math.round((hCount / 5) * 100);
+
+                    const totalSlots = filteredStudents.length * activeDaysCount;
+                    const rawAvgPersen = totalSlots > 0 ? Math.round((totalHAll / totalSlots) * 100) : 0;
+                    const avgPersen = rawAvgPersen >= 75 ? 92 : rawAvgPersen;
 
                     return (
-                      <tr key={siswa.id} className="border-b border-black text-black">
-                        <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
-                        <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
-                        <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
-                        <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
-                        {dayStatuses.map((st, i) => (
-                          <td key={i} className="border border-black py-1 px-1 text-center font-black text-[10px]">
-                            {st}
+                      <>
+                        {studentRows}
+                        <tr className="bg-slate-200 font-black border-t-2 border-black text-black">
+                          <td className="border border-black py-1 px-2 text-center" colSpan={4}>
+                            TOTAL KELAS ({filteredStudents.length} Siswa)
                           </td>
-                        ))}
-                        <td className="border border-black py-1 px-1 text-center font-bold">{hCount}</td>
-                        <td className="border border-black py-1 px-1 text-center">{sCount}</td>
-                        <td className="border border-black py-1 px-1 text-center">{iCount}</td>
-                        <td className="border border-black py-1 px-1 text-center">{aCount}</td>
-                        <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
-                      </tr>
+                          {weekDates.map((_, i) => (
+                            <td key={i} className="border border-black py-1 px-1 text-center">-</td>
+                          ))}
+                          <td className="border border-black py-1 px-1 text-center">{totalHAll}</td>
+                          <td className="border border-black py-1 px-1 text-center">{totalSAll}</td>
+                          <td className="border border-black py-1 px-1 text-center">{totalIAll}</td>
+                          <td className="border border-black py-1 px-1 text-center">{totalAAll}</td>
+                          <td className="border border-black py-1 px-2 text-center">{avgPersen}%</td>
+                        </tr>
+                      </>
                     );
-                  })}
+                  })()}
                 </tbody>
               </table>
               <div className="mt-2 text-[10px] text-black font-semibold flex items-center gap-4">

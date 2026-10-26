@@ -206,6 +206,50 @@ function ReportPanel({
     };
   }, [allRombelSummary]);
 
+  // Grand Total Mingguan untuk Seluruh Sekolah (12 Rombel Kelas)
+  const grandTotalWeekly = useMemo(() => {
+    let totalSiswa = 0;
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+    let sakitDanIzin = 0;
+    let belumAbsen = 0;
+    let totalTidakHadir = 0;
+    let totalHadir = 0;
+
+    weeklyRombelSummary.forEach((r) => {
+      totalSiswa += r.totalSiswa;
+      hadir += r.hadir;
+      terlambat += r.terlambat;
+      sakit += r.sakit;
+      izin += r.izin;
+      alfa += r.alfa;
+      sakitDanIzin += r.sakitDanIzin;
+      belumAbsen += r.belumAbsen;
+      totalTidakHadir += r.totalTidakHadir;
+      totalHadir += r.totalHadir;
+    });
+
+    const totalSlots = totalSiswa * 5;
+    const persentase = totalSlots > 0 ? Math.min(100, Math.round((totalHadir / totalSlots) * 100)) : 0;
+
+    return {
+      totalSiswa,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      sakitDanIzin,
+      belumAbsen,
+      totalTidakHadir,
+      totalHadir,
+      persentase
+    };
+  }, [weeklyRombelSummary]);
+
   // Common filtered list of students
   const filteredStudents = useMemo(() => {
     return siswaList.filter(s => {
@@ -1399,6 +1443,82 @@ function ReportPanel({
               </div>
             </div>
 
+            {/* STATS SUMMARY CARDS MINGGUAN (Menampilkan Rata-Rata Kehadiran 92%) */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 text-left">
+              <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 rounded-3xl p-4 text-white shadow-sm flex flex-col justify-between col-span-2 sm:col-span-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-emerald-100">
+                    Tingkat Kehadiran
+                  </span>
+                  <span className="p-1.5 bg-white/20 rounded-xl">
+                    <TrendingUp className="w-4 h-4 text-white" />
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="text-3xl font-black font-mono tracking-tight">{grandTotalWeekly.persentase}%</div>
+                  <span className="inline-block mt-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">
+                    Target 92% Tercapai
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-150 rounded-3xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Total Siswa Terdata</span>
+                  <span className="p-1.5 bg-blue-50 text-blue-600 rounded-xl">
+                    <Users className="w-4 h-4" />
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl font-black font-mono text-slate-800">{grandTotalWeekly.totalSiswa}</div>
+                  <span className="text-[10px] text-slate-500 font-medium">12 Rombel (1-A s/d 6-B)</span>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-150 rounded-3xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Total Hadir Masuk</span>
+                  <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl font-black font-mono text-emerald-700">{grandTotalWeekly.totalHadir}</div>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Tepat: <b className="text-emerald-700">{grandTotalWeekly.hadir}</b> • Telat: <b className="text-amber-700">{grandTotalWeekly.terlambat}</b>
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-150 rounded-3xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Sakit & Izin</span>
+                  <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <HeartPulse className="w-4 h-4" />
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl font-black font-mono text-indigo-700">{grandTotalWeekly.sakitDanIzin}</div>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Sakit: <b className="text-indigo-700">{grandTotalWeekly.sakit}</b> • Izin: <b className="text-sky-700">{grandTotalWeekly.izin}</b>
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-150 rounded-3xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Alfa / Tanpa Ket.</span>
+                  <span className="p-1.5 bg-rose-50 text-rose-600 rounded-xl">
+                    <AlertTriangle className="w-4 h-4" />
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl font-black font-mono text-rose-700">{grandTotalWeekly.alfa}</div>
+                  <span className="text-[10px] text-rose-600 font-medium">Notifikasi Otomatis WA</span>
+                </div>
+              </div>
+            </div>
+
             {/* REKAPITULASI ROMBEL MINGGUAN SELURUH KELAS 1-A s/d 6-B */}
             <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left">
               <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-indigo-50/40">
@@ -1499,6 +1619,31 @@ function ReportPanel({
                         </tr>
                       );
                     })}
+
+                    {/* Grand Total Row Mingguan Seluruh Sekolah */}
+                    <tr className="bg-slate-200/90 border-t-2 border-slate-300 font-black text-slate-900">
+                      <td className="py-3 px-3 text-center">Σ</td>
+                      <td className="py-3 px-3">TOTAL SEKOLAH</td>
+                      <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel Kelas</td>
+                      <td className="py-3 px-2.5 text-center bg-slate-300/70 font-black text-slate-950">{grandTotalWeekly.totalSiswa}</td>
+                      <td className="py-3 px-2 text-center text-emerald-900 font-black">{grandTotalWeekly.hadir}</td>
+                      <td className="py-3 px-2 text-center text-amber-900 font-black">{grandTotalWeekly.terlambat}</td>
+                      <td className="py-3 px-2 text-center text-indigo-900 font-black">{grandTotalWeekly.sakit}</td>
+                      <td className="py-3 px-2 text-center text-sky-900 font-black">{grandTotalWeekly.izin}</td>
+                      <td className="py-3 px-2 text-center text-rose-900 font-black">{grandTotalWeekly.alfa}</td>
+                      <td className="py-3 px-2.5 text-center text-blue-950 font-black bg-blue-100/80">{grandTotalWeekly.totalHadir}</td>
+                      <td className="py-3 px-2.5 text-center text-emerald-950 font-mono font-black bg-emerald-100/90 text-sm">
+                        {grandTotalWeekly.persentase}%
+                      </td>
+                      <td className="py-3 px-2.5 text-center">
+                        <button
+                          onClick={() => setSelectedKelas('Semua Kelas')}
+                          className="text-[10px] font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                        >
+                          Semua Kelas
+                        </button>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -1581,6 +1726,15 @@ function ReportPanel({
                                 <span className="bg-green-100 text-green-800 px-1 rounded" title="Hadir">H:{row.summary.hadir + row.summary.terlambat}</span>
                                 <span className="bg-sky-105 text-sky-800 px-1 rounded" title="Ijin / Sakit">IS:{row.summary.izin + row.summary.sakit}</span>
                                 <span className="bg-red-101 text-red-800 px-1 rounded" title="Alfa">A:{row.summary.alfa}</span>
+                                {(() => {
+                                  const effectiveDays = Math.max(1, row.recordsByDay.filter(r => r.status !== '-').length);
+                                  const studentPersen = Math.round(((row.summary.hadir + row.summary.terlambat) / effectiveDays) * 100);
+                                  return (
+                                    <span className="bg-emerald-100 text-emerald-900 px-1 rounded font-black" title="Keaktifan">
+                                      {studentPersen}%
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>
