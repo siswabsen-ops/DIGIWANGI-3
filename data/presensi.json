@@ -413446,5 +413446,17 @@
     "waStatus": "Terkirim",
     "pesanTerkirim": "Tercatat Hadir tepat waktu via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (081253519332)",
     "operator": "Cecep Mulyana (Piket)"
+  },
+  {
+    "id": "pr-2026-10-26-sis-001",
+    "siswaId": "sis-001",
+    "nis": "3197201275",
+    "nama": "ADE MILDA NURAENI",
+    "kelas": "Kelas 1-A",
+    "tanggal": "2026-10-26",
+    "waktu": "06:45:00",
+    "status": "Hadir",
+    "waStatus": "Terkirim",
+    "operator": "Piket Gerbang"
   }
 ]

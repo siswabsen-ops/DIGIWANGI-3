@@ -43,6 +43,9 @@ import {
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
   normalizeDateKey,
+  getMondayOfWeek,
+  safeAddDays,
+  safeDateParts
 } from '../lib/attendanceUtils';
 import { downloadSingleClassReport } from '../lib/attendanceReportExport';
 import { auditAndSyncSemesterPresensi } from '../lib/cloudSync';
@@ -100,33 +103,25 @@ function ReportPanel({
 
   // 2. MINGGUAN STATE (Start Monday value)
   const [mingguanDate, setMingguanDate] = useState<string>(() => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-    const monday = new Date(now.setDate(diff));
-    const tzOffset = monday.getTimezoneOffset() * 60000;
-    return (new Date(monday.getTime() - tzOffset)).toISOString().slice(0, 10);
+    return getMondayOfWeek(getLocalDateString());
   });
 
-  // Calculate the dates for the Monday - Friday range in Indonesian names
+  // Calculate the dates for the Monday - Friday range in Indonesian names (Timezone Safe)
   const weekDates = useMemo(() => {
-    const baseDate = new Date(mingguanDate);
-    const dates: { dateStr: string; label: string; shortLabel: string }[] = [];
+    const monday = getMondayOfWeek(mingguanDate || getLocalDateString());
+    const dates: { dateStr: string; label: string; shortLabel: string; dayName: string }[] = [];
     const indonesianDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
+    const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     
     for (let i = 0; i < 5; i++) {
-      const nextDate = new Date(baseDate);
-      nextDate.setDate(baseDate.getDate() + i);
-      const tzOffset = nextDate.getTimezoneOffset() * 60000;
-      const dateStr = (new Date(nextDate.getTime() - tzOffset)).toISOString().slice(0, 10);
-      
-      const dayNum = nextDate.getDate();
-      const monthShort = nextDate.toLocaleDateString('id-ID', { month: 'short' });
+      const dateStr = safeAddDays(monday, i);
+      const { day, month } = safeDateParts(dateStr);
       
       dates.push({
         dateStr,
-        label: `${indonesianDays[i]} (${dayNum} ${monthShort})`,
-        shortLabel: indonesianDays[i].substring(0, 3)
+        label: `${indonesianDays[i]} (${day} ${monthNames[month] || ''})`,
+        shortLabel: indonesianDays[i].substring(0, 3),
+        dayName: indonesianDays[i]
       });
     }
     return dates;
@@ -774,8 +769,14 @@ function ReportPanel({
                   <Calendar className="w-5 h-5" />
                 </span>
                 <div className="w-full">
-                  <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Tanggal Laporan & Rekapitulasi</label>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Tanggal Laporan & Rekapitulasi</label>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      Live Sinkron Saat Siswa Scan
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
                     <input
                       type="date"
                       value={harianDate}
@@ -783,10 +784,49 @@ function ReportPanel({
                       className="font-bold text-xs text-slate-800 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                     />
                     <button
+                      type="button"
                       onClick={() => setHarianDate(getLocalDateString())}
-                      className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === getLocalDateString()
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
                     >
-                      Hari Ini
+                      Hari Ini ({getLocalDateString().slice(8, 10)}/{getLocalDateString().slice(5, 7)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-23')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-23'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                      title="Rekap hari sekolah terakhir lengkap 100%"
+                    >
+                      📅 23 Okt (Lengkap)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-22')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-22'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      22 Okt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-21')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-21'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      21 Okt
                     </button>
                   </div>
                 </div>
@@ -1256,14 +1296,66 @@ function ReportPanel({
                   <Calendar className="w-5 h-5 flex-shrink-0" />
                 </span>
                 <div className="w-full">
-                  <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Minggu Mulai (Hari Senin)</label>
-                  <input
-                    type="date"
-                    value={mingguanDate}
-                    onChange={(e) => setMingguanDate(e.target.value)}
-                    className="mt-0.5 max-w-full font-bold text-xs text-slate-750 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <span className="text-[9px] text-slate-400 block mt-0.5">Disarankan memilih tanggal hari Senin</span>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Minggu Mulai (Hari Senin)</label>
+                    <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
+                      Otomatis Terupdate Saat Scan
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <input
+                      type="date"
+                      value={mingguanDate}
+                      onChange={(e) => setMingguanDate(getMondayOfWeek(e.target.value))}
+                      className="font-bold text-xs text-slate-750 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setMingguanDate(getMondayOfWeek('2026-10-26'))}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        mingguanDate === '2026-10-26'
+                          ? 'bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Minggu Ini (26–30 Okt)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMingguanDate('2026-10-19')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        mingguanDate === '2026-10-19'
+                          ? 'bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                      title="Minggu lalu lengkap 100%"
+                    >
+                      📅 19–23 Okt (Lengkap)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMingguanDate('2026-10-12')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        mingguanDate === '2026-10-12'
+                          ? 'bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      12–16 Okt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMingguanDate('2026-10-05')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        mingguanDate === '2026-10-05'
+                          ? 'bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      05–09 Okt
+                    </button>
+                  </div>
                 </div>
               </div>
 

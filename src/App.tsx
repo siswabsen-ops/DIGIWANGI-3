@@ -184,7 +184,10 @@ export default function App() {
 
   // Lightweight slice of recent records for instant ScanScreen and live WhatsApp Simulator
   const recentPresensiSlice = useMemo(() => {
-    return presensiList.slice(-400);
+    const today = getLocalDateString();
+    const todayRecs = presensiList.filter(p => p && p.tanggal && normalizeDateKey(p.tanggal) === today);
+    const otherRecs = presensiList.filter(p => !p || !p.tanggal || normalizeDateKey(p.tanggal) !== today);
+    return [...otherRecs.slice(-400), ...todayRecs];
   }, [presensiList]);
 
   // Trigger sync state variables
@@ -814,7 +817,7 @@ export default function App() {
         updated = [...prev];
         updated[idx] = newPresensi;
       } else {
-        updated = [newPresensi, ...prev];
+        updated = [...prev, newPresensi];
       }
       return updated;
     });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, Search, UserCheck, AlertTriangle, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
-import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal } from '../types';
+import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal, DAFTAR_KELAS } from '../types';
 import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
 import QRCodeRenderer from './QRCodeRenderer';
 import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
@@ -33,7 +33,8 @@ function ScanScreen({
   const [errorMsg, setErrorMsg] = useState('');
   const [isMirrored, setIsMirrored] = useState(false); // Default to false so rear camera/cards read correctly
   const [simSearch, setSimSearch] = useState('');
-  const [simLimit, setSimLimit] = useState(25);
+  const [selectedSimKelas, setSelectedSimKelas] = useState<string>('Semua Kelas');
+  const [simLimit, setSimLimit] = useState(30);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanTimeoutRef = useRef<any>(null);
@@ -64,15 +65,18 @@ function ScanScreen({
 
   // Fast filtered simulation pupils list
   const filteredSimSiswa = useMemo(() => {
-    if (!simSearch.trim()) return siswaList;
-    const q = simSearch.toLowerCase().trim();
-    return siswaList.filter(
-      (s) =>
+    return siswaList.filter((s) => {
+      const matchKelas = selectedSimKelas === 'Semua Kelas' || s.kelas === selectedSimKelas;
+      if (!matchKelas) return false;
+      if (!simSearch.trim()) return true;
+      const q = simSearch.toLowerCase().trim();
+      return (
         s.nama.toLowerCase().includes(q) ||
         s.nis.includes(q) ||
         s.kelas.toLowerCase().includes(q)
-    );
-  }, [siswaList, simSearch]);
+      );
+    });
+  }, [siswaList, simSearch, selectedSimKelas]);
 
   // Clean-up camera on unmount
   useEffect(() => {
@@ -583,26 +587,46 @@ function ScanScreen({
             Untuk menguji aliran sistem <b>DIGIWANGI 3</b> tanpa printer scan QR Code fisik, klik salah satu kartu siswa virtual di bawah ini untuk mensimulasikan pemindaian laser QR Code secara otomatis!
           </p>
 
-          {/* Quick Search for Simulation List */}
-          <div className="mb-3">
-            <div className="relative">
-              <input
-                type="text"
-                value={simSearch}
-                onChange={(e) => setSimSearch(e.target.value)}
-                placeholder="Cari murid simulasi (Nama / NIS / Kelas)..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
-              />
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
-              {simSearch && (
-                <button
-                  type="button"
-                  onClick={() => setSimSearch('')}
-                  className="text-[10px] text-slate-400 hover:text-slate-700 absolute right-2.5 top-2 cursor-pointer font-bold"
-                >
-                  ✕
-                </button>
-              )}
+          {/* Filter per Rombel Kelas & Quick Search */}
+          <div className="mb-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedSimKelas}
+                onChange={(e) => setSelectedSimKelas(e.target.value)}
+                className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-2.5 text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="Semua Kelas">Semua Kelas ({siswaList.length} Siswa)</option>
+                {DAFTAR_KELAS.map((k) => (
+                  <option key={k} value={k}>
+                    {k} ({siswaList.filter((s) => s.kelas === k).length} Siswa)
+                  </option>
+                ))}
+              </select>
+
+              <div className="w-1/2 relative">
+                <input
+                  type="text"
+                  value={simSearch}
+                  onChange={(e) => setSimSearch(e.target.value)}
+                  placeholder="Cari murid..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 pl-7 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
+                />
+                <Search className="w-3 h-3 text-slate-400 absolute left-2 top-2.5 pointer-events-none" />
+                {simSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSimSearch('')}
+                    className="text-[10px] text-slate-400 hover:text-slate-700 absolute right-2 top-2 cursor-pointer font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
+              <span>Menampilkan: <b>{filteredSimSiswa.length}</b> siswa {selectedSimKelas !== 'Semua Kelas' ? `(${selectedSimKelas})` : ''}</span>
+              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">⚡ Klik kartu untuk scan & kirim WA</span>
             </div>
           </div>
 

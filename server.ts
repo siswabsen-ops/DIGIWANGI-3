@@ -277,7 +277,7 @@ async function startServer() {
       if (idx >= 0) {
         existingRecords[idx] = { ...existingRecords[idx], ...record };
       } else {
-        existingRecords.unshift(record);
+        existingRecords.push(record);
       }
 
       writeJsonFile(PRESENSI_FILE, existingRecords);
