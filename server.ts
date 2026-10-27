@@ -125,20 +125,13 @@ if (!fs.existsSync(PRESENSI_FILE)) {
     console.error("Failed to seed initial semester presensi:", err);
   }
 } else {
-  // Guarantee full 3-month attendance archive (Agustus, September, Oktober 2026 up to CURRENT_SEMESTER_DATE)
+  // Data presensi historis telah terkunci aman dan tidak akan diubah lagi
+  // Server hanya membaca data yang ada dan menerima penambahan presensi baru dari scan QR Code harian
   try {
     const existing = readJsonFile<any[]>(PRESENSI_FILE, []);
-    const students = readJsonFile<any[]>(STUDENTS_FILE, []);
-    const hasFutureDates = existing.some((p: any) => p && p.tanggal && p.tanggal.slice(0, 10) > CURRENT_SEMESTER_DATE);
-    const hasFlatRecords = existing.some((p: any) => p && p.tanggal === '2026-10-26' && p.operator === 'Cecep Mulyana (Piket)' && p.status === 'Alfa');
-    if (students.length > 0 && (existing.length < 1000 || hasFutureDates || hasFlatRecords)) {
-      const syncd = auditAndSynchronizePresensi(existing, students, { forceRegenerateVaried: true });
-      writeJsonFile(PRESENSI_FILE, syncd.synchronizedRecords);
-      incrementSyncVersion(`Synchronize Varied Semester Attendance Archive (${syncd.synchronizedRecords.length} records up to ${CURRENT_SEMESTER_DATE})`);
-      console.log(`[Cloud Sync] Upgraded presensi to ${syncd.synchronizedRecords.length} records up to ${CURRENT_SEMESTER_DATE} with varied distribution`);
-    }
+    console.log(`[Cloud Presensi] Data presensi aktif: ${existing.length} catatan tersimpan aman.`);
   } catch (err) {
-    console.error("Failed to audit existing presensi on startup:", err);
+    console.error("Gagal membaca arsip presensi pada startup:", err);
   }
 }
 

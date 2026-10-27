@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Camera, Search, UserCheck, AlertTriangle, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
+import { Camera, Search, UserCheck, AlertTriangle, AlertOctagon, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
 import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal, DAFTAR_KELAS } from '../types';
 import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
 import QRCodeRenderer from './QRCodeRenderer';
@@ -29,6 +29,11 @@ function ScanScreen({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [scannerStatus, setScannerStatus] = useState<'READY' | 'SCANNING' | 'SUCCESS' | 'ERROR'>('READY');
   const [scannedResult, setScannedResult] = useState<Presensi | null>(null);
+  const [invalidScanInfo, setInvalidScanInfo] = useState<{
+    code: string;
+    reason: string;
+    timestamp: string;
+  } | null>(null);
   const [manualStatus, setManualStatus] = useState<StatusKehadiran | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [isMirrored, setIsMirrored] = useState(false); // Default to false so rear camera/cards read correctly
@@ -196,25 +201,123 @@ function ScanScreen({
     }
   };
 
+  // Play acoustic sound and trigger haptic feedback for success, warning, or error
+  const playAudioFeedback = (type: 'success' | 'error' | 'warning') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+
+      if (type === 'success') {
+        // High pleasant ascending chirp (880Hz -> 1175Hz)
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1175, audioCtx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.18);
+      } else if (type === 'error') {
+        // Deep unmistakable error buzz (220Hz down to 140Hz sawtooth)
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(140, audioCtx.currentTime + 0.35);
+        gain.gain.setValueAtTime(0.28, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.35);
+      } else if (type === 'warning') {
+        // Dual caution pip (587Hz)
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
+      }
+    } catch {
+      // Audio autoplay policy fallback
+    }
+
+    try {
+      if (navigator.vibrate) {
+        if (type === 'error') navigator.vibrate([200, 100, 200]);
+        else if (type === 'warning') navigator.vibrate([100, 50, 100]);
+        else navigator.vibrate(80);
+      }
+    } catch {}
+  };
+
   // Main attendance logging function (Rapid & Non-blocking)
   const handleScanIdentify = (code: string, customStatus?: StatusKehadiran) => {
     setErrorMsg('');
-    const matchedSiswa = findStudentByCode(siswaList, code);
-    
+    const rawCode = (code || '').trim();
+
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current);
     }
 
-    if (!matchedSiswa) {
+    // 1. Validasi bila QR Code kosong / tidak terbaca
+    if (!rawCode) {
       setScannerStatus('ERROR');
-      setErrorMsg(`QR Code / ID [${code}] belum terdaftar di sistem SDN 3.`);
-      // Auto reset status back to SCANNING after 1.5 seconds
+      playAudioFeedback('error');
+      const errText = 'QR Code tidak terbaca atau format data kosong. Silakan posisikan barcode kembali.';
+      setErrorMsg(errText);
+      setInvalidScanInfo({
+        code: '(Data Kosong)',
+        reason: 'Lensa kamera membaca barcode kosong atau buram. Harap dekatkan kartu siswa dengan pencahayaan cukup.',
+        timestamp: getLocalTimeString(new Date())
+      });
+      setScannedResult(null);
       scanTimeoutRef.current = setTimeout(() => {
         setScannerStatus('SCANNING');
         setErrorMsg('');
-      }, 1500);
+        setInvalidScanInfo(null);
+      }, 3500);
       return;
     }
+
+    const matchedSiswa = findStudentByCode(siswaList, rawCode);
+
+    // 2. Validasi bila QR Code tidak terdaftar dalam database siswa SDN 1 Padaherang
+    if (!matchedSiswa) {
+      setScannerStatus('ERROR');
+      playAudioFeedback('error');
+      const schoolName = settings.namaSekolah || 'SDN 1 PADAHERANG';
+      const cleanDisplay = rawCode.length > 32 ? rawCode.slice(0, 30) + '...' : rawCode;
+      const errText = `QR Code Tidak Sesuai! Kode [${cleanDisplay}] tidak terdaftar di sistem ${schoolName}.`;
+      setErrorMsg(errText);
+      setInvalidScanInfo({
+        code: cleanDisplay,
+        reason: `Kode ini bukan NIS, NISN, NIK, atau ID resmi siswa ${schoolName}. Pastikan menggunakan Kartu Siswa resmi ber-barcode valid.`,
+        timestamp: getLocalTimeString(new Date())
+      });
+      setScannedResult(null);
+
+      // Auto reset status kembali ke SCANNING setelah 3.5 detik
+      scanTimeoutRef.current = setTimeout(() => {
+        setScannerStatus('SCANNING');
+        setErrorMsg('');
+        setInvalidScanInfo(null);
+      }, 3500);
+      return;
+    }
+
+    // Bersihkan info error sebelumnya jika ada scan sukses
+    setInvalidScanInfo(null);
+    setErrorMsg('');
 
     // Determine default status based on Arrival time and System Settings / Shift Schedule
     const now = new Date();
@@ -246,8 +349,10 @@ function ScanScreen({
     );
 
     if (alreadyScanned && !customStatus) {
-      // Allow overriding but inform softly
-      setErrorMsg(`Info: ${matchedSiswa.nama} sudah tercatat presensi hari ini pukul ${alreadyScanned.waktu.slice(0,5)}.`);
+      playAudioFeedback('warning');
+      setErrorMsg(`Peringatan: ${matchedSiswa.nama} (${matchedSiswa.kelas}) sudah tercatat presensi hari ini pukul ${alreadyScanned.waktu.slice(0, 5)} WIB (${alreadyScanned.status}). Catatan diperbarui.`);
+    } else {
+      playAudioFeedback('success');
     }
 
     // Deterministic unique ID per student per day so Firestore updates in-place
@@ -278,27 +383,11 @@ function ScanScreen({
       console.warn('Auto WA Gateway dispatch background status:', err);
     });
 
-    // Beeps or play sound for instant scan confirmation
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(950, audioCtx.currentTime); // High pleasant chirp
-      gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.12);
-    } catch (e) {
-      // Audio autoplay policy fallback
-    }
-
-    // Auto clear toast after 2.5 seconds without interrupting ongoing scanning
+    // Auto clear toast after 2.8 seconds without interrupting ongoing scanning
     scanTimeoutRef.current = setTimeout(() => {
       setScannerStatus('SCANNING');
       setScannedResult(null);
-    }, 2500);
+    }, 2800);
   };
 
   const handleNisSubmit = (e: React.FormEvent) => {
@@ -368,7 +457,11 @@ function ScanScreen({
 
           {/* Real-time Camera Feed Simulator / Real Webcam View Port */}
           <div className={`relative aspect-video bg-slate-950 rounded-2xl overflow-hidden shadow-inner border transition-all duration-300 flex flex-col justify-center items-center ${
-            scannerStatus === 'SUCCESS' ? 'border-emerald-500 ring-4 ring-emerald-500/30' : 'border-slate-800'
+            scannerStatus === 'SUCCESS'
+              ? 'border-emerald-500 ring-4 ring-emerald-500/30'
+              : scannerStatus === 'ERROR'
+              ? 'border-rose-500 ring-4 ring-rose-500/40'
+              : 'border-slate-800'
           }`}>
             {useCamera ? (
               <>
@@ -489,13 +582,55 @@ function ScanScreen({
                 </div>
               </div>
             )}
+
+            {/* ERROR SCAN SCREEN: NON-BLOCKING BOTTOM HUD BANNER FOR INVALID / MISMATCHED QR */}
+            {scannerStatus === 'ERROR' && invalidScanInfo && (
+              <div className="absolute inset-x-3 bottom-3 bg-red-950/95 backdrop-blur-md border-2 border-rose-500 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom-4 duration-150 z-30 pointer-events-auto">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 bg-rose-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg border border-rose-400">
+                    <AlertOctagon className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-rose-500/30 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded-md font-mono">
+                        QR CODE TIDAK SESUAI / GAGAL
+                      </span>
+                      <span className="text-[10px] text-rose-300 font-mono">{invalidScanInfo.timestamp} WIB</span>
+                    </div>
+                    <h4 className="text-xs sm:text-sm font-black text-white truncate mt-0.5">
+                      Kode: <span className="font-mono bg-rose-900/60 px-1.5 py-0.5 rounded border border-rose-700/60">{invalidScanInfo.code}</span>
+                    </h4>
+                    <p className="text-[10px] sm:text-[11px] text-rose-200 mt-0.5 line-clamp-1">
+                      {invalidScanInfo.reason}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (scanTimeoutRef.current) {
+                        clearTimeout(scanTimeoutRef.current);
+                      }
+                      setScannerStatus('SCANNING');
+                      setErrorMsg('');
+                      setInvalidScanInfo(null);
+                    }}
+                    className="bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs px-3 py-2 rounded-xl transition-colors cursor-pointer border border-rose-500 shadow-md active:scale-95"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* CAMERA DECOR & SWITCH TOGGLE */}
           {useCamera && (
             <div className="mt-3 flex flex-col sm:flex-row items-center justify-between gap-2 border border-slate-100 bg-slate-50 rounded-2xl p-3">
               <div className="flex flex-col sm:flex-row items-center gap-2">
-                <span className="text-xs text-slate-500 font-bold">Kamera Terintegrasi: Live View SDN 3</span>
+                <span className="text-xs text-slate-500 font-bold">Kamera Terintegrasi: Live View {settings.namaSekolah || 'SDN 1 PADAHERANG'}</span>
                 <button
                   type="button"
                   onClick={() => setIsMirrored(!isMirrored)}
@@ -584,8 +719,21 @@ function ScanScreen({
             <span className="text-[9px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold font-mono uppercase">Interactive Demo</span>
           </div>
           <p className="text-xs text-gray-500 leading-relaxed mb-3">
-            Untuk menguji aliran sistem <b>DIGIWANGI 3</b> tanpa printer scan QR Code fisik, klik salah satu kartu siswa virtual di bawah ini untuk mensimulasikan pemindaian laser QR Code secara otomatis!
+            Untuk menguji aliran sistem absensi <b>{settings.namaSekolah || 'SDN 1 PADAHERANG'}</b> tanpa printer QR Code fisik, klik salah satu kartu siswa virtual di bawah ini atau uji QR Code asing!
           </p>
+
+          {/* Tombol Uji Simulasi QR Code Tidak Sesuai */}
+          <div className="mb-3">
+            <button
+              type="button"
+              id="btn-test-invalid-qr"
+              onClick={() => handleScanIdentify('QR_ASING_TIDAK_TERDAFTAR_99999')}
+              className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-250 rounded-xl py-2 px-3 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition shadow-2xs active:scale-98"
+            >
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>🚨 Uji Coba: Scan QR Code Tidak Sesuai / Asing</span>
+            </button>
+          </div>
 
           {/* Filter per Rombel Kelas & Quick Search */}
           <div className="mb-3 space-y-2">
