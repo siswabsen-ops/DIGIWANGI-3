@@ -232,8 +232,13 @@ function ReportPanel({
       totalHadir += r.totalHadir;
     });
 
-    const totalSlots = totalSiswa * 5;
-    const persentase = totalSlots > 0 ? Math.min(100, Math.round((totalHadir / totalSlots) * 100)) : 0;
+    // Hitung hari yang sudah terisi presensi pada minggu ini
+    const activeDaysCount = Math.max(1, weekDates.filter(w => {
+      return presensiList.some(p => p.tanggal && normalizeDateKey(p.tanggal) === w.dateStr);
+    }).length);
+
+    const evaluatedSlots = totalSiswa * activeDaysCount;
+    const persentase = evaluatedSlots > 0 ? Math.min(100, Math.round((totalHadir / evaluatedSlots) * 100)) : 0;
 
     return {
       totalSiswa,
@@ -248,7 +253,7 @@ function ReportPanel({
       totalHadir,
       persentase
     };
-  }, [weeklyRombelSummary]);
+  }, [weeklyRombelSummary, weekDates, presensiList]);
 
   // Common filtered list of students
   const filteredStudents = useMemo(() => {

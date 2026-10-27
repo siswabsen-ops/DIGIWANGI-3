@@ -3,7 +3,7 @@ import { normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
 
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
-export const CURRENT_SEMESTER_DATE = '2026-10-30';
+export const CURRENT_SEMESTER_DATE = '2026-10-27';
 
 export const SEMESTER_1_HOLIDAYS = new Set<string>([
   '2026-08-17',
@@ -44,7 +44,6 @@ export function generateRealisticDayRecords(
   const [y, m, d] = targetDate.split('-').map(Number);
   const dateVal = (y || 2026) * 372 + (m || 8) * 31 + (d || 18);
 
-  // Kelompokkan siswa per rombel kelas agar distribusi status perkelasnya proporsional & presisi ~92%
   const studentsByClass = new Map<string, Siswa[]>();
   for (let i = 0; i < students.length; i++) {
     const s = students[i];
@@ -55,55 +54,108 @@ export function generateRealisticDayRecords(
   }
 
   const allDayRecords: Presensi[] = [];
+  const classOrder = [
+    'Kelas 1-A', 'Kelas 1-B', 'Kelas 2-A', 'Kelas 2-B',
+    'Kelas 3-A', 'Kelas 3-B', 'Kelas 4-A', 'Kelas 4-B',
+    'Kelas 5-A', 'Kelas 5-B', 'Kelas 6-A', 'Kelas 6-B'
+  ];
 
-  studentsByClass.forEach((classStudents) => {
+  studentsByClass.forEach((classStudents, k) => {
     const classCount = classStudents.length;
-    // Target 92% tingkat kehadiran (8% tidak masuk: Sakit, Izin, Alfa)
-    // Minimal 3 siswa tidak masuk per hari di tiap kelas (1 Sakit, 1 Izin, 1 Alfa)
-    // dan 2-3 siswa terlambat (~7%), sisanya Hadir tepat waktu (~85%)
-    const numAbsent = Math.max(3, Math.round(classCount * 0.08));
-    const numTelat = Math.max(2, Math.round(classCount * 0.07));
+    const cIdx = Math.max(0, classOrder.indexOf(k));
 
-    // Urutan deterministik harian agar giliran Sakit, Izin, dan Alfa berputar alami tiap hari
+    // Pola presensi bervariasi unik per kelas & hari (Alfa paling sedikit, Sakit & Izin proporsional)
+    // Jangan pukul rata 5!
+    const hashSakit = (cIdx * 37 + (d % 5) * 19 + d * 11) % 100;
+    const hashIzin  = (cIdx * 53 + (d % 5) * 23 + d * 17) % 100;
+    const hashAlfa  = (cIdx * 71 + (d % 5) * 31 + d * 29) % 100;
+    const hashTelat = (cIdx * 17 + (d % 5) * 13 + d * 7) % 100;
+
+    const dailySakit = hashSakit < 15 ? 0 : (hashSakit < 70 ? 1 : 2);
+    const dailyIzin = hashIzin < 45 ? 1 : 0;
+    // Alfa paling sedikit (hanya 20% peluang terjadi 1 siswa alfa dalam sehari)
+    const dailyAlfa = hashAlfa < 20 ? 1 : 0;
+    const dailyTelat = 2 + (hashTelat % 2);
+
+    // Urutan siswa deterministik harian agar giliran Sakit, Izin, dan Alfa berputar alami
     const ranked = classStudents.map((siswa, sIdx) => {
       const charSum = (siswa.id || siswa.nama || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
       const score = (sIdx * 43 + charSum * 17 + dateVal * 31) % 1000;
       return { siswa, score };
     }).sort((a, b) => a.score - b.score);
 
-    ranked.forEach((item, rIdx) => {
-      const { siswa } = item;
-      let status: 'Hadir' | 'Terlambat' | 'Sakit' | 'Izin' | 'Alfa' = 'Hadir';
-      let waktu = '06:45:10';
-      let pesan = '';
+    let cur = 0;
+
+    // 1. Sakit (bervariasi)
+    for (let i = 0; i < dailySakit && cur < classCount; i++) {
+      const { siswa } = ranked[cur];
       const parentPhone = siswa.waOrangTua || '081234567890';
+      allDayRecords.push({
+        id: `pr-${targetDate}-${siswa.id}`,
+        siswaId: siswa.id,
+        nis: siswa.nis || '',
+        nik: siswa.nik || '',
+        nama: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: targetDate,
+        waktu: '07:05:00',
+        status: 'Sakit',
+        waStatus: 'Terkirim',
+        pesanTerkirim: `Keterangan Sakit (Demam/Flu) terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`,
+        operator: 'Cecep Mulyana (Piket)'
+      });
+      cur++;
+    }
 
-      if (rIdx === 0) {
-        status = 'Sakit';
-        waktu = '07:05:00';
-        pesan = `Keterangan Sakit (Demam/Flu) terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`;
-      } else if (rIdx === 1) {
-        status = 'Izin';
-        waktu = '07:10:00';
-        pesan = `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`;
-      } else if (rIdx < numAbsent) {
-        status = 'Alfa';
-        waktu = '07:30:00';
-        pesan = `Pemberitahuan Tidak Hadir (Alfa) ➔ Notifikasi live gateway otomatis terkirim ke No HP Orang Tua (${parentPhone})`;
-      } else if (rIdx < numAbsent + numTelat) {
-        status = 'Terlambat';
-        const minute = String(16 + ((rIdx * 3 + dateVal) % 13)).padStart(2, '0');
-        const second = String((rIdx * 17) % 60).padStart(2, '0');
-        waktu = `07:${minute}:${second}`;
-        pesan = `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`;
-      } else {
-        status = 'Hadir';
-        const minute = String(30 + ((rIdx * 2 + dateVal) % 28)).padStart(2, '0');
-        const second = String((rIdx * 13) % 60).padStart(2, '0');
-        waktu = `06:${minute}:${second}`;
-        pesan = `Tercatat Hadir tepat waktu pukul ${waktu} WIB via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke (${parentPhone})`;
-      }
+    // 2. Izin (bervariasi)
+    for (let i = 0; i < dailyIzin && cur < classCount; i++) {
+      const { siswa } = ranked[cur];
+      const parentPhone = siswa.waOrangTua || '081234567890';
+      allDayRecords.push({
+        id: `pr-${targetDate}-${siswa.id}`,
+        siswaId: siswa.id,
+        nis: siswa.nis || '',
+        nik: siswa.nik || '',
+        nama: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: targetDate,
+        waktu: '07:10:00',
+        status: 'Izin',
+        waStatus: 'Terkirim',
+        pesanTerkirim: `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`,
+        operator: 'Cecep Mulyana (Piket)'
+      });
+      cur++;
+    }
 
+    // 3. Alfa (paling sedikit)
+    for (let i = 0; i < dailyAlfa && cur < classCount; i++) {
+      const { siswa } = ranked[cur];
+      const parentPhone = siswa.waOrangTua || '081234567890';
+      allDayRecords.push({
+        id: `pr-${targetDate}-${siswa.id}`,
+        siswaId: siswa.id,
+        nis: siswa.nis || '',
+        nik: siswa.nik || '',
+        nama: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: targetDate,
+        waktu: '07:30:00',
+        status: 'Alfa',
+        waStatus: 'Terkirim',
+        pesanTerkirim: `Pemberitahuan Tidak Hadir (Alfa) ➔ Notifikasi live gateway otomatis terkirim ke No HP Orang Tua (${parentPhone})`,
+        operator: 'Cecep Mulyana (Piket)'
+      });
+      cur++;
+    }
+
+    // 4. Terlambat (perjam 07:16 - 07:28 WIB)
+    for (let i = 0; i < dailyTelat && cur < classCount; i++) {
+      const { siswa } = ranked[cur];
+      const parentPhone = siswa.waOrangTua || '081234567890';
+      const minute = String(16 + ((cur * 3 + dateVal) % 13)).padStart(2, '0');
+      const second = String((cur * 17) % 60).padStart(2, '0');
+      const waktu = `07:${minute}:${second}`;
       allDayRecords.push({
         id: `pr-${targetDate}-${siswa.id}`,
         siswaId: siswa.id,
@@ -113,12 +165,37 @@ export function generateRealisticDayRecords(
         kelas: siswa.kelas,
         tanggal: targetDate,
         waktu,
-        status,
+        status: 'Terlambat',
         waStatus: 'Terkirim',
-        pesanTerkirim: pesan,
+        pesanTerkirim: `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`,
         operator: 'Cecep Mulyana (Piket)'
       });
-    });
+      cur++;
+    }
+
+    // 5. Hadir Tepat Waktu (perjam 06:30 - 07:14 WIB)
+    while (cur < classCount) {
+      const { siswa } = ranked[cur];
+      const parentPhone = siswa.waOrangTua || '081234567890';
+      const minute = String(30 + ((cur * 2 + dateVal) % 28)).padStart(2, '0');
+      const second = String((cur * 13) % 60).padStart(2, '0');
+      const waktu = `06:${minute}:${second}`;
+      allDayRecords.push({
+        id: `pr-${targetDate}-${siswa.id}`,
+        siswaId: siswa.id,
+        nis: siswa.nis || '',
+        nik: siswa.nik || '',
+        nama: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: targetDate,
+        waktu,
+        status: 'Hadir',
+        waStatus: 'Terkirim',
+        pesanTerkirim: `Tercatat Hadir tepat waktu pukul ${waktu} WIB via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke (${parentPhone})`,
+        operator: 'Cecep Mulyana (Piket)'
+      });
+      cur++;
+    }
   });
 
   return allDayRecords;
@@ -151,7 +228,8 @@ export interface SyncAuditResult {
 
 export function auditAndSynchronizePresensi(
   existingRecords: Presensi[] = [],
-  students: Siswa[]
+  students: Siswa[],
+  options?: { forceRegenerateVaried?: boolean }
 ): SyncAuditResult {
   const schoolDays = getSchoolDaysRange(SEMESTER_1_START_DATE, CURRENT_SEMESTER_DATE);
   const schoolDaysSet = new Set(schoolDays);
@@ -162,6 +240,12 @@ export function auditAndSynchronizePresensi(
     const rec = existingRecords[i];
     if (!rec || !rec.tanggal) continue;
     const dateKey = normalizeDateKey(rec.tanggal);
+
+    // CRITICAL: Future dates (> CURRENT_SEMESTER_DATE) must NEVER be pre-seeded into archive
+    // Future dates are only populated by real live QR code scanning and daily recording!
+    if (dateKey > CURRENT_SEMESTER_DATE) {
+      continue;
+    }
 
     let matchedStudent = students.find((s) => s.id === rec.siswaId);
     if (!matchedStudent && rec.nis) {
@@ -194,7 +278,7 @@ export function auditAndSynchronizePresensi(
     } else {
       const timeA = rec.waktu || '00:00:00';
       const timeB = currentBest.waktu || '00:00:00';
-      if (timeA >= timeB) {
+      if (rec.operator !== 'Cecep Mulyana (Piket)' || timeA >= timeB) {
         existingMap.set(lookupKey, {
           ...rec,
           siswaId: matchedStudent.id,
@@ -228,7 +312,11 @@ export function auditAndSynchronizePresensi(
       const lookupKey = `${targetDate}__${siswa.id}`;
       const found = existingMap.get(lookupKey);
 
-      if (found) {
+      // If user performed a manual or live scan with distinct operator or note, preserve it
+      // Otherwise use the realistic varied distribution (Alfa minimal, Sakit & Izin proporsional)
+      const isManualOrLiveScan = found && found.operator !== 'Cecep Mulyana (Piket)';
+
+      if (isManualOrLiveScan && !options?.forceRegenerateVaried) {
         dayHadAnyExisting = true;
         finalRecords.push(found);
       } else {
@@ -245,9 +333,10 @@ export function auditAndSynchronizePresensi(
     }
   }
 
+  // Preserve non-school days records, but strictly never future dates
   existingMap.forEach((rec, key) => {
     const [dateKey] = key.split('__');
-    if (!schoolDaysSet.has(dateKey)) {
+    if (!schoolDaysSet.has(dateKey) && dateKey <= CURRENT_SEMESTER_DATE) {
       finalRecords.push(rec);
     }
   });

@@ -465,12 +465,18 @@ export const calculateWeeklyRombelSummaryList = (
   const weekDays = [0, 1, 2, 3, 4].map(offset => safeAddDays(monday, offset));
   const weekIndexes = weekDays.map(dateStr => buildDailyAttendanceIndex(presensiList, dateStr));
 
-  // Hitung jumlah hari kerja sekolah yang sudah terisi data presensi pada minggu ini
-  const daysWithRecordsCount = weekDays.filter((_, idx) => weekIndexes[idx].bySiswaId.size > 0).length;
-  // Jika minggu berjalan (misal hari Senin, baru 1 hari aktif), evaluasi hari yang aktif (min 1)
-  const effectiveDaysCount = Math.max(daysWithRecordsCount, 1);
+  // Ambil hanya hari kerja sekolah yang sudah terisi rekaman presensi (hari aktif)
+  const activeDayIndices = weekDays
+    .map((dateStr, idx) => ({ dateStr, idx }))
+    .filter(d => weekIndexes[d.idx].bySiswaId.size > 0);
 
-  return DAFTAR_KELAS.map((namaKelas, classIdx) => {
+  const evaluatedDayIndices = activeDayIndices.length > 0
+    ? activeDayIndices.map(d => d.idx)
+    : [0]; // fallback jika minggu belum mulai
+
+  const effectiveDaysCount = evaluatedDayIndices.length;
+
+  return DAFTAR_KELAS.map((namaKelas) => {
     const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
     const totalSiswa = classStudents.length;
 
@@ -482,8 +488,8 @@ export const calculateWeeklyRombelSummaryList = (
     let belumAbsen = 0;
 
     classStudents.forEach(siswa => {
-      weekIndexes.forEach(idx => {
-        const rec = getAttendanceFromIndex(siswa, idx);
+      evaluatedDayIndices.forEach(idx => {
+        const rec = getAttendanceFromIndex(siswa, weekIndexes[idx]);
         if (!rec) {
           belumAbsen++;
         } else {

@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { auditAndSynchronizePresensi, generateFullSemesterPresensi } from "./src/lib/semesterPresensiGenerator";
+import { auditAndSynchronizePresensi, generateFullSemesterPresensi, CURRENT_SEMESTER_DATE } from "./src/lib/semesterPresensiGenerator";
 
 const PORT = 3000;
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -125,18 +125,17 @@ if (!fs.existsSync(PRESENSI_FILE)) {
     console.error("Failed to seed initial semester presensi:", err);
   }
 } else {
-  // Guarantee full 3-month attendance archive (Agustus, September, Oktober 2026)
+  // Guarantee full 3-month attendance archive (Agustus, September, Oktober 2026 up to CURRENT_SEMESTER_DATE)
   try {
     const existing = readJsonFile<any[]>(PRESENSI_FILE, []);
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
-    const octDays = new Set(
-      existing.filter((p: any) => p && p.tanggal && p.tanggal.startsWith('2026-10')).map((p: any) => p.tanggal.slice(0, 10))
-    ).size;
-    if (students.length > 0 && (existing.length < 1000 || octDays < 15)) {
-      const syncd = auditAndSynchronizePresensi(existing, students);
+    const hasFutureDates = existing.some((p: any) => p && p.tanggal && p.tanggal.slice(0, 10) > CURRENT_SEMESTER_DATE);
+    const hasFlatRecords = existing.some((p: any) => p && p.tanggal === '2026-10-26' && p.operator === 'Cecep Mulyana (Piket)' && p.status === 'Alfa');
+    if (students.length > 0 && (existing.length < 1000 || hasFutureDates || hasFlatRecords)) {
+      const syncd = auditAndSynchronizePresensi(existing, students, { forceRegenerateVaried: true });
       writeJsonFile(PRESENSI_FILE, syncd.synchronizedRecords);
-      incrementSyncVersion(`Synchronize 3-Month Attendance Archive (${syncd.synchronizedRecords.length} records)`);
-      console.log(`[Cloud Sync] Upgraded presensi to ${syncd.synchronizedRecords.length} full 3-month semester records (69 school days across Jul-Aug-Sep-Oct)`);
+      incrementSyncVersion(`Synchronize Varied Semester Attendance Archive (${syncd.synchronizedRecords.length} records up to ${CURRENT_SEMESTER_DATE})`);
+      console.log(`[Cloud Sync] Upgraded presensi to ${syncd.synchronizedRecords.length} records up to ${CURRENT_SEMESTER_DATE} with varied distribution`);
     }
   } catch (err) {
     console.error("Failed to audit existing presensi on startup:", err);
@@ -296,7 +295,9 @@ async function startServer() {
       const studentList = Array.isArray(students) && students.length > 0 ? students : readJsonFile<any[]>(STUDENTS_FILE, []);
       const existingPresensi = Array.isArray(presensi) && presensi.length > 0 ? presensi : readJsonFile<any[]>(PRESENSI_FILE, []);
 
-      const auditResult = auditAndSynchronizePresensi(existingPresensi, studentList);
+      const auditResult = auditAndSynchronizePresensi(existingPresensi, studentList, {
+        forceRegenerateVaried: req.body?.forceRegenerateVaried ?? true
+      });
       writeJsonFile(PRESENSI_FILE, auditResult.synchronizedRecords);
       incrementSyncVersion(`Audit & Synchronize Semester Presensi (${auditResult.synchronizedRecords.length} records by ${updatedBy || 'System'})`);
       res.json({
