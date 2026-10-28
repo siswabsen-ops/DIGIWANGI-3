@@ -3,7 +3,7 @@ import { normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
 
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
-export const CURRENT_SEMESTER_DATE = '2026-10-27';
+export const CURRENT_SEMESTER_DATE = '2026-10-28';
 
 export const SEMESTER_1_HOLIDAYS = new Set<string>([
   '2026-08-17',

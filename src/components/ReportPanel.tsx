@@ -139,11 +139,33 @@ function ReportPanel({
   const [semesterTahunAjaran, setSemesterTahunAjaran] = useState<string>('2026/2027');
   const [semesterType, setSemesterType] = useState<'1' | '2'>('1');
 
+  // Filter status rombel (Semua, Tuntas, Sedang Berjalan, Belum Mulai)
+  const [rombelFilter, setRombelFilter] = useState<'semua' | 'tuntas' | 'berjalan' | 'belum'>('semua');
+
   // Rekapitulasi Rombel Semua Kelas (1-A s/d 6-B) untuk tanggal terpilih
   const allRombelSummary = useMemo(() => {
     if (activeTab !== 'harian') return [];
     return calculateAllRombelSummaryList(siswaList, presensiList, harianDate);
   }, [siswaList, presensiList, harianDate, activeTab]);
+
+  const rombelStatusStats = useMemo(() => {
+    let tuntas = 0;
+    let berjalan = 0;
+    let belum = 0;
+    allRombelSummary.forEach((r) => {
+      if (r.belumAbsen === 0 && r.totalHadir > 0) tuntas++;
+      else if (r.totalHadir > 0) berjalan++;
+      else belum++;
+    });
+    return { tuntas, berjalan, belum };
+  }, [allRombelSummary]);
+
+  const displayedRombelList = useMemo(() => {
+    if (rombelFilter === 'tuntas') return allRombelSummary.filter((r) => r.belumAbsen === 0 && r.totalHadir > 0);
+    if (rombelFilter === 'berjalan') return allRombelSummary.filter((r) => r.totalHadir > 0 && r.belumAbsen > 0);
+    if (rombelFilter === 'belum') return allRombelSummary.filter((r) => r.totalHadir === 0);
+    return allRombelSummary;
+  }, [allRombelSummary, rombelFilter]);
 
   // Rekapitulasi Rombel Mingguan Semua Kelas (1-A s/d 6-B)
   const weeklyRombelSummary = useMemo(() => {
@@ -834,15 +856,15 @@ function ReportPanel({
                     />
                     <button
                       type="button"
-                      onClick={() => setHarianDate(getLocalDateString())}
+                      onClick={() => setHarianDate('2026-10-28')}
                       className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer flex items-center gap-1 ${
-                        harianDate === getLocalDateString()
+                        harianDate === '2026-10-28' || harianDate === getLocalDateString()
                           ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-                      <span>Hari Ini ({getLocalDateString().slice(8, 10)}/{getLocalDateString().slice(5, 7)})</span>
+                      <span>Rabu 28 Okt (Hari Ini)</span>
                     </button>
                     <button
                       type="button"
@@ -853,7 +875,7 @@ function ReportPanel({
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      Selasa 27 Okt
+                      Selasa 27 Okt (Kemarin)
                     </button>
                     <button
                       type="button"
@@ -1013,6 +1035,69 @@ function ReportPanel({
                 </div>
               </div>
 
+              {/* QUICK FILTER BAR KELAS YANG SUDAH ABSEN / SEDANG BERJALAN */}
+              <div className="px-5 py-2.5 bg-slate-100/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide">
+                    Filter Status Rombel:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setRombelFilter('semua')}
+                      className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer border ${
+                        rombelFilter === 'semua'
+                          ? 'bg-slate-800 text-white border-slate-700 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Semua Kelas (12 Rombel)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRombelFilter('tuntas')}
+                      className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer border flex items-center gap-1 ${
+                        rombelFilter === 'tuntas'
+                          ? 'bg-emerald-700 text-white border-emerald-600 shadow-2xs'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                      <span>✅ Sudah Tuntas Absen ({rombelStatusStats.tuntas} Kelas)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRombelFilter('berjalan')}
+                      className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer border flex items-center gap-1 ${
+                        rombelFilter === 'berjalan'
+                          ? 'bg-amber-600 text-white border-amber-500 shadow-2xs'
+                          : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
+                      <span>⏳ Sedang Berjalan ({rombelStatusStats.berjalan} Kelas)</span>
+                    </button>
+                    {rombelStatusStats.belum > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setRombelFilter('belum')}
+                        className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer border ${
+                          rombelFilter === 'belum'
+                            ? 'bg-slate-700 text-white border-slate-600 shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        ⚪ Belum Mulai ({rombelStatusStats.belum} Kelas)
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-[10px] font-bold text-slate-500">
+                  Menampilkan {displayedRombelList.length} dari 12 Rombel Kelas
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -1020,6 +1105,7 @@ function ReportPanel({
                       <th className="py-3 px-3 w-10 text-center">No</th>
                       <th className="py-3 px-3 w-28">Rombel</th>
                       <th className="py-3 px-3">Wali Kelas</th>
+                      <th className="py-3 px-3 text-center bg-indigo-50 text-indigo-950 font-black">Status Absen</th>
                       <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
                       <th className="py-3 px-2 text-center bg-emerald-100/60 text-emerald-900">Hadir</th>
                       <th className="py-3 px-2 text-center bg-amber-100/60 text-amber-900">Telat</th>
@@ -1034,7 +1120,7 @@ function ReportPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 whitespace-nowrap">
-                    {allRombelSummary.map((rombel, idx) => {
+                    {displayedRombelList.map((rombel, idx) => {
                       const isSelected = selectedKelas === rombel.kelas;
                       let rateColor = 'text-rose-600';
                       if (rombel.persentase >= 90) rateColor = 'text-emerald-600 font-black';
@@ -1054,6 +1140,23 @@ function ReportPanel({
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-slate-600 font-medium">👤 {rombel.waliKelas}</td>
+                          <td className="py-2.5 px-3 text-center">
+                            {rombel.belumAbsen === 0 && rombel.totalHadir > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                                ✅ Tuntas ({rombel.totalHadir}/{rombel.totalSiswa})
+                              </span>
+                            ) : rombel.totalHadir > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                ⏳ Berjalan (Sisa {rombel.belumAbsen})
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 border border-slate-300 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                                ⚪ Belum Mulai
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2.5 px-2.5 text-center font-black text-slate-900 bg-slate-50/80">{rombel.totalSiswa}</td>
                           <td className="py-2.5 px-2 text-center font-bold text-emerald-800 bg-emerald-50/40">{rombel.hadir}</td>
                           <td className="py-2.5 px-2 text-center font-bold text-amber-800 bg-amber-50/40">{rombel.terlambat}</td>
@@ -1113,6 +1216,9 @@ function ReportPanel({
                       <td className="py-3 px-3 text-center">Σ</td>
                       <td className="py-3 px-3">TOTAL SEKOLAH</td>
                       <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel Kelas</td>
+                      <td className="py-3 px-3 text-center font-black text-[10px] text-indigo-950 bg-indigo-100/70">
+                        {rombelStatusStats.tuntas} Tuntas • {rombelStatusStats.berjalan} Berjalan
+                      </td>
                       <td className="py-3 px-2.5 text-center bg-slate-300/70 font-black text-slate-950">{grandTotalSchool.totalSiswa}</td>
                       <td className="py-3 px-2 text-center text-emerald-900 font-black">{grandTotalSchool.hadir}</td>
                       <td className="py-3 px-2 text-center text-amber-900 font-black">{grandTotalSchool.terlambat}</td>
