@@ -22,18 +22,18 @@ const WHATSAPP_LOGS_FILE = path.join(DATA_DIR, "whatsapp_logs.json");
 
 // Default Wali Kelas
 const DEFAULT_WALI_KELAS = [
-  { kelas: 'Kelas 1-A', nama: 'Rima Rohmatul Hasanah, S.Pd.', username: 'guru1a', pin: '28001', noWa: '081223344551', nip: '198501152010012015' },
-  { kelas: 'Kelas 1-B', nama: 'Apriyanti Sri Habibah, S.Pd.Gr.', username: 'guru1b', pin: '28002', noWa: '081223344552', nip: '198802202012022008' },
-  { kelas: 'Kelas 2-A', nama: 'Linda Safitri Indriyani, S.Pd.Gr.', username: 'guru2a', pin: '28003', noWa: '081223344553', nip: '198904122014032005' },
-  { kelas: 'Kelas 2-B', nama: 'Rena Siti Napisah, S.Pd.Gr.', username: 'guru2b', pin: '28004', noWa: '081223344554', nip: '199006182015042007' },
-  { kelas: 'Kelas 3-A', nama: 'Ayu Latifah Somantri, S.Pd.Gr.', username: 'guru3a', pin: '28005', noWa: '081223344555', nip: '199108252016052003' },
-  { kelas: 'Kelas 3-B', nama: 'Ai Nursyifa, S.Pd.,MCE.', username: 'guru3b', pin: '28006', noWa: '081223344556', nip: '199210302018062002' },
-  { kelas: 'Kelas 4-A', nama: 'Widia Siti Nuraeni, S.Pd.Gr.', username: 'guru4a', pin: '28007', noWa: '081223344557', nip: '199312152019072006' },
-  { kelas: 'Kelas 4-B', nama: 'Mita Nurhasni Faujiah, S.Pd.,MCE.', username: 'guru4b', pin: '28008', noWa: '081223344558', nip: '199402012020082004' },
-  { kelas: 'Kelas 5-A', nama: 'Tanti Maryam Kurnianti, S.Pd.Gr.', username: 'guru5a', pin: '28009', noWa: '081223344559', nip: '199504102021092009' },
-  { kelas: 'Kelas 5-B', nama: 'Tedi Rismadiansah, S.Pd.Gr.', username: 'guru5b', pin: '28010', noWa: '081223344560', nip: '199606202022101001' },
-  { kelas: 'Kelas 6-A', nama: 'Taufik Firdaus, S.Pd.Gr.', username: 'guru6a', pin: '28011', noWa: '081223344561', nip: '199708152023111005' },
-  { kelas: 'Kelas 6-B', nama: 'Usman Fauzan Alan, S.Pd.Gr.', username: 'guru6b', pin: '28012', noWa: '081223344562', nip: '199810222024121008' }
+  { kelas: 'Kelas 1-A', nama: 'Rima Rohmatul Hasanah, S.Pd.', username: 'guru1a', pin: '28001', noWa: '085224866506', nip: '198501152010012015' },
+  { kelas: 'Kelas 1-B', nama: 'Apriyanti Sri Habibah, S.Pd.Gr.', username: 'guru1b', pin: '28002', noWa: '082316552322', nip: '198802202012022008' },
+  { kelas: 'Kelas 2-A', nama: 'Linda Safitri Indriyani, S.Pd.Gr.', username: 'guru2a', pin: '28003', noWa: '089662770280', nip: '198904122014032005' },
+  { kelas: 'Kelas 2-B', nama: 'Rena Siti Napisah, S.Pd.Gr.', username: 'guru2b', pin: '28004', noWa: '083116544408', nip: '199006182015042007' },
+  { kelas: 'Kelas 3-A', nama: 'Ayu Latifah Somantri, S.Pd.Gr.', username: 'guru3a', pin: '28005', noWa: '082119844966', nip: '199108252016052003' },
+  { kelas: 'Kelas 3-B', nama: 'Ai Nursyifa, S.Pd.,MCE.', username: 'guru3b', pin: '28006', noWa: '083103898033', nip: '199210302018062002' },
+  { kelas: 'Kelas 4-A', nama: 'Widia Siti Nuraeni, S.Pd.Gr.', username: 'guru4a', pin: '28007', noWa: '085721743648', nip: '199312152019072006' },
+  { kelas: 'Kelas 4-B', nama: 'Mita Nurhasni Faujiah, S.Pd.,MCE.', username: 'guru4b', pin: '28008', noWa: '085797954320', nip: '199402012020082004' },
+  { kelas: 'Kelas 5-A', nama: 'Tanti Maryam Kurnianti, S.Pd.Gr.', username: 'guru5a', pin: '28009', noWa: '085294842424', nip: '199504102021092009' },
+  { kelas: 'Kelas 5-B', nama: 'Tedi Rismadiansah, S.Pd.Gr.', username: 'guru5b', pin: '28010', noWa: '085315265290', nip: '199606202022101001' },
+  { kelas: 'Kelas 6-A', nama: 'Taufik Firdaus, S.Pd.Gr.', username: 'guru6a', pin: '28011', noWa: '082125312911', nip: '199708152023111005' },
+  { kelas: 'Kelas 6-B', nama: 'Usman Fauzan Alan, S.Pd.Gr.', username: 'guru6b', pin: '28012', noWa: '085210703332', nip: '199810222024121008' }
 ];
 
 function readJsonFile<T>(filePath: string, fallback: T): T {
@@ -361,7 +361,7 @@ async function startServer() {
   // 8. Automatic WhatsApp Gateway notification dispatch
   app.post("/api/whatsapp/send-gateway", (req, res) => {
     try {
-      const { presensi, siswa, phone, message } = req.body;
+      const { presensi, siswa, phone, message, recipientRole, recipientName } = req.body;
       const targetPhone = (phone || (siswa && siswa.waOrangTua) || (presensi && presensi.waOrangTua) || '').trim();
       const studentName = presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi';
       const studentClass = presensi?.kelas || siswa?.kelas || '-';
@@ -369,38 +369,73 @@ async function startServer() {
 
       const messageId = `wa-msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       const nowIso = new Date().toISOString();
+      const isFailed = !targetPhone || targetPhone === '-';
 
       const logEntry = {
         id: messageId,
+        recipientRole: recipientRole || 'orang_tua',
+        recipientName: recipientName || (recipientRole === 'wali_kelas' ? 'Wali Kelas' : 'Orang Tua'),
         studentName,
         kelas: studentClass,
         status: studentStatus,
-        phone: targetPhone,
+        phone: targetPhone || 'TIDAK TERDAFTAR',
         message: message || `Presensi ${studentName} (${studentClass}): ${studentStatus}`,
-        deliveryStatus: 'DELIVERED',
+        deliveryStatus: isFailed ? 'FAILED' : 'DELIVERED',
         gateway: 'DIGIWANGI3_WA_GATEWAY_NODE',
-        timestamp: nowIso
+        timestamp: nowIso,
+        error: isFailed ? 'Nomor tujuan WhatsApp belum diisi atau tidak valid' : undefined
       };
 
       const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
       existingLogs.unshift(logEntry);
-      // Keep recent 300 logs
-      if (existingLogs.length > 300) {
-        existingLogs.length = 300;
+      // Keep recent 400 logs
+      if (existingLogs.length > 400) {
+        existingLogs.length = 400;
       }
       writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
 
-      console.log(`[WA Gateway] Dispatched notification to ${targetPhone} for ${studentName} (${studentClass} - ${studentStatus})`);
+      if (isFailed) {
+        console.warn(`[WA Gateway Warning] Pengiriman ke [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${studentName} - ${studentClass}) GAGAL: Nomor tidak valid. Dicatat di log.`);
+        res.status(400).json({
+          success: false,
+          error: "Nomor WhatsApp tujuan kosong atau tidak valid",
+          logEntry
+        });
+        return;
+      }
+
+      console.log(`[WA Gateway] Dispatched notification to [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${targetPhone}) for ${studentName} (${studentClass} - ${studentStatus})`);
 
       res.json({
         success: true,
         messageId,
         phone: targetPhone,
+        recipientRole: logEntry.recipientRole,
+        recipientName: logEntry.recipientName,
         deliveryStatus: 'DELIVERED',
         deliveredAt: nowIso
       });
     } catch (err: any) {
       console.error("[WA Gateway Error]:", err);
+      try {
+        const failureLog = {
+          id: `wa-err-${Date.now()}`,
+          recipientRole: req.body?.recipientRole || 'unknown',
+          recipientName: req.body?.recipientName || 'Unknown',
+          studentName: req.body?.presensi?.nama || 'Unknown',
+          kelas: req.body?.presensi?.kelas || '-',
+          status: req.body?.presensi?.status || '-',
+          phone: req.body?.phone || '-',
+          message: req.body?.message || '-',
+          deliveryStatus: 'FAILED',
+          gateway: 'DIGIWANGI3_WA_GATEWAY_NODE',
+          timestamp: new Date().toISOString(),
+          error: err.message || 'Server Gateway Error'
+        };
+        const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
+        existingLogs.unshift(failureLog);
+        writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
+      } catch {}
       res.status(500).json({ error: err.message || "Failed to dispatch WhatsApp message" });
     }
   });

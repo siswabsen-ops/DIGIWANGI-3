@@ -1,5 +1,54 @@
 [
   {
+    "id": "wa-msg-1793201211859-9399",
+    "recipientRole": "wali_kelas",
+    "recipientName": "Wali Kelas 1-A",
+    "studentName": "Ahmad Fauzi",
+    "kelas": "Kelas 1-A",
+    "status": "Hadir",
+    "phone": "TIDAK TERDAFTAR",
+    "message": "[NOTIFIKASI ABSENSI DIGIWANGI]\nNama Siswa : Ahmad Fauzi\nKelas : Kelas 1-A\nWaktu Scan : 28 Oktober 2026 pukul 07:12 WIB\nStatus : Masuk",
+    "deliveryStatus": "FAILED",
+    "gateway": "DIGIWANGI3_WA_GATEWAY_NODE",
+    "timestamp": "2026-10-28T15:26:51.859Z",
+    "error": "Nomor tujuan WhatsApp belum diisi atau tidak valid"
+  },
+  {
+    "id": "wa-msg-1793201205444-2830",
+    "recipientRole": "wali_kelas",
+    "recipientName": "Rima Rohmatul Hasanah, S.Pd.",
+    "studentName": "Ahmad Fauzi",
+    "kelas": "Kelas 1-A",
+    "status": "Hadir",
+    "phone": "085224866506",
+    "message": "[NOTIFIKASI ABSENSI DIGIWANGI]\nNama Siswa : Ahmad Fauzi\nKelas : Kelas 1-A\nWaktu Scan : 28 Oktober 2026 pukul 07:12 WIB\nStatus : Masuk",
+    "deliveryStatus": "DELIVERED",
+    "gateway": "DIGIWANGI3_WA_GATEWAY_NODE",
+    "timestamp": "2026-10-28T15:26:45.444Z"
+  },
+  {
+    "id": "wa-msg-1793201197219-8384",
+    "studentName": "Ahmad Fauzi",
+    "kelas": "Kelas 1-A",
+    "status": "Hadir",
+    "phone": "",
+    "message": "[NOTIFIKASI ABSENSI DIGIWANGI]\nNama Siswa : Ahmad Fauzi\nKelas : Kelas 1-A\nWaktu Scan : 28 Oktober 2026 pukul 07:12 WIB\nStatus : Masuk",
+    "deliveryStatus": "DELIVERED",
+    "gateway": "DIGIWANGI3_WA_GATEWAY_NODE",
+    "timestamp": "2026-10-28T15:26:37.219Z"
+  },
+  {
+    "id": "wa-msg-1793201189497-2917",
+    "studentName": "Ahmad Fauzi",
+    "kelas": "Kelas 1-A",
+    "status": "Hadir",
+    "phone": "085224866506",
+    "message": "[NOTIFIKASI ABSENSI DIGIWANGI]\nNama Siswa : Ahmad Fauzi\nKelas : Kelas 1-A\nWaktu Scan : Rabu, 28 Oktober 2026 pukul 07:12 WIB\nStatus : Masuk",
+    "deliveryStatus": "DELIVERED",
+    "gateway": "DIGIWANGI3_WA_GATEWAY_NODE",
+    "timestamp": "2026-10-28T15:26:29.497Z"
+  },
+  {
     "id": "wa-msg-1793186248437-7020",
     "studentName": "TEST SISWA SDN 3",
     "kelas": "Kelas 6-A",

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, Search, UserCheck, AlertTriangle, AlertOctagon, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
-import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal, DAFTAR_KELAS, WaliKelas } from '../types';
 import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
+import { getWaliKelasObject } from '../lib/waliKelasData';
 import QRCodeRenderer from './QRCodeRenderer';
 import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
 // @ts-ignore
@@ -14,6 +15,7 @@ interface ScanScreenProps {
   onAddPresensi: (presensi: Presensi) => void;
   recentPresensi: Presensi[];
   isActive?: boolean;
+  waliKelasList?: WaliKelas[];
 }
 
 function ScanScreen({
@@ -23,6 +25,7 @@ function ScanScreen({
   onAddPresensi,
   recentPresensi,
   isActive = true,
+  waliKelasList,
 }: ScanScreenProps) {
   const [nisInput, setNisInput] = useState('');
   const [useCamera, setUseCamera] = useState(false);
@@ -357,6 +360,8 @@ function ScanScreen({
 
     // Deterministic unique ID per student per day so Firestore updates in-place
     const newPresensiId = alreadyScanned ? alreadyScanned.id : `pr-${matchedSiswa.id}-${todayDate}`;
+    const matchedWali = getWaliKelasObject(matchedSiswa.kelas, waliKelasList);
+    const waliPhone = matchedWali?.noWa || '';
     const parentPhone = matchedSiswa.waOrangTua || '081234567890';
     const newRecord: Presensi = {
       id: newPresensiId,
@@ -369,7 +374,7 @@ function ScanScreen({
       waktu: waktuSekarang,
       status: determinedStatus,
       waStatus: 'Terkirim',
-      pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
+      pesanTerkirim: `Terkirim via WA Gateway ke Wali Kelas (${waliPhone || '-'}) lalu ke No HP Ortu (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
       operator: currentUser.namaLengkap,
     };
 
@@ -546,7 +551,7 @@ function ScanScreen({
                       </span>
                       <span className="bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        WA Gateway: Otomatis Terkirim ke Ortu ({scannedResult.pesanTerkirim?.match(/\(([^)]+)\)/)?.[1] || '081234567890'}) ✔✔
+                        WA Gateway: Otomatis Terkirim ke Wali Kelas & Ortu ✔✔
                       </span>
                     </div>
                   </div>

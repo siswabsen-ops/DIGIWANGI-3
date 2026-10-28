@@ -23,7 +23,7 @@ import {
   forceSyncNow,
   auditAndSyncSemesterPresensi
 } from './lib/cloudSync';
-import { sendAutomaticWhatsAppNotification } from './lib/whatsappGateway';
+import { sendDualWhatsAppNotification, sendAutomaticWhatsAppNotification } from './lib/whatsappGateway';
 import { 
   db,
   ensureAuthenticated, 
@@ -172,10 +172,14 @@ export default function App() {
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const hasOldNumbers = parsed.some((w: any) => w.noWa && (w.noWa.startsWith('08122334455') || w.noWa === '081299887766'));
+          if (!hasOldNumbers) {
+            return parsed;
+          }
         }
       } catch {}
     }
+    safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(DAFTAR_WALI_KELAS));
     return DAFTAR_WALI_KELAS;
   });
 
@@ -822,16 +826,18 @@ export default function App() {
       return updated;
     });
 
-    // Automatically dispatch WhatsApp notification to parent if student profile matches
+    // Automatically dispatch dual WhatsApp notifications: First to Homeroom Teacher (Wali Kelas), then to Parents
     const matchedSiswa = siswaList.find(s => 
       s.id === newPresensi.siswaId || 
       (s.nis && newPresensi.nis && s.nis.trim() === newPresensi.nis.trim()) ||
       (s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() && s.kelas === newPresensi.kelas)
     );
-    sendAutomaticWhatsAppNotification(newPresensi, matchedSiswa, settings).catch(() => {});
+    sendDualWhatsAppNotification(newPresensi, matchedSiswa, settings, waliKelasList).catch((err) => {
+      console.warn('[WA Dual Gateway Warning]:', err);
+    });
 
-    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi WA Otomatis Terkirim ke Orang Tua`);
-  }, [currentUser, siswaList, settings, addActivityLog]);
+    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Otomatis terkirim ke WA Wali Kelas lalu ke Orang Tua`);
+  }, [currentUser, siswaList, settings, waliKelasList, addActivityLog]);
 
   // Quick reset logs
   const handleClearLogs = useCallback(() => {
@@ -984,6 +990,7 @@ export default function App() {
                 onAddPresensi={handleAddPresensi}
                 recentPresensi={recentPresensiSlice}
                 isActive={true}
+                waliKelasList={waliKelasList}
               />
             </div>
           )}
@@ -1216,6 +1223,7 @@ export default function App() {
         onClearLogs={() => setPresensiList([])}
         siswaList={siswaList}
         settings={settings}
+        waliKelasList={waliKelasList}
       />
 
       {/* Floating Mascot Promo Companion Assistant */}
