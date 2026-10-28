@@ -156,6 +156,10 @@ export const buildDailyAttendanceIndex = (
 
     const isNewer = (existing?: Presensi): boolean => {
       if (!existing) return true;
+      const isPRealScan = p.operator !== 'Cecep Mulyana (Piket)' || (p.pesanTerkirim && (p.pesanTerkirim.includes('via QR Code') || p.pesanTerkirim.includes('WA Gateway')));
+      const isExistingRealScan = existing.operator !== 'Cecep Mulyana (Piket)' || (existing.pesanTerkirim && (existing.pesanTerkirim.includes('via QR Code') || existing.pesanTerkirim.includes('WA Gateway')));
+      if (isPRealScan && !isExistingRealScan) return true;
+      if (!isPRealScan && isExistingRealScan) return false;
       const timeA = p.waktu || '00:00:00';
       const timeB = existing.waktu || '00:00:00';
       return timeA >= timeB;
@@ -253,6 +257,10 @@ export const getLatestAttendanceForStudent = (
   if (matchingRecords.length === 1) return matchingRecords[0];
 
   return matchingRecords.sort((a, b) => {
+    const isAReal = a.operator !== 'Cecep Mulyana (Piket)' || (a.pesanTerkirim && (a.pesanTerkirim.includes('via QR Code') || a.pesanTerkirim.includes('WA Gateway')));
+    const isBReal = b.operator !== 'Cecep Mulyana (Piket)' || (b.pesanTerkirim && (b.pesanTerkirim.includes('via QR Code') || b.pesanTerkirim.includes('WA Gateway')));
+    if (isAReal && !isBReal) return -1;
+    if (!isAReal && isBReal) return 1;
     const timeA = a.waktu || '00:00:00';
     const timeB = b.waktu || '00:00:00';
     return timeB.localeCompare(timeA);

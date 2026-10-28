@@ -835,13 +835,36 @@ function ReportPanel({
                     <button
                       type="button"
                       onClick={() => setHarianDate(getLocalDateString())}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer flex items-center gap-1 ${
                         harianDate === getLocalDateString()
                           ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      Hari Ini ({getLocalDateString().slice(8, 10)}/{getLocalDateString().slice(5, 7)})
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                      <span>Hari Ini ({getLocalDateString().slice(8, 10)}/{getLocalDateString().slice(5, 7)})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-27')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-27'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Selasa 27 Okt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-26')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-26'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Senin 26 Okt
                     </button>
                     <button
                       type="button"
@@ -851,9 +874,9 @@ function ReportPanel({
                           ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
-                      title="Rekap hari sekolah terakhir lengkap 100%"
+                      title="Rekap hari sekolah sebelumnya"
                     >
-                      📅 23 Okt (Lengkap)
+                      📅 23 Okt
                     </button>
                     <button
                       type="button"
@@ -865,17 +888,6 @@ function ReportPanel({
                       }`}
                     >
                       22 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-21')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-21'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      21 Okt
                     </button>
                   </div>
                 </div>

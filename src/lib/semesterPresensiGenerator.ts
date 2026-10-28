@@ -241,12 +241,7 @@ export function auditAndSynchronizePresensi(
     if (!rec || !rec.tanggal) continue;
     const dateKey = normalizeDateKey(rec.tanggal);
 
-    // CRITICAL: Future dates (> CURRENT_SEMESTER_DATE) must NEVER be pre-seeded into archive
-    // Future dates are only populated by real live QR code scanning and daily recording!
-    if (dateKey > CURRENT_SEMESTER_DATE) {
-      continue;
-    }
-
+    // Pertahankan semua rekaman yang ada, termasuk hasil scan presensi hari ini & hari-hari berikutnya
     let matchedStudent = students.find((s) => s.id === rec.siswaId);
     if (!matchedStudent && rec.nis) {
       matchedStudent = students.find((s) => s.nis && s.nis.trim() === rec.nis.trim());
@@ -276,9 +271,11 @@ export function auditAndSynchronizePresensi(
         operator: rec.operator || 'Cecep Mulyana (Piket)'
       });
     } else {
+      // Prioritaskan hasil scan presensi langsung / terkini
+      const isLiveScan = rec.operator !== 'Cecep Mulyana (Piket)' || rec.pesanTerkirim?.includes('via QR Code') || rec.pesanTerkirim?.includes('WA Gateway');
       const timeA = rec.waktu || '00:00:00';
       const timeB = currentBest.waktu || '00:00:00';
-      if (rec.operator !== 'Cecep Mulyana (Piket)' || timeA >= timeB) {
+      if (isLiveScan || timeA >= timeB) {
         existingMap.set(lookupKey, {
           ...rec,
           siswaId: matchedStudent.id,
@@ -312,11 +309,8 @@ export function auditAndSynchronizePresensi(
       const lookupKey = `${targetDate}__${siswa.id}`;
       const found = existingMap.get(lookupKey);
 
-      // If user performed a manual or live scan with distinct operator or note, preserve it
-      // Otherwise use the realistic varied distribution (Alfa minimal, Sakit & Izin proporsional)
-      const isManualOrLiveScan = found && found.operator !== 'Cecep Mulyana (Piket)';
-
-      if (isManualOrLiveScan && !options?.forceRegenerateVaried) {
+      // Jika ada rekaman nyata dari scan (atau catatan yang sudah tercatat), pertahankan selalu!
+      if (found) {
         dayHadAnyExisting = true;
         finalRecords.push(found);
       } else {
@@ -333,10 +327,10 @@ export function auditAndSynchronizePresensi(
     }
   }
 
-  // Preserve non-school days records, but strictly never future dates
+  // Masukkan rekaman hari ini dan hari selanjutnya (>= CURRENT_SEMESTER_DATE) atau hari yang tidak ada di schoolDays
   existingMap.forEach((rec, key) => {
     const [dateKey] = key.split('__');
-    if (!schoolDaysSet.has(dateKey) && dateKey <= CURRENT_SEMESTER_DATE) {
+    if (!schoolDaysSet.has(dateKey)) {
       finalRecords.push(rec);
     }
   });

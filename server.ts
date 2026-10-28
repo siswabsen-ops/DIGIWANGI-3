@@ -74,6 +74,35 @@ function incrementSyncVersion(actionLabel?: string) {
   console.log(`[Cloud Sync] Version updated to ${syncVersion} (${actionLabel || 'unknown action'}) at ${lastUpdatedAt}`);
 }
 
+// In-memory presensi cache for zero-latency recording & reporting
+let cachedPresensi: any[] | null = null;
+
+function getCachedPresensi(): any[] {
+  if (cachedPresensi === null) {
+    cachedPresensi = readJsonFile<any[]>(PRESENSI_FILE, []);
+  }
+  return cachedPresensi;
+}
+
+let savePresensiTimer: NodeJS.Timeout | null = null;
+function persistPresensiToDisk(): void {
+  if (savePresensiTimer) clearTimeout(savePresensiTimer);
+  savePresensiTimer = setTimeout(() => {
+    if (cachedPresensi) {
+      try {
+        fs.writeFileSync(PRESENSI_FILE, JSON.stringify(cachedPresensi), 'utf-8');
+      } catch (err) {
+        console.error('Error writing PRESENSI_FILE:', err);
+      }
+    }
+  }, 100);
+}
+
+function saveCachedPresensi(records: any[]): void {
+  cachedPresensi = records;
+  persistPresensiToDisk();
+}
+
 // Load initial students if file not present
 if (!fs.existsSync(STUDENTS_FILE)) {
   try {
@@ -118,18 +147,17 @@ if (!fs.existsSync(PRESENSI_FILE)) {
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
     if (students.length > 0) {
       const generated = generateFullSemesterPresensi(students);
-      writeJsonFile(PRESENSI_FILE, generated);
+      saveCachedPresensi(generated);
       console.log(`[Cloud Sync] Initialized ${generated.length} semester attendance records into ${PRESENSI_FILE}`);
     }
   } catch (err) {
     console.error("Failed to seed initial semester presensi:", err);
   }
 } else {
-  // Data presensi historis telah terkunci aman dan tidak akan diubah lagi
-  // Server hanya membaca data yang ada dan menerima penambahan presensi baru dari scan QR Code harian
+  // Prime in-memory presensi cache
   try {
-    const existing = readJsonFile<any[]>(PRESENSI_FILE, []);
-    console.log(`[Cloud Presensi] Data presensi aktif: ${existing.length} catatan tersimpan aman.`);
+    const existing = getCachedPresensi();
+    console.log(`[Cloud Presensi] Data presensi aktif: ${existing.length} catatan tersimpan aman in-memory.`);
   } catch (err) {
     console.error("Gagal membaca arsip presensi pada startup:", err);
   }
@@ -171,7 +199,7 @@ async function startServer() {
 
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
     const waliKelas = readJsonFile<any[]>(WALI_KELAS_FILE, DEFAULT_WALI_KELAS);
-    const presensi = readJsonFile<any[]>(PRESENSI_FILE, []);
+    const presensi = getCachedPresensi();
     const settings = readJsonFile<any>(SETTINGS_FILE, null);
     const accounts = readJsonFile<any[]>(ACCOUNTS_FILE, []);
 
@@ -218,7 +246,7 @@ async function startServer() {
       return;
     }
 
-    const existing = readJsonFile<any[]>(PRESENSI_FILE, []);
+    const existing = getCachedPresensi();
     let finalRecords: any[];
 
     if (data.length < existing.length && existing.length > 500 && data.length <= 500) {
@@ -239,7 +267,7 @@ async function startServer() {
       finalRecords = data;
     }
 
-    writeJsonFile(PRESENSI_FILE, finalRecords);
+    saveCachedPresensi(finalRecords);
     incrementSyncVersion(`Update Presensi (${finalRecords.length} records by ${updatedBy || 'user'})`);
     res.json({ success: true, version: syncVersion, total: finalRecords.length });
   });
@@ -253,7 +281,7 @@ async function startServer() {
         return;
       }
 
-      const existingRecords = readJsonFile<any[]>(PRESENSI_FILE, []);
+      const existingRecords = getCachedPresensi();
       const normDate = (record.tanggal || '').slice(0, 10);
       
       const idx = existingRecords.findIndex((p: any) => 
@@ -272,9 +300,9 @@ async function startServer() {
         existingRecords.push(record);
       }
 
-      writeJsonFile(PRESENSI_FILE, existingRecords);
+      saveCachedPresensi(existingRecords);
       incrementSyncVersion(`Record Presensi: ${record.nama} (${record.kelas} - ${record.status}) by ${updatedBy || 'Scanner'}`);
-      res.json({ success: true, version: syncVersion, total: existingRecords.length });
+      res.json({ success: true, version: syncVersion, total: existingRecords.length, record });
     } catch (err: any) {
       console.error("[Server Presensi Record Error]:", err);
       res.status(500).json({ error: err.message || "Failed to record attendance" });
@@ -286,12 +314,12 @@ async function startServer() {
     try {
       const { presensi, students, updatedBy } = req.body;
       const studentList = Array.isArray(students) && students.length > 0 ? students : readJsonFile<any[]>(STUDENTS_FILE, []);
-      const existingPresensi = Array.isArray(presensi) && presensi.length > 0 ? presensi : readJsonFile<any[]>(PRESENSI_FILE, []);
+      const existingPresensi = Array.isArray(presensi) && presensi.length > 0 ? presensi : getCachedPresensi();
 
       const auditResult = auditAndSynchronizePresensi(existingPresensi, studentList, {
-        forceRegenerateVaried: req.body?.forceRegenerateVaried ?? true
+        forceRegenerateVaried: req.body?.forceRegenerateVaried ?? false
       });
-      writeJsonFile(PRESENSI_FILE, auditResult.synchronizedRecords);
+      saveCachedPresensi(auditResult.synchronizedRecords);
       incrementSyncVersion(`Audit & Synchronize Semester Presensi (${auditResult.synchronizedRecords.length} records by ${updatedBy || 'System'})`);
       res.json({
         success: true,

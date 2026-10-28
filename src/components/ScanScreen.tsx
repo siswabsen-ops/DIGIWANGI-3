@@ -291,27 +291,27 @@ function ScanScreen({
 
     const matchedSiswa = findStudentByCode(siswaList, rawCode);
 
-    // 2. Validasi bila QR Code tidak terdaftar dalam database siswa SDN 1 Padaherang
+    // 2. Validasi bila QR Code tidak terdaftar dalam database resmi SDN 3 Karamatwangi
     if (!matchedSiswa) {
       setScannerStatus('ERROR');
       playAudioFeedback('error');
-      const schoolName = settings.namaSekolah || 'SDN 1 PADAHERANG';
+      const schoolName = settings.namaSekolah || 'SDN 3 KARAMATWANGI';
       const cleanDisplay = rawCode.length > 32 ? rawCode.slice(0, 30) + '...' : rawCode;
-      const errText = `QR Code Tidak Sesuai! Kode [${cleanDisplay}] tidak terdaftar di sistem ${schoolName}.`;
-      setErrorMsg(errText);
+      const exactErrorWarning = `Kode ini bukan NIS, NISN, NIK atau ID resmi Siswa SDN 3 KARAMATWANGI. Pastikan menggunakan Kartu Siswa Resmi ber Barcode Valid..`;
+      setErrorMsg(exactErrorWarning);
       setInvalidScanInfo({
         code: cleanDisplay,
-        reason: `Kode ini bukan NIS, NISN, NIK, atau ID resmi siswa ${schoolName}. Pastikan menggunakan Kartu Siswa resmi ber-barcode valid.`,
+        reason: exactErrorWarning,
         timestamp: getLocalTimeString(new Date())
       });
       setScannedResult(null);
 
-      // Auto reset status kembali ke SCANNING setelah 3.5 detik
+      // Auto reset status kembali ke SCANNING setelah 4.5 detik
       scanTimeoutRef.current = setTimeout(() => {
         setScannerStatus('SCANNING');
         setErrorMsg('');
         setInvalidScanInfo(null);
-      }, 3500);
+      }, 4500);
       return;
     }
 
@@ -598,9 +598,9 @@ function ScanScreen({
                       <span className="text-[10px] text-rose-300 font-mono">{invalidScanInfo.timestamp} WIB</span>
                     </div>
                     <h4 className="text-xs sm:text-sm font-black text-white truncate mt-0.5">
-                      Kode: <span className="font-mono bg-rose-900/60 px-1.5 py-0.5 rounded border border-rose-700/60">{invalidScanInfo.code}</span>
+                      Status Scan: <span className="font-mono bg-rose-900/80 px-1.5 py-0.5 rounded border border-rose-600 text-rose-200">Gagal / Ditolak</span>
                     </h4>
-                    <p className="text-[10px] sm:text-[11px] text-rose-200 mt-0.5 line-clamp-1">
+                    <p className="text-[11px] sm:text-xs text-rose-100 font-bold mt-1 leading-snug">
                       {invalidScanInfo.reason}
                     </p>
                   </div>
@@ -630,7 +630,7 @@ function ScanScreen({
           {useCamera && (
             <div className="mt-3 flex flex-col sm:flex-row items-center justify-between gap-2 border border-slate-100 bg-slate-50 rounded-2xl p-3">
               <div className="flex flex-col sm:flex-row items-center gap-2">
-                <span className="text-xs text-slate-500 font-bold">Kamera Terintegrasi: Live View {settings.namaSekolah || 'SDN 1 PADAHERANG'}</span>
+                <span className="text-xs text-slate-500 font-bold">Kamera Terintegrasi: Live View {settings.namaSekolah || 'SDN 3 KARAMATWANGI'}</span>
                 <button
                   type="button"
                   onClick={() => setIsMirrored(!isMirrored)}
@@ -719,7 +719,7 @@ function ScanScreen({
             <span className="text-[9px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold font-mono uppercase">Interactive Demo</span>
           </div>
           <p className="text-xs text-gray-500 leading-relaxed mb-3">
-            Untuk menguji aliran sistem absensi <b>{settings.namaSekolah || 'SDN 1 PADAHERANG'}</b> tanpa printer QR Code fisik, klik salah satu kartu siswa virtual di bawah ini atau uji QR Code asing!
+            Untuk menguji aliran sistem absensi <b>{settings.namaSekolah || 'SDN 3 KARAMATWANGI'}</b> tanpa printer QR Code fisik, klik salah satu kartu siswa virtual di bawah ini atau uji QR Code asing!
           </p>
 
           {/* Tombol Uji Simulasi QR Code Tidak Sesuai */}
