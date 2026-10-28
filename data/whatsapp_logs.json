@@ -1,5 +1,16 @@
 [
   {
+    "id": "wa-msg-1793186248437-7020",
+    "studentName": "TEST SISWA SDN 3",
+    "kelas": "Kelas 6-A",
+    "status": "Hadir",
+    "phone": "081234567890",
+    "message": "Test Notifikasi Gateway Terintegrasi",
+    "deliveryStatus": "DELIVERED",
+    "gateway": "DIGIWANGI3_WA_GATEWAY_NODE",
+    "timestamp": "2026-10-28T11:17:28.437Z"
+  },
+  {
     "id": "wa-msg-1792939073722-3020",
     "studentName": "ADE MILDA NURAENI",
     "kelas": "Kelas 1-A",

@@ -373,15 +373,11 @@ function ScanScreen({
       operator: currentUser.namaLengkap,
     };
 
-    // 1. Instantly record attendance into local & server state (updates daily, weekly, monthly, and semester recaps)
+    // 1. Instantly record attendance into local, cloud, and server state (updates daily, weekly, monthly, and semester recaps)
+    // Central handleAddPresensi dispatches WhatsApp notification to parents automatically
     onAddPresensi(newRecord);
     setScannedResult(newRecord);
     setScannerStatus('SUCCESS');
-
-    // 2. Automatically dispatch notification via WhatsApp Gateway to parent's phone
-    sendAutomaticWhatsAppNotification(newRecord, matchedSiswa, settings).catch((err) => {
-      console.warn('Auto WA Gateway dispatch background status:', err);
-    });
 
     // Auto clear toast after 2.8 seconds without interrupting ongoing scanning
     scanTimeoutRef.current = setTimeout(() => {
