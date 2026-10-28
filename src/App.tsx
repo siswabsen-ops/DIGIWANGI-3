@@ -823,6 +823,7 @@ export default function App() {
       } else {
         updated = [...prev, newPresensi];
       }
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
       return updated;
     });
 
