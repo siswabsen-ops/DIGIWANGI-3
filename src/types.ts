@@ -99,6 +99,7 @@ export interface SystemSettings {
   namaKepsek?: string; // Nama Kepala Sekolah untuk Tanda Tangan Laporan
   nipKepsek?: string; // NIP Kepala Sekolah
   waliKelasList?: WaliKelas[]; // Data Wali Kelas per rombel & nomor WhatsApp
+  serverWaNumber?: string; // Nomor Server Gateway WhatsApp (misal: 08214134551)
 }
 
 export interface ActivityLog {

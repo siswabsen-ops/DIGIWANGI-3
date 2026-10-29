@@ -374,7 +374,7 @@ function ScanScreen({
       waktu: waktuSekarang,
       status: determinedStatus,
       waStatus: 'Terkirim',
-      pesanTerkirim: `Terkirim via WA Gateway ke Wali Kelas (${waliPhone || '-'}) lalu ke No HP Ortu (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
+      pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Ortu (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
       operator: currentUser.namaLengkap,
     };
 

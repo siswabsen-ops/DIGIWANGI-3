@@ -2,6 +2,8 @@ import { Presensi, Siswa, SystemSettings, WaliKelas } from '../types';
 import { getLocalDateString, getLocalTimeString, normalizeDateKey } from './attendanceUtils';
 import { DAFTAR_WALI_KELAS, getWaliKelasObject } from './waliKelasData';
 
+export const SERVER_WA_GATEWAY_NUMBER = '08214134551';
+
 export interface WhatsAppGatewayLog {
   id: string;
   studentName: string;
@@ -15,6 +17,40 @@ export interface WhatsAppGatewayLog {
   gateway: string;
   timestamp: string;
   error?: string;
+}
+
+/**
+ * Mengambil log pengiriman gateway dari server (yang sudah difilter otomatis per hari 05.00 WIB)
+ */
+export async function fetchWhatsAppGatewayLogs(): Promise<{ success: boolean; logs: WhatsAppGatewayLog[] }> {
+  try {
+    const res = await fetch('/api/whatsapp/logs');
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, logs: data.logs || [] };
+    }
+  } catch (err) {
+    console.warn('[WA Gateway] Gagal mengambil log gateway server:', err);
+  }
+  return { success: false, logs: [] };
+}
+
+/**
+ * Membersihkan seluruh log notifikasi WhatsApp gateway di server secara manual
+ */
+export async function clearWhatsAppGatewayLogs(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/whatsapp/clear', { method: 'POST' });
+    if (res.ok) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('karapres:whatsapp_logs_cleared'));
+      }
+      return true;
+    }
+  } catch (err) {
+    console.warn('[WA Gateway] Gagal membersihkan log gateway server:', err);
+  }
+  return false;
 }
 
 /**
@@ -256,66 +292,17 @@ export async function sendSingleGatewayNotification(
 }
 
 /**
- * Alur Kerja Otomatis Baru SDN 3 Karamatwangi:
- * 1. Siswa scan QR-code absensi
- * 2. Sistem mencocokkan kelas siswa dengan nomor WhatsApp wali kelas yang terdaftar
- * 3. Langsung mengirim notifikasi absensi ke WA WALI KELAS masing-masing secara otomatis tanpa tombol
- * 4. Baru kemudian notifikasi dikirimkan ke WA ORANG TUA siswa
- * 
- * Aturan Penting:
- * - Jika pengiriman ke WA wali kelas gagal, sistem TETAP LANJUT kirim ke WA orang tua dan mencatat kegagalan di log server.
+/**
+ * Alur Kerja Otomatis Resmi SDN 3 Karamatwangi:
+ * - Setiap siswa selesai absensi scan QR-code, notifikasi presensi langsung dan otomatis dikirimkan ke nomor WhatsApp ORANG TUA siswa masing-masing.
+ * - Pengiriman ke wali kelas ditiadakan sehingga murni fokus ke orang tua siswa secara otomatis.
  */
-export async function sendDualWhatsAppNotification(
+export async function sendAutomaticWhatsAppNotification(
   presensi: Presensi,
   siswa?: Siswa,
   settings?: SystemSettings,
-  waliKelasList?: WaliKelas[]
-): Promise<DualDispatchResult> {
-  const activeWaliKelasList = (waliKelasList && waliKelasList.length > 0) ? waliKelasList : DAFTAR_WALI_KELAS;
-  
-  // 1. Cocokkan kelas siswa dengan data wali kelas
-  const matchedWali = getWaliKelasObject(presensi.kelas, activeWaliKelasList);
-  const waliNama = matchedWali?.nama || `Wali Kelas ${presensi.kelas}`;
-  const waliPhone = matchedWali?.noWa || '';
-  const waliMessage = formatWhatsAppWaliKelasMessage(presensi);
-
-  let waliResult: DispatchRecipientResult;
-
-  // LANGKAH 1: Kirim ke WA Wali Kelas terlebih dahulu
-  try {
-    if (!waliPhone) {
-      console.warn(`[WA Gateway] Nomor WA Wali Kelas untuk ${presensi.kelas} belum terdaftar. Melanjutkan ke orang tua.`);
-      waliResult = {
-        success: false,
-        phone: '',
-        message: waliMessage,
-        recipientRole: 'wali_kelas',
-        recipientName: waliNama,
-        error: `Nomor WhatsApp wali kelas ${presensi.kelas} belum diatur.`
-      };
-    } else {
-      waliResult = await sendSingleGatewayNotification(
-        presensi,
-        siswa,
-        waliPhone,
-        waliMessage,
-        'wali_kelas',
-        waliNama
-      );
-    }
-  } catch (err: any) {
-    console.error(`[WA Gateway Gagal Kirim Wali Kelas]:`, err);
-    waliResult = {
-      success: false,
-      phone: waliPhone,
-      message: waliMessage,
-      recipientRole: 'wali_kelas',
-      recipientName: waliNama,
-      error: err.message || 'Gagal mengirim ke wali kelas'
-    };
-  }
-
-  // LANGKAH 2: Kirim ke WA Orang Tua siswa (tetap berjalan meski langkah 1 gagal)
+  _waliKelasList?: WaliKelas[]
+): Promise<{ success: boolean; phone: string; message: string; messageId: string }> {
   const parentPhone = (
     (siswa && siswa.waOrangTua) ||
     (presensi as any).waOrangTua ||
@@ -324,10 +311,9 @@ export async function sendDualWhatsAppNotification(
   ).trim();
 
   const parentMessage = formatWhatsAppAttendanceMessage(presensi, siswa, settings);
-  let parentResult: DispatchRecipientResult;
 
   try {
-    parentResult = await sendSingleGatewayNotification(
+    const parentResult = await sendSingleGatewayNotification(
       presensi,
       siswa,
       parentPhone,
@@ -335,38 +321,168 @@ export async function sendDualWhatsAppNotification(
       'orang_tua',
       `Orang Tua / Wali Murid dari ${presensi.nama}`
     );
+    return {
+      success: parentResult.success,
+      phone: parentResult.phone,
+      message: parentResult.message,
+      messageId: parentResult.messageId || `msg-${Date.now()}`
+    };
   } catch (err: any) {
     console.error(`[WA Gateway Gagal Kirim Orang Tua]:`, err);
-    parentResult = {
+    return {
       success: false,
       phone: parentPhone,
       message: parentMessage,
-      recipientRole: 'orang_tua',
-      recipientName: `Orang Tua / Wali Murid dari ${presensi.nama}`,
-      error: err.message || 'Gagal mengirim ke orang tua'
+      messageId: `err-${Date.now()}`
     };
   }
+}
+
+/**
+ * Backward compatibility dual dispatch - redirected directly to parent notification
+ */
+export async function sendDualWhatsAppNotification(
+  presensi: Presensi,
+  siswa?: Siswa,
+  settings?: SystemSettings,
+  _waliKelasList?: WaliKelas[]
+): Promise<DualDispatchResult> {
+  const autoRes = await sendAutomaticWhatsAppNotification(presensi, siswa, settings);
+  const parentResult: DispatchRecipientResult = {
+    success: autoRes.success,
+    phone: autoRes.phone,
+    message: autoRes.message,
+    messageId: autoRes.messageId,
+    recipientRole: 'orang_tua',
+    recipientName: `Orang Tua ${presensi.nama}`
+  };
+
+  const dummyWaliResult: DispatchRecipientResult = {
+    success: true,
+    phone: '',
+    message: '',
+    recipientRole: 'wali_kelas',
+    recipientName: 'Wali Kelas (Dilewati, khusus Orang Tua)'
+  };
 
   return {
-    waliKelas: waliResult,
+    waliKelas: dummyWaliResult,
     orangTua: parentResult
   };
 }
 
+export interface BroadcastProgress {
+  current: number;
+  total: number;
+  studentName: string;
+  kelas: string;
+  phone: string;
+}
+
 /**
- * Backward-compatibility wrapper that executes the dual notification workflow
+ * Pengiriman notifikasi massal seluruh kelas (1-A s/d 6-B) ke WhatsApp masing-masing Orang Tua Siswa
  */
-export async function sendAutomaticWhatsAppNotification(
-  presensi: Presensi,
-  siswa?: Siswa,
+export async function broadcastAllClassesToParents(
+  presensiList: Presensi[],
+  siswaList: Siswa[],
   settings?: SystemSettings,
-  waliKelasList?: WaliKelas[]
-): Promise<{ success: boolean; phone: string; message: string; messageId: string }> {
-  const dual = await sendDualWhatsAppNotification(presensi, siswa, settings, waliKelasList);
-  return {
-    success: dual.orangTua.success || dual.waliKelas.success,
-    phone: dual.orangTua.phone,
-    message: dual.orangTua.message,
-    messageId: dual.orangTua.messageId || dual.waliKelas.messageId || `msg-${Date.now()}`
-  };
+  onProgress?: (progress: BroadcastProgress) => void
+): Promise<{ total: number; sent: number; failed: number }> {
+  const todayStr = getLocalDateString();
+  
+  // Ambil data presensi hari ini
+  let todayRecords = presensiList.filter((p) => p.tanggal === todayStr);
+  if (todayRecords.length === 0) {
+    todayRecords = presensiList.slice(-100);
+  }
+
+  // Buat map pencarian siswa
+  const studentMap = new Map<string, Siswa>();
+  for (let i = 0; i < siswaList.length; i++) {
+    const s = siswaList[i];
+    if (s.id) studentMap.set(s.id, s);
+    if (s.nis) studentMap.set(s.nis.trim(), s);
+    if (s.nama) studentMap.set(s.nama.trim().toLowerCase(), s);
+  }
+
+  const items = todayRecords.map((p) => {
+    let s = p.siswaId ? studentMap.get(p.siswaId) : undefined;
+    if (!s && p.nis) s = studentMap.get(p.nis.trim());
+    if (!s && p.nama) s = studentMap.get(p.nama.trim().toLowerCase());
+
+    const parentPhone = (s?.waOrangTua || (p as any).waOrangTua || '081234567890').trim();
+    const message = formatWhatsAppAttendanceMessage(p, s, settings);
+    return {
+      presensi: p,
+      siswa: s,
+      phone: parentPhone,
+      message,
+      recipientName: `Orang Tua / Wali Murid dari ${p.nama}`
+    };
+  });
+
+  if (items.length === 0) {
+    return { total: 0, sent: 0, failed: 0 };
+  }
+
+  // Coba kirim via server broadcast batch API
+  try {
+    const res = await fetch('/api/whatsapp/broadcast-parents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('karapres:whatsapp_broadcast_complete', { detail: data }));
+      }
+      return {
+        total: data.total || items.length,
+        sent: data.sent || items.length,
+        failed: data.failed || 0
+      };
+    }
+  } catch (err) {
+    console.warn('[WA Gateway] Server batch broadcast fallback to sequential:', err);
+  }
+
+  // Fallback sequential dispatch
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (onProgress) {
+      onProgress({
+        current: i + 1,
+        total: items.length,
+        studentName: item.presensi.nama,
+        kelas: item.presensi.kelas,
+        phone: item.phone
+      });
+    }
+
+    try {
+      const r = await sendSingleGatewayNotification(
+        item.presensi,
+        item.siswa,
+        item.phone,
+        item.message,
+        'orang_tua',
+        item.recipientName
+      );
+      if (r.success) sent++;
+      else failed++;
+    } catch {
+      failed++;
+    }
+
+    if (i < items.length - 1) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
+  return { total: items.length, sent, failed };
 }

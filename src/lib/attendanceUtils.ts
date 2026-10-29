@@ -2,28 +2,41 @@ import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS, normalizeKelasCode } fr
 import { getWaliKelasByKelas } from './waliKelasData';
 
 /**
- * Mendapatkan string tanggal hari ini (YYYY-MM-DD) berdasarkan zona waktu WIB (Asia/Jakarta)
- * dan fallback ke waktu lokal peramban.
+ * Mendapatkan string tanggal hari ini (YYYY-MM-DD) berdasarkan zona waktu resmi sekolah WIB (Asia/Jakarta)
  */
 export const getLocalDateString = (d: Date = new Date()): string => {
   try {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
   } catch {
-    return new Date().toISOString().slice(0, 10);
+    try {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
   }
 };
 
 /**
- * Format jam menit detik lokal (HH:mm:ss)
+ * Format jam menit detik resmi sekolah WIB (HH:mm:ss)
  */
 export const getLocalTimeString = (d: Date = new Date()): string => {
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(d);
+  } catch {
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  }
 };
 
 /**

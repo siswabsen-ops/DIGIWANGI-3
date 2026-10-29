@@ -101,6 +101,18 @@ export default function App() {
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length >= 1000) {
+          const todayStr = getLocalDateString();
+          const hasToday = parsed.some((p: Presensi) => p.tanggal === todayStr);
+          if (hasToday) {
+            return parsed;
+          }
+          // Merge today's records from PRESENSI_INITIAL if cache only had older dates
+          const todayInitials = PRESENSI_INITIAL.filter(p => p.tanggal === todayStr);
+          if (todayInitials.length > 0) {
+            const merged = [...parsed, ...todayInitials];
+            safeSetItem('karapres3_presensi_v5', JSON.stringify(merged));
+            return merged;
+          }
           return parsed;
         }
       } catch {}
@@ -246,8 +258,34 @@ export default function App() {
         safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(data.waliKelas));
       }
       if (data.presensi && Array.isArray(data.presensi) && data.presensi.length >= 1000) {
-        setPresensiList(data.presensi);
-        safeSetItem('karapres3_presensi_v5', JSON.stringify(data.presensi));
+        setPresensiList((currentList) => {
+          const map = new Map<string, Presensi>();
+          for (let i = 0; i < data.presensi.length; i++) {
+            const p = data.presensi[i];
+            const sid = p.siswaId || p.nis || p.nama;
+            const d = normalizeDateKey(p.tanggal);
+            map.set(`${sid}__${d}`, p);
+          }
+          // Preserve any live scans already performed in current session
+          for (let i = 0; i < currentList.length; i++) {
+            const p = currentList[i];
+            const sid = p.siswaId || p.nis || p.nama;
+            const d = normalizeDateKey(p.tanggal);
+            const key = `${sid}__${d}`;
+            const existing = map.get(key);
+            if (!existing) {
+              map.set(key, p);
+            } else {
+              const isLocalLiveScan = p.operator !== 'Cecep Mulyana (Piket)' || (p.pesanTerkirim && p.pesanTerkirim.includes('via QR Code'));
+              if (isLocalLiveScan) {
+                map.set(key, p);
+              }
+            }
+          }
+          const merged = Array.from(map.values());
+          safeSetItem('karapres3_presensi_v5', JSON.stringify(merged));
+          return merged;
+        });
       } else {
         const activeStudents = (data.students && data.students.length > 0) ? data.students : siswaList;
         auditAndSyncSemesterPresensi(data.presensi || presensiList, activeStudents).then((auditRes) => {
@@ -827,18 +865,18 @@ export default function App() {
       return updated;
     });
 
-    // Automatically dispatch dual WhatsApp notifications: First to Homeroom Teacher (Wali Kelas), then to Parents
+    // Automatically dispatch WhatsApp notification directly & exclusively to Parents
     const matchedSiswa = siswaList.find(s => 
       s.id === newPresensi.siswaId || 
       (s.nis && newPresensi.nis && s.nis.trim() === newPresensi.nis.trim()) ||
       (s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() && s.kelas === newPresensi.kelas)
     );
-    sendDualWhatsAppNotification(newPresensi, matchedSiswa, settings, waliKelasList).catch((err) => {
-      console.warn('[WA Dual Gateway Warning]:', err);
+    sendAutomaticWhatsAppNotification(newPresensi, matchedSiswa, settings).catch((err) => {
+      console.warn('[WA Gateway Warning]:', err);
     });
 
-    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Otomatis terkirim ke WA Wali Kelas lalu ke Orang Tua`);
-  }, [currentUser, siswaList, settings, waliKelasList, addActivityLog]);
+    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi otomatis langsung terkirim ke WhatsApp Orang Tua`);
+  }, [currentUser, siswaList, settings, addActivityLog]);
 
   // Quick reset logs
   const handleClearLogs = useCallback(() => {
@@ -1221,7 +1259,6 @@ export default function App() {
       {/* Floating simulator component with real automatic parent WhatsApp dispatch */}
       <WhatsAppSimulator
         logs={recentPresensiSlice}
-        onClearLogs={() => setPresensiList([])}
         siswaList={siswaList}
         settings={settings}
         waliKelasList={waliKelasList}

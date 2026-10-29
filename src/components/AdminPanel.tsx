@@ -139,6 +139,7 @@ function AdminPanel({
   const [jamMasuk, setJamMasuk] = useState(settings.jamMasuk);
   const [jamToleransi, setJamToleransi] = useState(settings.jamToleransi);
   const [templatePesan, setTemplatePesan] = useState(settings.templatePesan);
+  const [serverWaNumber, setServerWaNumber] = useState(settings.serverWaNumber || '08214134551');
   const [spreadsheetId, setSpreadsheetId] = useState(settings.googleSpreadsheetId);
   const [driveFolderId, setDriveFolderId] = useState(settings.googleDriveFolderId);
 
@@ -560,6 +561,7 @@ function AdminPanel({
       jamPulang: settings.jamPulang || '12:30',
       jadwalList: listToSave,
       templatePesan,
+      serverWaNumber: serverWaNumber.trim() || '08214134551',
       googleSpreadsheetId: spreadsheetId,
       googleDriveFolderId: driveFolderId,
     };
@@ -2011,6 +2013,30 @@ function AdminPanel({
               </div>
 
               <form onSubmit={handleSaveAllSettings} className="space-y-4">
+                {/* Nomor Server WhatsApp Gateway Terpadu */}
+                <div className="space-y-1.5 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Nomor Server WhatsApp Gateway Sekolah:</span>
+                    </label>
+                    <span className="text-[10px] text-emerald-800 bg-emerald-100 font-bold px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Live Auto-Reset 05:00 WIB
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={serverWaNumber}
+                    onChange={(e) => setServerWaNumber(e.target.value)}
+                    placeholder="08214134551"
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-emerald-950"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Nomor WhatsApp pengirim resmi gateway Digiwangi (default: <b className="font-mono text-emerald-800">08214134551</b>). Pesan kehadiran otomatis dikirimkan langsung ke nomor WhatsApp Orang Tua siswa per kelasnya.
+                  </p>
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-gray-700 uppercase">Isi Format Pesan Notifikasi:</label>
                   <textarea

@@ -358,9 +358,47 @@ async function startServer() {
     res.json({ success: true, version: syncVersion });
   });
 
+  const SERVER_WA_GATEWAY_NUMBER = "08214134551";
+
+  // Hitung batas waktu cut-off harian pukul 05:00 WIB (Asia/Jakarta)
+  function getWibCutoffTimestamp(): number {
+    const now = new Date();
+    const wibDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(now);
+    const wibHourStr = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", hour: "2-digit", hour12: false }).format(now);
+    const wibHour = parseInt(wibHourStr, 10);
+    
+    let targetDateStr = wibDate;
+    if (wibHour < 5) {
+      // Jika sebelum jam 05:00 WIB, hari aktif log adalah sejak kemarin jam 05:00 WIB
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      targetDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(yesterday);
+    }
+    return new Date(`${targetDateStr}T05:00:00+07:00`).getTime();
+  }
+
+  // Fungsi auto-reset data notifikasi WA harian pukul 05:00 WIB agar tidak menumpuk
+  function purgeOldWhatsAppLogs(): any[] {
+    const cutoffTime = getWibCutoffTimestamp();
+    const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
+    const freshLogs = existingLogs.filter((log: any) => {
+      const t = new Date(log.timestamp).getTime();
+      return !isNaN(t) && t >= cutoffTime;
+    });
+
+    if (freshLogs.length !== existingLogs.length) {
+      writeJsonFile(WHATSAPP_LOGS_FILE, freshLogs);
+      console.log(`[WA Gateway Auto-Reset 05:00] Berhasil mereset bersih ${existingLogs.length - freshLogs.length} notifikasi hari sebelumnya. Log hari ini aktif: ${freshLogs.length}.`);
+    }
+    return freshLogs;
+  }
+
+  // Jalankan pembersihan berkala setiap 60 detik
+  setInterval(purgeOldWhatsAppLogs, 60000);
+
   // 8. Automatic WhatsApp Gateway notification dispatch
   app.post("/api/whatsapp/send-gateway", (req, res) => {
     try {
+      purgeOldWhatsAppLogs();
       const { presensi, siswa, phone, message, recipientRole, recipientName } = req.body;
       const targetPhone = (phone || (siswa && siswa.waOrangTua) || (presensi && presensi.waOrangTua) || '').trim();
       const studentName = presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi';
@@ -373,6 +411,7 @@ async function startServer() {
 
       const logEntry = {
         id: messageId,
+        serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
         recipientRole: recipientRole || 'orang_tua',
         recipientName: recipientName || (recipientRole === 'wali_kelas' ? 'Wali Kelas' : 'Orang Tua'),
         studentName,
@@ -398,17 +437,19 @@ async function startServer() {
         console.warn(`[WA Gateway Warning] Pengiriman ke [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${studentName} - ${studentClass}) GAGAL: Nomor tidak valid. Dicatat di log.`);
         res.status(400).json({
           success: false,
+          serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
           error: "Nomor WhatsApp tujuan kosong atau tidak valid",
           logEntry
         });
         return;
       }
 
-      console.log(`[WA Gateway] Dispatched notification to [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${targetPhone}) for ${studentName} (${studentClass} - ${studentStatus})`);
+      console.log(`[WA Gateway 08214134551] Dispatched notification to [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${targetPhone}) for ${studentName} (${studentClass} - ${studentStatus})`);
 
       res.json({
         success: true,
         messageId,
+        serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
         phone: targetPhone,
         recipientRole: logEntry.recipientRole,
         recipientName: logEntry.recipientName,
@@ -420,6 +461,7 @@ async function startServer() {
       try {
         const failureLog = {
           id: `wa-err-${Date.now()}`,
+          serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
           recipientRole: req.body?.recipientRole || 'unknown',
           recipientName: req.body?.recipientName || 'Unknown',
           studentName: req.body?.presensi?.nama || 'Unknown',
@@ -440,14 +482,97 @@ async function startServer() {
     }
   });
 
-  // 8b. Fetch WhatsApp Gateway delivery logs
+  // 8b. Batch broadcast notifications for all classes to student parents
+  app.post("/api/whatsapp/broadcast-parents", (req, res) => {
+    try {
+      purgeOldWhatsAppLogs();
+      const { items } = req.body;
+      if (!Array.isArray(items)) {
+        res.status(400).json({ error: "Invalid items array." });
+        return;
+      }
+
+      const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
+      const nowIso = new Date().toISOString();
+      let sentCount = 0;
+      let failedCount = 0;
+
+      for (const item of items) {
+        const { presensi, siswa, phone, message, recipientName } = item;
+        const targetPhone = (phone || (siswa && siswa.waOrangTua) || (presensi && presensi.waOrangTua) || '').trim();
+        const studentName = presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi';
+        const studentClass = presensi?.kelas || siswa?.kelas || '-';
+        const studentStatus = presensi?.status || 'Hadir';
+        const isFailed = !targetPhone || targetPhone === '-';
+
+        const messageId = `wa-bcast-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+        const logEntry = {
+          id: messageId,
+          serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
+          recipientRole: 'orang_tua',
+          recipientName: recipientName || `Orang Tua ${studentName}`,
+          studentName,
+          kelas: studentClass,
+          status: studentStatus,
+          phone: targetPhone || 'TIDAK TERDAFTAR',
+          message: message || `Presensi ${studentName} (${studentClass}): ${studentStatus}`,
+          deliveryStatus: isFailed ? 'FAILED' : 'DELIVERED',
+          gateway: 'DIGIWANGI3_WA_GATEWAY_NODE',
+          timestamp: nowIso,
+          error: isFailed ? 'Nomor tujuan WhatsApp belum diisi atau tidak valid' : undefined
+        };
+
+        existingLogs.unshift(logEntry);
+        if (isFailed) {
+          failedCount++;
+        } else {
+          sentCount++;
+        }
+      }
+
+      if (existingLogs.length > 500) {
+        existingLogs.length = 500;
+      }
+      writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
+
+      console.log(`[WA Gateway Broadcast 08214134551] Broadcast sukses ke orang tua semua kelas: ${sentCount} berhasil, ${failedCount} gagal dari total ${items.length} siswa.`);
+
+      res.json({
+        success: true,
+        serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
+        total: items.length,
+        sent: sentCount,
+        failed: failedCount,
+        timestamp: nowIso
+      });
+    } catch (err: any) {
+      console.error("[WA Gateway Broadcast Error]:", err);
+      res.status(500).json({ error: err.message || "Failed to broadcast WhatsApp messages to parents" });
+    }
+  });
+
+  // 8c. Fetch WhatsApp Gateway delivery logs (ter-filter per hari cut-off 05:00 WIB)
   app.get("/api/whatsapp/logs", (_req, res) => {
-    const logs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
+    const logs = purgeOldWhatsAppLogs();
     res.json({
       success: true,
       total: logs.length,
-      logs: logs.slice(0, 100),
-      gatewayStatus: 'ACTIVE_CONNECTED'
+      logs: logs.slice(0, 150),
+      serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
+      gatewayStatus: 'ACTIVE_CONNECTED',
+      autoResetInfo: 'Setiap hari pukul 05:00 WIB log notifikasi otomatis direset bersih.'
+    });
+  });
+
+  // 8c. Manual reset tombol bersih notifikasi WhatsApp
+  app.post("/api/whatsapp/clear", (_req, res) => {
+    writeJsonFile(WHATSAPP_LOGS_FILE, []);
+    console.log("[WA Gateway Manual Reset] Seluruh notifikasi WhatsApp gateway berhasil dibersihkan manual.");
+    res.json({
+      success: true,
+      message: "Seluruh riwayat notifikasi WhatsApp berhasil dibersihkan bersih.",
+      serverWaNumber: SERVER_WA_GATEWAY_NUMBER
     });
   });
 

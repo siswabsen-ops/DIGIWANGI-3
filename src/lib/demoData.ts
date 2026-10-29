@@ -148,7 +148,8 @@ Semoga selamat sampai di rumah. Terima kasih.`,
   googleDriveFolderId: '1RoPgYTYP3GqzcDhLv_xKJshIYRjQisoe',
   isGoogleConnected: true,
   isWhatsAppConnected: true,
-  waApiKey: 'KARA3_WS_GATEWAY_v2'
+  waApiKey: 'KARA3_WS_GATEWAY_v2',
+  serverWaNumber: '08214134551'
 };
 
 // Log awal untuk realistis harian

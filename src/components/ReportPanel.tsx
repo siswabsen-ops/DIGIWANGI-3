@@ -92,7 +92,7 @@ function ReportPanel({
     type: 'harian',
     kelas: 'Semua Kelas',
     date: getLocalDateString(),
-    month: new Date().toISOString().slice(0, 7)
+    month: getLocalDateString().slice(0, 7)
   });
 
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
@@ -129,10 +129,7 @@ function ReportPanel({
 
   // 3. BULANAN STATE (Format YYYY-MM)
   const [bulananMonth, setBulananMonth] = useState<string>(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
+    return getLocalDateString().slice(0, 7);
   });
 
   // 4. SEMESTER STATE
