@@ -19,6 +19,7 @@ const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
 const VERSION_FILE = path.join(DATA_DIR, "version.json");
 const WHATSAPP_LOGS_FILE = path.join(DATA_DIR, "whatsapp_logs.json");
+const QR_ERRORS_FILE = path.join(DATA_DIR, "qr_errors.json");
 
 // Default Wali Kelas
 const DEFAULT_WALI_KELAS = [
@@ -154,12 +155,21 @@ if (!fs.existsSync(PRESENSI_FILE)) {
     console.error("Failed to seed initial semester presensi:", err);
   }
 } else {
-  // Prime in-memory presensi cache
+  // Prime in-memory presensi cache and ensure today's school day is audited & present
   try {
     const existing = getCachedPresensi();
-    console.log(`[Cloud Presensi] Data presensi aktif: ${existing.length} catatan tersimpan aman in-memory.`);
+    const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+    if (students.length > 0) {
+      const auditResult = auditAndSynchronizePresensi(existing, students);
+      if (auditResult.synchronizedRecords.length > existing.length) {
+        saveCachedPresensi(auditResult.synchronizedRecords);
+        console.log(`[Cloud Presensi] Auto-synchronized: added ${auditResult.addedDaysCount} days, total ${auditResult.synchronizedRecords.length} records including today.`);
+      } else {
+        console.log(`[Cloud Presensi] Data presensi aktif: ${existing.length} catatan tersimpan aman in-memory.`);
+      }
+    }
   } catch (err) {
-    console.error("Gagal membaca arsip presensi pada startup:", err);
+    console.error("Gagal memeriksa arsip presensi pada startup:", err);
   }
 }
 
@@ -574,6 +584,44 @@ async function startServer() {
       message: "Seluruh riwayat notifikasi WhatsApp berhasil dibersihkan bersih.",
       serverWaNumber: SERVER_WA_GATEWAY_NUMBER
     });
+  });
+
+  // 9. QR Error Logs (Rekam QR Code Ditolak / Kartu Tidak Resmi)
+  app.get("/api/qr-errors", (req, res) => {
+    const errors = readJsonFile<any[]>(QR_ERRORS_FILE, []);
+    const dateFilter = req.query.date as string;
+    if (dateFilter) {
+      const filtered = errors.filter((e) => (e.date || '').slice(0, 10) === dateFilter.slice(0, 10));
+      res.json({ success: true, errors: filtered });
+    } else {
+      res.json({ success: true, errors });
+    }
+  });
+
+  app.post("/api/qr-errors", (req, res) => {
+    try {
+      const errorRecord = req.body;
+      if (!errorRecord || !errorRecord.code) {
+        res.status(400).json({ error: "Invalid error payload" });
+        return;
+      }
+      const errors = readJsonFile<any[]>(QR_ERRORS_FILE, []);
+      const newEntry = {
+        id: errorRecord.id || `err-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: errorRecord.timestamp || new Date().toLocaleTimeString('id-ID'),
+        date: errorRecord.date || new Date().toISOString().slice(0, 10),
+        code: errorRecord.code,
+        reason: errorRecord.reason || 'Kode ini bukan NIS, NISN, NIK atau ID resmi Siswa SDN 3 KARAMATWANGI.',
+        operator: errorRecord.operator || 'Scanner Piket',
+        kelasHint: errorRecord.kelasHint || 'Tidak Teridentifikasi',
+        createdAt: new Date().toISOString()
+      };
+      errors.push(newEntry);
+      writeJsonFile(QR_ERRORS_FILE, errors.slice(-200));
+      res.json({ success: true, error: newEntry });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to record QR error" });
+    }
   });
 
   // Vite middleware for development vs static build in production

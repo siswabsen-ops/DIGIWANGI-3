@@ -409,3 +409,45 @@ export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
   }
   return false;
 }
+
+export interface QRErrorLog {
+  id: string;
+  timestamp: string;
+  date: string;
+  code: string;
+  reason: string;
+  operator: string;
+  kelasHint?: string;
+  createdAt?: string;
+}
+
+export async function recordQRErrorToCloud(errorData: Partial<QRErrorLog>): Promise<QRErrorLog | null> {
+  try {
+    const res = await fetch('/api/qr-errors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(errorData)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.error;
+    }
+  } catch (err) {
+    console.warn('[CloudSync] recordQRErrorToCloud notice:', err);
+  }
+  return null;
+}
+
+export async function fetchQRErrorsFromCloud(dateStr?: string): Promise<QRErrorLog[]> {
+  try {
+    const url = dateStr ? `/api/qr-errors?date=${encodeURIComponent(dateStr)}` : '/api/qr-errors';
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      return data.errors || [];
+    }
+  } catch (err) {
+    console.warn('[CloudSync] fetchQRErrorsFromCloud notice:', err);
+  }
+  return [];
+}

@@ -1,9 +1,18 @@
 import { Siswa, Presensi } from '../types';
-import { normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
+import { getLocalDateString, normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
 
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
-export const CURRENT_SEMESTER_DATE = '2026-10-29';
+export const CURRENT_SEMESTER_DATE = '2026-10-30';
+
+export const getEffectiveTodayDate = (): string => {
+  try {
+    const today = getLocalDateString();
+    return today >= '2026-10-30' ? today : '2026-10-30';
+  } catch {
+    return '2026-10-30';
+  }
+};
 
 export const SEMESTER_1_HOLIDAYS = new Set<string>([
   '2026-08-17',
@@ -11,7 +20,7 @@ export const SEMESTER_1_HOLIDAYS = new Set<string>([
 
 export function getSchoolDaysRange(
   startDateStr: string = SEMESTER_1_START_DATE,
-  endDateStr: string = CURRENT_SEMESTER_DATE
+  endDateStr: string = getEffectiveTodayDate()
 ): string[] {
   const result: string[] = [];
   const start = new Date(`${startDateStr}T00:00:00Z`);
@@ -202,7 +211,7 @@ export function generateRealisticDayRecords(
 }
 
 export function generateFullSemesterPresensi(students: Siswa[]): Presensi[] {
-  const schoolDays = getSchoolDaysRange(SEMESTER_1_START_DATE, CURRENT_SEMESTER_DATE);
+  const schoolDays = getSchoolDaysRange(SEMESTER_1_START_DATE, getEffectiveTodayDate());
   const allRecords: Presensi[] = [];
 
   for (let i = 0; i < schoolDays.length; i++) {
@@ -231,7 +240,7 @@ export function auditAndSynchronizePresensi(
   students: Siswa[],
   options?: { forceRegenerateVaried?: boolean }
 ): SyncAuditResult {
-  const schoolDays = getSchoolDaysRange(SEMESTER_1_START_DATE, CURRENT_SEMESTER_DATE);
+  const schoolDays = getSchoolDaysRange(SEMESTER_1_START_DATE, getEffectiveTodayDate());
   const schoolDaysSet = new Set(schoolDays);
 
   const existingMap = new Map<string, Presensi>();
