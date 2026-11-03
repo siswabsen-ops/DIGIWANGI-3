@@ -126,8 +126,11 @@ function GuruPanel({
       waktu: waktuSekarang,
       status: targetStatus,
       waStatus: 'Terkirim',
-      pesanTerkirim: `Diproses via Server Utama WA Gateway (087844651559) ➔ Disinkronkan manual oleh Wali Kelas (${siswa.waOrangTua})`,
+      pesanTerkirim: `Diproses via Server Utama WA Gateway (08214134551) ➔ Disinkronkan manual oleh Wali Kelas (${siswa.waOrangTua})`,
       operator: currentUser.namaLengkap,
+      metode: 'MANUAL_TAP',
+      metodeLabel: 'Manual Tap Wali Kelas',
+      keterangan: `Dicatat manual oleh Wali Kelas: ${currentUser.namaLengkap} [${targetStatus}]`
     };
 
     onAddPresensi(newRecord);

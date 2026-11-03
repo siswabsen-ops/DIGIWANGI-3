@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, useEffect, memo } from 'react';
 import { 
   Calendar, 
   Download, 
@@ -22,9 +22,12 @@ import {
   Sparkles,
   School,
   FileDown,
-  RefreshCcw
+  RefreshCcw,
+  QrCode,
+  X,
+  AlertCircle
 } from 'lucide-react';
-import { Siswa, Presensi, StatusKehadiran, SystemSettings, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, StatusKehadiran, SystemSettings, DAFTAR_KELAS, QRErrorRecord } from '../types';
 import AttendanceBarChart from './AttendanceBarChart';
 import AttendancePrintModal from './AttendancePrintModal';
 import ClassReportDownloadModal from './ClassReportDownloadModal';
@@ -138,6 +141,25 @@ function ReportPanel({
 
   // Filter status rombel (Semua, Tuntas, Sedang Berjalan, Belum Mulai)
   const [rombelFilter, setRombelFilter] = useState<'semua' | 'tuntas' | 'berjalan' | 'belum'>('semua');
+
+  // Rekam riwayat QR Code Error / Ditolak
+  const [qrErrors, setQrErrors] = useState<QRErrorRecord[]>([]);
+  const [showQrErrorModal, setShowQrErrorModal] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/qr-errors')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.errors && Array.isArray(d.errors)) {
+          setQrErrors(d.errors);
+        }
+      })
+      .catch(() => {});
+  }, [harianDate]);
+
+  const dailyQrErrors = useMemo(() => {
+    return qrErrors.filter((e) => (e.date || '').slice(0, 10) === harianDate);
+  }, [qrErrors, harianDate]);
 
   // Rekapitulasi Rombel Semua Kelas (1-A s/d 6-B) untuk tanggal terpilih
   const allRombelSummary = useMemo(() => {
@@ -853,15 +875,48 @@ function ReportPanel({
                     />
                     <button
                       type="button"
-                      onClick={() => setHarianDate('2026-10-28')}
+                      onClick={() => setHarianDate(getLocalDateString())}
                       className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer flex items-center gap-1 ${
-                        harianDate === '2026-10-28' || harianDate === getLocalDateString()
+                        harianDate === getLocalDateString()
                           ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-                      <span>Rabu 28 Okt (Hari Ini)</span>
+                      <span>Hari Ini ({getLocalDateString()})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-30')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-30'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Jumat 30 Okt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-29')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-29'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Kamis 29 Okt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHarianDate('2026-10-28')}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        harianDate === '2026-10-28'
+                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Rabu 28 Okt
                     </button>
                     <button
                       type="button"
@@ -872,7 +927,7 @@ function ReportPanel({
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      Selasa 27 Okt (Kemarin)
+                      Selasa 27 Okt
                     </button>
                     <button
                       type="button"
@@ -884,29 +939,6 @@ function ReportPanel({
                       }`}
                     >
                       Senin 26 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-23')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-23'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                      title="Rekap hari sekolah sebelumnya"
-                    >
-                      📅 23 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-22')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-22'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      22 Okt
                     </button>
                   </div>
                 </div>
@@ -945,6 +977,140 @@ function ReportPanel({
                 <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2 text-center min-w-[75px]">
                   <span className="text-[9px] font-black text-slate-600 block uppercase">Belum Absen</span>
                   <p className="text-base font-black text-slate-800 mt-0.5">{harianStats.belumAbsen}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* STATUS PELAKSANAAN PRESENSI PER KELAS HARI INI & ERROR TRACKER */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3.5 text-left">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Status Pelaksanaan Presensi Per Rombel Kelas ({new Date(harianDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })})</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Monitoring riil: kelas mana yang sudah melakukan absen (tuntas), sedang berjalan, belum absen, serta riwayat QR Code ditolak/error.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {dailyQrErrors.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowQrErrorModal(true)}
+                      className="bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 text-[11px] font-black py-1.5 px-3 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="Klik untuk melihat rincian barcode yang ditolak"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 animate-bounce" />
+                      <span>{dailyQrErrors.length} QR Code Ditolak Hari Ini</span>
+                    </button>
+                  ) : (
+                    <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold py-1 px-2.5 rounded-lg flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Semua Barcode Terverifikasi Resmi</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Tiga Kolom Klasifikasi Keberjalanan Kelas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                {/* 1. Tuntas Absen */}
+                <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-emerald-900 flex items-center gap-1.5 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                      Kelas Tuntas Absen ({rombelStatusStats.tuntas})
+                    </span>
+                    <span className="text-[9px] bg-emerald-200 text-emerald-900 font-extrabold px-1.5 py-0.2 rounded-full">100% Selesai</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {allRombelSummary.filter(r => r.belumAbsen === 0 && r.totalHadir > 0).map(r => (
+                      <button
+                        key={r.kelas}
+                        type="button"
+                        onClick={() => setSelectedKelas(r.kelas)}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 border ${
+                          selectedKelas === r.kelas 
+                            ? 'bg-emerald-700 text-white border-emerald-600 shadow-xs' 
+                            : 'bg-white hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                        }`}
+                        title={`Klik untuk melihat detail ${r.kelas}`}
+                      >
+                        <span>{r.kelas}</span>
+                        <span className="font-mono text-[9px] opacity-90 font-extrabold">({r.totalHadir}/{r.totalSiswa})</span>
+                      </button>
+                    ))}
+                    {rombelStatusStats.tuntas === 0 && (
+                      <span className="text-slate-400 italic text-[10px]">Belum ada kelas yang tuntas 100%</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Sedang Berjalan */}
+                <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-amber-950 flex items-center gap-1.5 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                      Sedang Berjalan ({rombelStatusStats.berjalan})
+                    </span>
+                    <span className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1.5 py-0.2 rounded-full">Proses Scan</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {allRombelSummary.filter(r => r.totalHadir > 0 && r.belumAbsen > 0).map(r => (
+                      <button
+                        key={r.kelas}
+                        type="button"
+                        onClick={() => setSelectedKelas(r.kelas)}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 border ${
+                          selectedKelas === r.kelas 
+                            ? 'bg-amber-600 text-white border-amber-500 shadow-xs' 
+                            : 'bg-white hover:bg-amber-100 text-amber-900 border-amber-300'
+                        }`}
+                        title={`Klik untuk melihat detail ${r.kelas}`}
+                      >
+                        <span>{r.kelas}</span>
+                        <span className="font-mono text-[9px] font-extrabold">({r.totalHadir}/{r.totalSiswa} • Sisa {r.belumAbsen})</span>
+                      </button>
+                    ))}
+                    {rombelStatusStats.berjalan === 0 && (
+                      <span className="text-slate-400 italic text-[10px]">Tidak ada kelas yang sedang berjalan</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Belum Melakukan Absen */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-slate-700 flex items-center gap-1.5 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-slate-400" />
+                      Belum Melakukan Absen ({rombelStatusStats.belum})
+                    </span>
+                    <span className="text-[9px] bg-slate-200 text-slate-700 font-extrabold px-1.5 py-0.2 rounded-full">0 Absen</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {allRombelSummary.filter(r => r.totalHadir === 0).map(r => (
+                      <button
+                        key={r.kelas}
+                        type="button"
+                        onClick={() => setSelectedKelas(r.kelas)}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer border ${
+                          selectedKelas === r.kelas 
+                            ? 'bg-slate-800 text-white border-slate-700 shadow-xs' 
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        <span>{r.kelas}</span>
+                      </button>
+                    ))}
+                    {rombelStatusStats.belum === 0 && (
+                      <span className="text-emerald-700 font-bold text-[10px] flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span>Semua 12 rombel kelas telah memulai presensi!</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1103,6 +1269,7 @@ function ReportPanel({
                       <th className="py-3 px-3 w-28">Rombel</th>
                       <th className="py-3 px-3">Wali Kelas</th>
                       <th className="py-3 px-3 text-center bg-indigo-50 text-indigo-950 font-black">Status Absen</th>
+                      <th className="py-3 px-3 text-center bg-teal-50 text-teal-950 font-black">Metode Presensi</th>
                       <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
                       <th className="py-3 px-2 text-center bg-emerald-100/60 text-emerald-900">Hadir</th>
                       <th className="py-3 px-2 text-center bg-amber-100/60 text-amber-900">Telat</th>
@@ -1153,6 +1320,19 @@ function ReportPanel({
                                 ⚪ Belum Mulai
                               </span>
                             )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <QrCode className="w-3 h-3 text-emerald-700" />
+                                <span>{rombel.totalScanQR} Scan QR</span>
+                              </span>
+                              {rombel.totalManualTap > 0 && (
+                                <span className="text-[9px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                  👆 {rombel.totalManualTap} Manual Tap
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 px-2.5 text-center font-black text-slate-900 bg-slate-50/80">{rombel.totalSiswa}</td>
                           <td className="py-2.5 px-2 text-center font-bold text-emerald-800 bg-emerald-50/40">{rombel.hadir}</td>
@@ -1358,9 +1538,11 @@ function ReportPanel({
                         <th className="py-3 px-4 w-12 text-center">No</th>
                         <th className="py-3 px-4 w-28 font-mono">NIS</th>
                         <th className="py-3 px-4">Nama Lengkap</th>
-                        <th className="py-3 px-4 w-28">Kelas</th>
+                        <th className="py-3 px-4 w-24">Kelas</th>
                         <th className="py-3 px-4 w-24 text-center">Waktu Scan</th>
-                        <th className="py-3 px-4 w-36 text-center">Status Kehadiran</th>
+                        <th className="py-3 px-4 w-32 text-center">Status Kehadiran</th>
+                        <th className="py-3 px-4 w-36 text-center">Metode Presensi</th>
+                        <th className="py-3 px-4">Keterangan</th>
                         <th className="py-3 px-4 w-44">Disubmit Oleh</th>
                       </tr>
                     </thead>
@@ -1417,6 +1599,43 @@ function ReportPanel({
                             </td>
                             <td className="py-2.5 px-4 text-center">
                               {statusBadge}
+                            </td>
+                            <td className="py-2.5 px-4 text-center">
+                              {row.record ? (
+                                row.record.metode === 'QR_SCAN' || (!row.record.metode && (row.record.status === 'Hadir' || row.record.status === 'Terlambat')) ? (
+                                  <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                    <QrCode className="w-3 h-3 text-emerald-700" />
+                                    <span>Scan QR Code</span>
+                                  </span>
+                                ) : row.record.metode === 'MANUAL_TAP' || (!row.record.metode && (row.record.status === 'Sakit' || row.record.status === 'Izin')) ? (
+                                  <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                                    <span>👆 Manual Tap Wali</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                    <span>⌨️ Manual Operator</span>
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-slate-400 italic text-[10px]">Belum Absen</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4 text-[11px] text-slate-600 font-medium">
+                              {row.record ? (
+                                <div className="space-y-0.5">
+                                  <p className="font-semibold text-slate-800">
+                                    {row.record.keterangan || (row.record.status === 'Hadir' ? 'Tercatat Hadir via Kartu Siswa' : `Keterangan ${row.record.status}`)}
+                                  </p>
+                                  {row.record.scanError && (
+                                    <p className="text-[10px] text-rose-600 font-bold flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3" />
+                                      <span>{row.record.scanError}</span>
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 italic">Menunggu pemindaian kartu</span>
+                              )}
                             </td>
                             <td className="py-2.5 px-4 text-[11px] text-slate-500 font-medium font-sans">
                               {row.record ? (
@@ -1929,11 +2148,22 @@ function ReportPanel({
                       onClick={() => setBulananMonth('2026-10')}
                       className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
                         bulananMonth === '2026-10'
+                          ? 'bg-emerald-700 text-white border-emerald-600 shadow-xs font-black ring-2 ring-emerald-300'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-extrabold'
+                      }`}
+                    >
+                      ⭐ Oktober 2026 (Rekap Riil)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulananMonth('2026-11')}
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        bulananMonth === '2026-11'
                           ? 'bg-blue-700 text-white border-blue-600 shadow-xs font-black'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      📅 Oktober 2026
+                      📅 November 2026 (Berjalan)
                     </button>
                   </div>
                 </div>
@@ -2475,6 +2705,114 @@ function ReportPanel({
         initialMonth={bulananMonth}
         onOpenPrintModal={(type, kelas, date) => handleOpenPrintModal(type, kelas, date)}
       />
+
+      {/* QR Code Error / Rejected Scan Modal */}
+      {showQrErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-left">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-150 flex items-center justify-between bg-gradient-to-r from-rose-50 to-amber-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-600 text-white rounded-2xl shadow-xs">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-850">
+                    Log Pemindaian QR Code Ditolak / Error
+                  </h3>
+                  <p className="text-xs text-slate-600 font-medium mt-0.5">
+                    Tanggal: <span className="font-bold text-slate-800">{new Date(harianDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span> • {dailyQrErrors.length} Kasus Ditolak
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrErrorModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Security Notice */}
+            <div className="p-4 bg-rose-50/60 border-b border-rose-100 flex items-start gap-2.5 text-xs text-rose-900 font-medium">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Sistem Keamanan SDN 3 Karamatwangi Aktif</p>
+                <p className="text-[11px] text-rose-800/90 mt-0.5">
+                  Setiap kartu QR Code yang bukan kartu pelajar resmi atau tidak terdaftar pada database sistem akan otomatis ditolak dan tidak akan memproses absensi siswa. Seluruh upaya pemindaian dicatat di sini.
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 overflow-y-auto flex-1">
+              {dailyQrErrors.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                  <p className="text-sm font-bold text-slate-700">Tidak Ada QR Code Ditolak</p>
+                  <p className="text-xs text-slate-500">Semua pemindaian pada tanggal ini terverifikasi valid dan berhasil tercatat ke sistem.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 font-extrabold text-left">
+                        <th className="py-2.5 px-3 w-10 text-center">No</th>
+                        <th className="py-2.5 px-3 w-24">Waktu Scan</th>
+                        <th className="py-2.5 px-3">Kode / Konten QR</th>
+                        <th className="py-2.5 px-3">Alasan Penolakan</th>
+                        <th className="py-2.5 px-3 w-28">Operator</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {dailyQrErrors.map((err, idx) => (
+                        <tr key={err.id || idx} className="hover:bg-rose-50/30">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
+                            {err.timestamp ? new Date(err.timestamp).toLocaleTimeString('id-ID') : '-'}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono">
+                            <span className="bg-slate-150 px-2 py-0.5 rounded text-[11px] font-bold text-slate-800 border border-slate-200 block truncate max-w-[180px]">
+                              {err.code}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="text-rose-700 font-bold flex items-center gap-1">
+                              <X className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                              <span>{err.reason || 'Bukan Kartu Pelajar Resmi'}</span>
+                            </span>
+                            {err.kelasHint && (
+                              <span className="text-[10px] text-slate-400 block mt-0.5">Rombel terkait: {err.kelasHint}</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 font-medium">
+                            {err.operator || 'Scanner Utama'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-150 bg-slate-50 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">
+                Peringatan error ini hanya muncul jika ada barcode ilegal / non-resmi yang di-scan.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowQrErrorModal(false)}
+                className="bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl py-2 px-4 shadow cursor-pointer transition"
+              >
+                Tutup Jendela
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

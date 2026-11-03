@@ -399,6 +399,10 @@ export interface ClassRombelSummary {
   totalTidakHadir: number;
   totalHadir: number;
   persentase: number;
+  statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai';
+  statusKeterangan: string;
+  totalScanQR: number;
+  totalManualTap: number;
 }
 
 /**
@@ -456,6 +460,31 @@ export const calculateAllRombelSummaryList = (
     const classStudents = siswaList.filter((s) => isSameClass(s.kelas, namaKelas));
     const stats = calculateClassAttendanceStats(classStudents, presensiList, targetDateStr, index);
 
+    let totalScanQR = 0;
+    let totalManualTap = 0;
+    classStudents.forEach((siswa) => {
+      const rec = getAttendanceFromIndex(siswa, index);
+      if (rec) {
+        if (rec.metode === 'QR_SCAN' || (!rec.metode && (rec.status === 'Hadir' || rec.status === 'Terlambat'))) {
+          totalScanQR++;
+        } else {
+          totalManualTap++;
+        }
+      }
+    });
+
+    const isTuntas = stats.belumAbsen === 0 && stats.totalHadirSemua > 0;
+    const isBerjalan = stats.totalHadirSemua > 0 && stats.belumAbsen > 0;
+    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
+      ? 'Tuntas' 
+      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
+
+    const statusKeterangan = isTuntas
+      ? `${stats.totalHadirSemua}/${stats.totalSiswa} Tuntas (${stats.persentaseKeaktifan}% Hadir • ${totalScanQR} Scan QR)`
+      : (isBerjalan 
+          ? `${stats.totalHadirSemua}/${stats.totalSiswa} Sedang Berjalan (${stats.belumAbsen} Belum Absen)`
+          : `Belum Melakukan Absen (0/${stats.totalSiswa})`);
+
     return {
       kelas: namaKelas,
       waliKelas: getWaliKelasByKelas(namaKelas),
@@ -469,7 +498,11 @@ export const calculateAllRombelSummaryList = (
       belumAbsen: stats.belumAbsen,
       totalTidakHadir: stats.totalTidakHadir,
       totalHadir: stats.totalHadirSemua,
-      persentase: stats.persentaseKeaktifan
+      persentase: stats.persentaseKeaktifan,
+      statusAbsen,
+      statusKeterangan,
+      totalScanQR,
+      totalManualTap
     };
   });
 };
@@ -533,6 +566,12 @@ export const calculateWeeklyRombelSummaryList = (
     // Evaluasi persentase kehadiran berdasarkan hari aktif/berjalan di minggu tersebut
     const evaluatedSlots = totalSiswa * effectiveDaysCount;
     const persentase = evaluatedSlots > 0 ? Math.min(100, Math.round((totalHadir / evaluatedSlots) * 100)) : 0;
+    const isTuntas = belumAbsen === 0 && totalHadir > 0;
+    const isBerjalan = totalHadir > 0 && belumAbsen > 0;
+    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
+      ? 'Tuntas' 
+      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
+    const statusKeterangan = `${persentase}% Rata-rata Kehadiran Mingguan (${totalHadir} Masuk)`;
 
     return {
       kelas: namaKelas,
@@ -547,7 +586,11 @@ export const calculateWeeklyRombelSummaryList = (
       belumAbsen,
       totalTidakHadir,
       totalHadir,
-      persentase
+      persentase,
+      statusAbsen,
+      statusKeterangan,
+      totalScanQR: totalHadir,
+      totalManualTap: sakit + izin + alfa
     };
   });
 };
@@ -626,6 +669,12 @@ export const calculateMonthlyRombelSummaryList = (
     const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
     const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
+    const isTuntas = belumAbsen === 0 && totalHadir > 0;
+    const isBerjalan = totalHadir > 0 && belumAbsen > 0;
+    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
+      ? 'Tuntas' 
+      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
+    const statusKeterangan = `${persentase}% Rata-rata Bulanan (${totalHadir} Kehadiran)`;
 
     return {
       kelas: namaKelas,
@@ -640,7 +689,11 @@ export const calculateMonthlyRombelSummaryList = (
       belumAbsen,
       totalTidakHadir,
       totalHadir,
-      persentase
+      persentase,
+      statusAbsen,
+      statusKeterangan,
+      totalScanQR: totalHadir,
+      totalManualTap: sakit + izin + alfa
     };
   });
 };
@@ -735,6 +788,12 @@ export const calculateSemesterRombelSummaryList = (
     const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
     const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
+    const isTuntas = belumAbsen === 0 && totalHadir > 0;
+    const isBerjalan = totalHadir > 0 && belumAbsen > 0;
+    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
+      ? 'Tuntas' 
+      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
+    const statusKeterangan = `${persentase}% Rata-rata Semester (${totalHadir} Kehadiran)`;
 
     return {
       kelas: namaKelas,
@@ -749,7 +808,11 @@ export const calculateSemesterRombelSummaryList = (
       belumAbsen,
       totalTidakHadir,
       totalHadir,
-      persentase
+      persentase,
+      statusAbsen,
+      statusKeterangan,
+      totalScanQR: totalHadir,
+      totalManualTap: sakit + izin + alfa
     };
   });
 };

@@ -264,7 +264,11 @@ function ScanScreen({
   };
 
   // Main attendance logging function (Rapid & Non-blocking)
-  const handleScanIdentify = (code: string, customStatus?: StatusKehadiran) => {
+  const handleScanIdentify = (
+    code: string, 
+    customStatus?: StatusKehadiran,
+    methodType: 'QR_SCAN' | 'MANUAL_TAP' | 'MANUAL_OPERATOR' = 'QR_SCAN'
+  ) => {
     setErrorMsg('');
     const rawCode = (code || '').trim();
 
@@ -298,7 +302,6 @@ function ScanScreen({
     if (!matchedSiswa) {
       setScannerStatus('ERROR');
       playAudioFeedback('error');
-      const schoolName = settings.namaSekolah || 'SDN 3 KARAMATWANGI';
       const cleanDisplay = rawCode.length > 32 ? rawCode.slice(0, 30) + '...' : rawCode;
       const exactErrorWarning = `Kode ini bukan NIS, NISN, NIK atau ID resmi Siswa SDN 3 KARAMATWANGI. Pastikan menggunakan Kartu Siswa Resmi ber Barcode Valid..`;
       setErrorMsg(exactErrorWarning);
@@ -308,6 +311,19 @@ function ScanScreen({
         timestamp: getLocalTimeString(new Date())
       });
       setScannedResult(null);
+
+      // Catat ke server database log QR Error
+      fetch('/api/qr-errors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: cleanDisplay,
+          reason: exactErrorWarning,
+          operator: currentUser.namaLengkap,
+          date: getLocalDateString(new Date()),
+          timestamp: getLocalTimeString(new Date())
+        })
+      }).catch(() => {});
 
       // Auto reset status kembali ke SCANNING setelah 4.5 detik
       scanTimeoutRef.current = setTimeout(() => {
@@ -360,9 +376,14 @@ function ScanScreen({
 
     // Deterministic unique ID per student per day so Firestore updates in-place
     const newPresensiId = alreadyScanned ? alreadyScanned.id : `pr-${matchedSiswa.id}-${todayDate}`;
-    const matchedWali = getWaliKelasObject(matchedSiswa.kelas, waliKelasList);
-    const waliPhone = matchedWali?.noWa || '';
     const parentPhone = matchedSiswa.waOrangTua || '081234567890';
+    const resolvedMetodeLabel = methodType === 'QR_SCAN' 
+      ? 'Scan QR Code Kartu' 
+      : (methodType === 'MANUAL_TAP' ? 'Manual Tap Wali Kelas' : 'Input Manual NIS');
+    const resolvedKeterangan = methodType === 'QR_SCAN'
+      ? `Tercatat Hadir pukul ${waktuSekarang.slice(0, 5)} WIB via Scan Barcode Kartu Siswa Resmi`
+      : `Tercatat manual oleh ${currentUser.namaLengkap} [${determinedStatus}]`;
+
     const newRecord: Presensi = {
       id: newPresensiId,
       siswaId: matchedSiswa.id,
@@ -376,6 +397,9 @@ function ScanScreen({
       waStatus: 'Terkirim',
       pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Ortu (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
       operator: currentUser.namaLengkap,
+      metode: methodType,
+      metodeLabel: resolvedMetodeLabel,
+      keterangan: resolvedKeterangan,
     };
 
     // 1. Instantly record attendance into local, cloud, and server state (updates daily, weekly, monthly, and semester recaps)
@@ -394,7 +418,7 @@ function ScanScreen({
   const handleNisSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nisInput.trim()) return;
-    handleScanIdentify(nisInput, manualStatus || undefined);
+    handleScanIdentify(nisInput, manualStatus || undefined, 'MANUAL_OPERATOR');
     setNisInput('');
     setManualStatus(null);
   };
@@ -404,7 +428,7 @@ function ScanScreen({
     setScannerStatus('SCANNING');
     const qrIdentifier = getStudentQRIdentifier(siswa);
     setTimeout(() => {
-      handleScanIdentify(qrIdentifier, forcedStatus);
+      handleScanIdentify(qrIdentifier, forcedStatus, 'MANUAL_TAP');
     }, 400); // Quick split-second visual laser delay
   };
 

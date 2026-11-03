@@ -60,6 +60,8 @@ export interface JadwalPresensi {
   keterangan?: string;
 }
 
+export type MetodePresensi = 'QR_SCAN' | 'MANUAL_TAP' | 'MANUAL_OPERATOR';
+
 export interface Presensi {
   id: string;
   siswaId: string;
@@ -72,7 +74,22 @@ export interface Presensi {
   status: StatusKehadiran;
   waStatus: 'Pending' | 'Terkirim' | 'Gagal';
   pesanTerkirim?: string;
-  operator: string; // Siapa yang menginput (Admin, Guru, Piket)
+  operator: string; // Siapa yang menginput (Admin, Guru, Piket, Wali Kelas)
+  metode?: MetodePresensi; // 'QR_SCAN' | 'MANUAL_TAP' | 'MANUAL_OPERATOR'
+  metodeLabel?: string; // "Scan QR Code Kartu" | "Manual Tap Wali Kelas" | "Manual Operator"
+  keterangan?: string; // Catatan tambahan (misal: "Hadir via Scan Barcode", "Sakit flu", "Manual Tap Wali Kelas")
+  scanError?: string; // Pesan error bila barcode sempat ditolak / peringatan kartu
+}
+
+export interface QRErrorRecord {
+  id: string;
+  timestamp: string;
+  date: string;
+  code: string;
+  reason: string;
+  operator: string;
+  kelasHint?: string;
+  createdAt?: string;
 }
 
 export interface SystemSettings {

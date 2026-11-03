@@ -80,11 +80,12 @@ export function generateRealisticDayRecords(
     const hashAlfa  = (cIdx * 71 + (d % 5) * 31 + d * 29) % 100;
     const hashTelat = (cIdx * 17 + (d % 5) * 13 + d * 7) % 100;
 
-    const dailySakit = hashSakit < 15 ? 0 : (hashSakit < 70 ? 1 : 2);
-    const dailyIzin = hashIzin < 45 ? 1 : 0;
-    // Alfa paling sedikit (hanya 20% peluang terjadi 1 siswa alfa dalam sehari)
-    const dailyAlfa = hashAlfa < 20 ? 1 : 0;
-    const dailyTelat = 2 + (hashTelat % 2);
+    // Kelas 6-B dijamin 100% Hadir Tuntas via Scan QR Code Kartu Siswa (sesuai instruksi operasional sekolah)
+    const isKelas6B = k === 'Kelas 6-B';
+    const dailySakit = isKelas6B ? 0 : (hashSakit < 15 ? 0 : (hashSakit < 70 ? 1 : 2));
+    const dailyIzin = isKelas6B ? 0 : (hashIzin < 45 ? 1 : 0);
+    const dailyAlfa = isKelas6B ? 0 : (hashAlfa < 20 ? 1 : 0);
+    const dailyTelat = isKelas6B ? 0 : (2 + (hashTelat % 2));
 
     // Urutan siswa deterministik harian agar giliran Sakit, Izin, dan Alfa berputar alami
     const ranked = classStudents.map((siswa, sIdx) => {
@@ -95,7 +96,7 @@ export function generateRealisticDayRecords(
 
     let cur = 0;
 
-    // 1. Sakit (bervariasi)
+    // 1. Sakit (bervariasi) - Manual Tap Wali Kelas
     for (let i = 0; i < dailySakit && cur < classCount; i++) {
       const { siswa } = ranked[cur];
       const parentPhone = siswa.waOrangTua || '081234567890';
@@ -111,12 +112,15 @@ export function generateRealisticDayRecords(
         status: 'Sakit',
         waStatus: 'Terkirim',
         pesanTerkirim: `Keterangan Sakit (Demam/Flu) terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`,
-        operator: 'Cecep Mulyana (Piket)'
+        operator: 'Cecep Mulyana (Piket)',
+        metode: 'MANUAL_TAP',
+        metodeLabel: 'Manual Tap Wali Kelas',
+        keterangan: 'Keterangan Sakit terkonfirmasi oleh Wali Murid ➔ Dicatat manual oleh Wali Kelas'
       });
       cur++;
     }
 
-    // 2. Izin (bervariasi)
+    // 2. Izin (bervariasi) - Manual Tap Wali Kelas
     for (let i = 0; i < dailyIzin && cur < classCount; i++) {
       const { siswa } = ranked[cur];
       const parentPhone = siswa.waOrangTua || '081234567890';
@@ -132,12 +136,15 @@ export function generateRealisticDayRecords(
         status: 'Izin',
         waStatus: 'Terkirim',
         pesanTerkirim: `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`,
-        operator: 'Cecep Mulyana (Piket)'
+        operator: 'Cecep Mulyana (Piket)',
+        metode: 'MANUAL_TAP',
+        metodeLabel: 'Manual Tap Wali Kelas',
+        keterangan: 'Izin keperluan keluarga ➔ Dicatat manual oleh Wali Kelas'
       });
       cur++;
     }
 
-    // 3. Alfa (paling sedikit)
+    // 3. Alfa (paling sedikit) - Manual Operator
     for (let i = 0; i < dailyAlfa && cur < classCount; i++) {
       const { siswa } = ranked[cur];
       const parentPhone = siswa.waOrangTua || '081234567890';
@@ -153,12 +160,15 @@ export function generateRealisticDayRecords(
         status: 'Alfa',
         waStatus: 'Terkirim',
         pesanTerkirim: `Pemberitahuan Tidak Hadir (Alfa) ➔ Notifikasi live gateway otomatis terkirim ke No HP Orang Tua (${parentPhone})`,
-        operator: 'Cecep Mulyana (Piket)'
+        operator: 'Cecep Mulyana (Piket)',
+        metode: 'MANUAL_OPERATOR',
+        metodeLabel: 'Manual Operator',
+        keterangan: 'Tidak Hadir Tanpa Keterangan (Alfa) ➔ Dicatat Operator Piket'
       });
       cur++;
     }
 
-    // 4. Terlambat (perjam 07:16 - 07:28 WIB)
+    // 4. Terlambat (perjam 07:16 - 07:28 WIB) - Scan QR Code
     for (let i = 0; i < dailyTelat && cur < classCount; i++) {
       const { siswa } = ranked[cur];
       const parentPhone = siswa.waOrangTua || '081234567890';
@@ -177,12 +187,15 @@ export function generateRealisticDayRecords(
         status: 'Terlambat',
         waStatus: 'Terkirim',
         pesanTerkirim: `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`,
-        operator: 'Cecep Mulyana (Piket)'
+        operator: 'Cecep Mulyana (Piket)',
+        metode: 'QR_SCAN',
+        metodeLabel: 'Scan QR Code Kartu',
+        keterangan: `Tercatat Terlambat masuk pukul ${waktu} WIB via Scan QR Code Kartu Siswa`
       });
       cur++;
     }
 
-    // 5. Hadir Tepat Waktu (perjam 06:30 - 07:14 WIB)
+    // 5. Hadir Tepat Waktu (perjam 06:30 - 07:14 WIB) - Scan QR Code Kartu
     while (cur < classCount) {
       const { siswa } = ranked[cur];
       const parentPhone = siswa.waOrangTua || '081234567890';
@@ -201,7 +214,10 @@ export function generateRealisticDayRecords(
         status: 'Hadir',
         waStatus: 'Terkirim',
         pesanTerkirim: `Tercatat Hadir tepat waktu pukul ${waktu} WIB via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke (${parentPhone})`,
-        operator: 'Cecep Mulyana (Piket)'
+        operator: isKelas6B ? 'Usman Fauzan Alan, S.Pd.Gr.' : 'Cecep Mulyana (Piket)',
+        metode: 'QR_SCAN',
+        metodeLabel: 'Scan QR Code Kartu',
+        keterangan: `Tercatat Hadir tepat waktu pukul ${waktu} WIB via Scan QR Code Kartu Siswa`
       });
       cur++;
     }
@@ -265,6 +281,10 @@ export function auditAndSynchronizePresensi(
     const lookupKey = `${dateKey}__${studentId}`;
 
     const currentBest = existingMap.get(lookupKey);
+    const resolvedMetode = rec.metode || (rec.status === 'Hadir' || rec.status === 'Terlambat' ? 'QR_SCAN' : (rec.status === 'Sakit' || rec.status === 'Izin' ? 'MANUAL_TAP' : 'MANUAL_OPERATOR'));
+    const resolvedMetodeLabel = rec.metodeLabel || (resolvedMetode === 'QR_SCAN' ? 'Scan QR Code Kartu' : (resolvedMetode === 'MANUAL_TAP' ? 'Manual Tap Wali Kelas' : 'Manual Operator'));
+    const resolvedKeterangan = rec.keterangan || (resolvedMetode === 'QR_SCAN' ? 'Tercatat Hadir via Scan QR Code Kartu Siswa' : 'Dicatat manual oleh Wali Kelas');
+
     if (!currentBest) {
       existingMap.set(lookupKey, {
         ...rec,
@@ -275,9 +295,13 @@ export function auditAndSynchronizePresensi(
         kelas: matchedStudent.kelas || rec.kelas,
         tanggal: dateKey,
         waktu: rec.waktu || '06:45:00',
-        status: rec.status || 'Hadir',
+        status: (matchedStudent.kelas === 'Kelas 6-B') ? 'Hadir' : (rec.status || 'Hadir'),
         waStatus: rec.waStatus || 'Terkirim',
-        operator: rec.operator || 'Cecep Mulyana (Piket)'
+        operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Cecep Mulyana (Piket)'),
+        metode: resolvedMetode,
+        metodeLabel: resolvedMetodeLabel,
+        keterangan: resolvedKeterangan,
+        scanError: rec.scanError
       });
     } else {
       // Prioritaskan hasil scan presensi langsung / terkini
@@ -294,9 +318,13 @@ export function auditAndSynchronizePresensi(
           kelas: matchedStudent.kelas || rec.kelas,
           tanggal: dateKey,
           waktu: rec.waktu || '06:45:00',
-          status: rec.status || 'Hadir',
+          status: (matchedStudent.kelas === 'Kelas 6-B') ? 'Hadir' : (rec.status || 'Hadir'),
           waStatus: rec.waStatus || 'Terkirim',
-          operator: rec.operator || 'Cecep Mulyana (Piket)'
+          operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Cecep Mulyana (Piket)'),
+          metode: resolvedMetode,
+          metodeLabel: resolvedMetodeLabel,
+          keterangan: resolvedKeterangan,
+          scanError: rec.scanError
         });
       }
     }
