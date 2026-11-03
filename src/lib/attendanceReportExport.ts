@@ -7,7 +7,8 @@ import {
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
   calculateAllRombelSummaryList,
-  normalizeDateKey
+  normalizeDateKey,
+  getAttendanceShift
 } from './attendanceUtils';
 import { getWaliKelasByKelas } from './demoData';
 import { triggerFileDownload } from './qrCodeExport';
@@ -56,11 +57,14 @@ export function generateDailyReportCSV(
     'Nama Lengkap Siswa',
     'Jenis Kelamin',
     'Kelas',
+    'Sesi / Shift',
     'Tanggal Presensi',
     'Waktu Masuk',
     'Status Kehadiran',
-    'Status WA Notifikasi',
-    'Petugas / Operator Input'
+    'Metode Presensi',
+    'Keterangan Kehadiran',
+    'Petugas / Operator Input',
+    'Status WA Notifikasi'
   ];
 
   const rows = filteredStudents.map((siswa, idx) => {
@@ -69,6 +73,10 @@ export function generateDailyReportCSV(
     const waktu = record ? record.waktu : '-';
     const waStatus = record ? (record.waStatus || 'Terkirim') : '-';
     const operator = record ? record.operator : '-';
+    const shiftVal = record?.shift || getAttendanceShift(record, siswa.kelas);
+    const shiftLabel = shiftVal === 'Siang' ? 'Shift Siang (12.30 WIB)' : 'Shift Pagi (07.00 WIB)';
+    const metodeLabel = record ? (record.metodeLabel || (record.metode === 'QR_SCAN' ? 'Scan QR Code Kartu' : 'Manual Tap Wali Kelas')) : '-';
+    const keterangan = record ? (record.keterangan || (status === 'Hadir' ? 'Tercatat Hadir via Scan Kartu' : `Keterangan ${status}`)) : 'Belum Melakukan Presensi';
 
     return [
       idx + 1,
@@ -77,22 +85,24 @@ export function generateDailyReportCSV(
       siswa.nama,
       siswa.jenisKelamin || 'L/P',
       siswa.kelas,
+      shiftLabel,
       dateStr,
       waktu,
       status,
-      waStatus,
-      operator
+      metodeLabel,
+      keterangan,
+      operator,
+      waStatus
     ];
   });
 
   const headerLines = [
     `REKAPITULASI PRESENSI HARIAN SISWA - SDN 3 KARAMATWANGI`,
-    `Kelas: ${kelas} | Tanggal: ${dateStr} | Total Siswa: ${filteredStudents.length}`,
-    ''
+    `Kelas: ${kelas} | Tanggal: ${dateStr} | Total Siswa: ${filteredStudents.length}`
   ];
 
   const csvContent = "\uFEFF" + 
-    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') + '\n\n' +
     headers.map(escapeCsvCell).join(',') + '\n' +
     rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 
@@ -118,6 +128,8 @@ export function generateDailyRombelSummaryCSV(
   let belumAbsen = 0;
   let totalHadir = 0;
   let totalTidakHadir = 0;
+  let totalScanQR = 0;
+  let totalManualTap = 0;
 
   allRombel.forEach(r => {
     totalSiswa += r.totalSiswa;
@@ -129,6 +141,8 @@ export function generateDailyRombelSummaryCSV(
     belumAbsen += r.belumAbsen;
     totalHadir += r.totalHadir;
     totalTidakHadir += r.totalTidakHadir;
+    totalScanQR += (r.totalScanQR || 0);
+    totalManualTap += (r.totalManualTap || 0);
   });
 
   const grandPersen = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
@@ -137,6 +151,7 @@ export function generateDailyRombelSummaryCSV(
     'No',
     'Rombel Kelas',
     'Wali Kelas',
+    'Sesi / Shift',
     'Jumlah Siswa',
     'Hadir Tepat',
     'Terlambat',
@@ -145,14 +160,18 @@ export function generateDailyRombelSummaryCSV(
     'Alfa',
     'Belum Absen',
     'Total Masuk (H+T)',
+    'Scan QR Code',
+    'Manual Tap Wali',
     'Pengurang (S+I+A+B)',
-    'Persentase Keaktifan (%)'
+    'Persentase Keaktifan (%)',
+    'Status Keberjalanan'
   ];
 
   const rows = allRombel.map((r, idx) => [
     idx + 1,
     r.kelas,
     r.waliKelas,
+    r.shiftLabel || 'Pagi (07.00 WIB)',
     r.totalSiswa,
     r.hadir,
     r.terlambat,
@@ -161,14 +180,18 @@ export function generateDailyRombelSummaryCSV(
     r.alfa,
     r.belumAbsen,
     r.totalHadir,
+    r.totalScanQR || 0,
+    r.totalManualTap || 0,
     r.totalTidakHadir,
-    `${r.persentase}%`
+    `${r.persentase}%`,
+    r.statusAbsen
   ]);
 
   rows.push([
     '',
     'TOTAL KESELURUHAN SEKOLAH',
     '-',
+    'Semua Sesi',
     totalSiswa,
     hadir,
     terlambat,
@@ -177,18 +200,20 @@ export function generateDailyRombelSummaryCSV(
     alfa,
     belumAbsen,
     totalHadir,
+    totalScanQR,
+    totalManualTap,
     totalTidakHadir,
-    `${grandPersen}%`
+    `${grandPersen}%`,
+    belumAbsen === 0 && totalHadir > 0 ? 'Tuntas' : 'Sedang Berjalan'
   ]);
 
   const headerLines = [
     `REKAPITULASI PRESENSI SELURUH ROMBEL KELAS (1-A s/d 6-B) - SDN 3 KARAMATWANGI`,
-    `Tanggal: ${dateStr} | Total Seluruh Siswa: ${totalSiswa} Siswa | Keaktifan Sekolah: ${grandPersen}%`,
-    ''
+    `Tanggal: ${dateStr} | Total Seluruh Siswa: ${totalSiswa} Siswa | Keaktifan Sekolah: ${grandPersen}%`
   ];
 
   const csvContent = "\uFEFF" + 
-    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') + '\n\n' +
     headers.map(escapeCsvCell).join(',') + '\n' +
     rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 
@@ -240,6 +265,7 @@ export function generateWeeklyReportCSV(
     'NIS',
     'Nama Lengkap Siswa',
     'Kelas',
+    'Sesi / Shift',
     ...weekDates.map(w => w.label),
     'Total Hadir',
     'Total Terlambat',
@@ -247,6 +273,7 @@ export function generateWeeklyReportCSV(
     'Total Izin',
     'Total Alfa',
     'Total Belum Absen',
+    'Total Masuk',
     'Keaktifan (%)'
   ];
 
@@ -277,12 +304,14 @@ export function generateWeeklyReportCSV(
 
     const totalMasuk = hadirCount + telatCount;
     const persen = Math.min(100, Math.round((totalMasuk / activeDaysCount) * 100));
+    const shiftLabel = getAttendanceShift(null, siswa.kelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
 
     return [
       idx + 1,
       `'${siswa.nis || ''}`,
       siswa.nama,
       siswa.kelas,
+      shiftLabel,
       ...dayStatusArray,
       hadirCount,
       telatCount,
@@ -290,6 +319,7 @@ export function generateWeeklyReportCSV(
       izinCount,
       alfaCount,
       belumCount,
+      totalMasuk,
       `${persen}%`
     ];
   });
@@ -333,14 +363,13 @@ export function generateWeeklyReportCSV(
 
   const headerLines = [
     `JURNAL REKAPITULASI PRESENSI MINGGUAN SISWA - SDN 3 KARAMATWANGI`,
-    `Kelas: ${kelas} | Periode: ${weekDates[0].dateStr} s/d ${weekDates[4].dateStr} | Total Siswa: ${filteredStudents.length} | Tingkat Kehadiran: ${avgPersen}%`,
-    ''
+    `Kelas: ${kelas} | Periode: ${weekDates[0].dateStr} s/d ${weekDates[4].dateStr} | Total Siswa: ${filteredStudents.length} | Tingkat Kehadiran: ${avgPersen}%`
   ];
 
   const allRows = [...rows, totalRow];
 
   const csvContent = "\uFEFF" + 
-    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') + '\n\n' +
     headers.map(escapeCsvCell).join(',') + '\n' +
     allRows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 
@@ -384,6 +413,7 @@ export function generateMonthlyReportCSV(
     'NIS',
     'Nama Lengkap Siswa',
     'Kelas',
+    'Sesi / Shift',
     'Hari Efektif Sekolah',
     'Hadir Tepat',
     'Terlambat',
@@ -437,11 +467,14 @@ export function generateMonthlyReportCSV(
     else if (persen >= 80) predikat = 'Baik';
     else if (persen >= 60) predikat = 'Cukup';
 
+    const shiftLabel = getAttendanceShift(null, siswa.kelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+
     return [
       idx + 1,
       `'${siswa.nis || ''}`,
       siswa.nama,
       siswa.kelas,
+      shiftLabel,
       effectiveDays,
       hadir,
       terlambat,
@@ -459,12 +492,11 @@ export function generateMonthlyReportCSV(
 
   const headerLines = [
     `BUKU REKAPITULASI PRESENSI BULANAN SISWA - SDN 3 KARAMATWANGI`,
-    `Kelas: ${kelas} | Periode: Bulan ${monthName} (${monthStr}) | Total Siswa: ${filteredStudents.length}`,
-    ''
+    `Kelas: ${kelas} | Periode: Bulan ${monthName} (${monthStr}) | Total Siswa: ${filteredStudents.length}`
   ];
 
   const csvContent = "\uFEFF" + 
-    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') + '\n\n' +
     headers.map(escapeCsvCell).join(',') + '\n' +
     rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 
@@ -510,6 +542,7 @@ export function generateSemesterReportCSV(
     'NIS',
     'Nama Lengkap Siswa',
     'Kelas',
+    'Sesi / Shift',
     'Hari Efektif Semester',
     'Hadir Tepat (H)',
     'Terlambat (T)',
@@ -561,11 +594,14 @@ export function generateSemesterReportCSV(
     else if (persen >= 80) predikat = 'Baik (B)';
     else if (persen >= 60) predikat = 'Cukup (C)';
 
+    const shiftLabel = getAttendanceShift(null, siswa.kelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+
     return [
       idx + 1,
       `'${siswa.nis || ''}`,
       siswa.nama,
       siswa.kelas,
+      shiftLabel,
       effectiveDays,
       hadir,
       terlambat,
@@ -582,12 +618,11 @@ export function generateSemesterReportCSV(
 
   const headerLines = [
     `BUKU REKAPITULASI PRESENSI SEMESTER SISWA - SDN 3 KARAMATWANGI`,
-    `Kelas: ${kelas} | Tahun Ajaran: ${tahunAjaran} | ${semLabel} | Total Siswa: ${filteredStudents.length}`,
-    ''
+    `Kelas: ${kelas} | Tahun Ajaran: ${tahunAjaran} | ${semLabel} | Total Siswa: ${filteredStudents.length}`
   ];
 
   const csvContent = "\uFEFF" + 
-    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') + '\n\n' +
     headers.map(escapeCsvCell).join(',') + '\n' +
     rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 
@@ -607,6 +642,7 @@ export function generateSemesterRombelSummaryCSV(
     'No',
     'Rombel Kelas',
     'Wali Kelas',
+    'Sesi / Shift',
     'Jumlah Siswa',
     'Total Hadir',
     'Terlambat',
@@ -683,10 +719,13 @@ export function generateSemesterRombelSummaryCSV(
     else if (persen >= 80) predikat = 'Tinggi (B)';
     else if (persen >= 60) predikat = 'Cukup (C)';
 
+    const shiftLabel = getAttendanceShift(null, namaKelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+
     return [
       idx + 1,
       namaKelas,
       getWaliKelasByKelas(namaKelas),
+      shiftLabel,
       totalSiswa,
       hadir,
       terlambat,
@@ -704,12 +743,11 @@ export function generateSemesterRombelSummaryCSV(
   const headerLines = [
     `REKAPITULASI PRESENSI SELURUH ROMBEL KELAS PER SEMESTER`,
     `SDN 3 KARAMATWANGI - KEC. CISURUPAN KAB. GARUT`,
-    `Tahun Ajaran: ${tahunAjaran} | ${semLabel} | Hari Efektif: ${effectiveDays} Hari`,
-    ''
+    `Tahun Ajaran: ${tahunAjaran} | ${semLabel} | Hari Efektif: ${effectiveDays} Hari`
   ];
 
   return "\uFEFF" +
-    headerLines.map(line => escapeCsvCell(line)).join('\n') +
+    headerLines.map(line => escapeCsvCell(line)).join('\n') + '\n\n' +
     headers.map(escapeCsvCell).join(',') + '\n' +
     rows.map(r => r.map(escapeCsvCell).join(',')).join('\n');
 }

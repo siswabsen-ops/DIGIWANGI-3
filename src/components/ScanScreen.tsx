@@ -384,6 +384,11 @@ function ScanScreen({
       ? `Tercatat Hadir pukul ${waktuSekarang.slice(0, 5)} WIB via Scan Barcode Kartu Siswa Resmi`
       : `Tercatat manual oleh ${currentUser.namaLengkap} [${determinedStatus}]`;
 
+    const resolvedShift: 'Pagi' | 'Siang' = 
+      applicableJadwal?.tipe === 'Siang' || (parseInt(waktuSekarang.slice(0, 2), 10) >= 11) 
+        ? 'Siang' 
+        : 'Pagi';
+
     const newRecord: Presensi = {
       id: newPresensiId,
       siswaId: matchedSiswa.id,
@@ -394,8 +399,9 @@ function ScanScreen({
       tanggal: todayDate,
       waktu: waktuSekarang,
       status: determinedStatus,
+      shift: resolvedShift,
       waStatus: 'Terkirim',
-      pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Ortu (${parentPhone}) [${applicableJadwal?.nama || 'Reguler'}]`,
+      pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Ortu (${parentPhone}) [Shift ${resolvedShift}]`,
       operator: currentUser.namaLengkap,
       metode: methodType,
       metodeLabel: resolvedMetodeLabel,

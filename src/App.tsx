@@ -276,7 +276,7 @@ export default function App() {
             if (!existing) {
               map.set(key, p);
             } else {
-              const isLocalLiveScan = p.operator !== 'Cecep Mulyana (Piket)' || (p.pesanTerkirim && p.pesanTerkirim.includes('via QR Code'));
+              const isLocalLiveScan = p.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (p.pesanTerkirim && p.pesanTerkirim.includes('via QR Code'));
               if (isLocalLiveScan) {
                 map.set(key, p);
               }

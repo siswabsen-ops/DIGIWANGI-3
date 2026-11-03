@@ -90,7 +90,7 @@ export const USER_DEMO_ACCOUNTS: { user: User; pin: string }[] = [
     user: {
       id: 'usr-piket',
       username: 'piket',
-      namaLengkap: 'Cecep Mulyana',
+      namaLengkap: 'Panji Teguh Amarta S, S.Pd.I',
       role: 'piket'
     },
     pin: '4444'
@@ -165,7 +165,7 @@ export const LOGS_INITIAL: ActivityLog[] = [
   {
     id: 'log-002',
     waktu: '2026-08-18T06:35:12Z',
-    user: 'Cecep Mulyana',
+    user: 'Panji Teguh Amarta S, S.Pd.I',
     role: 'piket',
     tindakan: 'Login Sistem',
     detail: 'Petugas Piket masuk ke sistem menggunakan perangkat HP Android Samsung M12.'
@@ -173,7 +173,7 @@ export const LOGS_INITIAL: ActivityLog[] = [
   {
     id: 'log-003',
     waktu: '2026-08-18T06:38:33Z',
-    user: 'Cecep Mulyana',
+    user: 'Panji Teguh Amarta S, S.Pd.I',
     role: 'piket',
     tindakan: 'Inisialisasi Kamera & Scanner',
     detail: 'Kamera QR Code Scanner aktif, memindai presensi pagi siswa seluruh kelas 1-A s/d 6-B.'
@@ -241,7 +241,7 @@ export const generateRealisticAttendanceForDate = (
       status,
       waStatus: 'Terkirim',
       pesanTerkirim: pesan,
-      operator: 'Cecep Mulyana (Piket)'
+      operator: 'Panji Teguh Amarta S, S.Pd.I (Piket)'
     };
   });
 };

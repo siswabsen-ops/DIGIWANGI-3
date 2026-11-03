@@ -48,7 +48,8 @@ import {
   normalizeDateKey,
   getMondayOfWeek,
   safeAddDays,
-  safeDateParts
+  safeDateParts,
+  getAttendanceShift
 } from '../lib/attendanceUtils';
 import { downloadSingleClassReport } from '../lib/attendanceReportExport';
 import { auditAndSyncSemesterPresensi } from '../lib/cloudSync';
@@ -141,6 +142,8 @@ function ReportPanel({
 
   // Filter status rombel (Semua, Tuntas, Sedang Berjalan, Belum Mulai)
   const [rombelFilter, setRombelFilter] = useState<'semua' | 'tuntas' | 'berjalan' | 'belum'>('semua');
+  // Filter sesi sekolah (Semua, Pagi, Siang)
+  const [sesiFilter, setSesiFilter] = useState<'semua' | 'pagi' | 'siang'>('semua');
 
   // Rekam riwayat QR Code Error / Ditolak
   const [qrErrors, setQrErrors] = useState<QRErrorRecord[]>([]);
@@ -180,11 +183,18 @@ function ReportPanel({
   }, [allRombelSummary]);
 
   const displayedRombelList = useMemo(() => {
-    if (rombelFilter === 'tuntas') return allRombelSummary.filter((r) => r.belumAbsen === 0 && r.totalHadir > 0);
-    if (rombelFilter === 'berjalan') return allRombelSummary.filter((r) => r.totalHadir > 0 && r.belumAbsen > 0);
-    if (rombelFilter === 'belum') return allRombelSummary.filter((r) => r.totalHadir === 0);
-    return allRombelSummary;
-  }, [allRombelSummary, rombelFilter]);
+    let list = allRombelSummary;
+    if (rombelFilter === 'tuntas') list = list.filter((r) => r.belumAbsen === 0 && r.totalHadir > 0);
+    else if (rombelFilter === 'berjalan') list = list.filter((r) => r.totalHadir > 0 && r.belumAbsen > 0);
+    else if (rombelFilter === 'belum') list = list.filter((r) => r.totalHadir === 0);
+
+    if (sesiFilter === 'siang') {
+      list = list.filter((r) => r.shift === 'Siang' || (r.totalSiang || 0) > 0);
+    } else if (sesiFilter === 'pagi') {
+      list = list.filter((r) => r.shift === 'Pagi' || (r.totalPagi || 0) > 0);
+    }
+    return list;
+  }, [allRombelSummary, rombelFilter, sesiFilter]);
 
   // Rekapitulasi Rombel Mingguan Semua Kelas (1-A s/d 6-B)
   const weeklyRombelSummary = useMemo(() => {
@@ -216,6 +226,8 @@ function ReportPanel({
     let belumAbsen = 0;
     let totalTidakHadir = 0;
     let totalHadir = 0;
+    let totalScanQR = 0;
+    let totalManualTap = 0;
 
     allRombelSummary.forEach((r) => {
       totalSiswa += r.totalSiswa;
@@ -228,6 +240,8 @@ function ReportPanel({
       belumAbsen += r.belumAbsen;
       totalTidakHadir += r.totalTidakHadir;
       totalHadir += r.totalHadir;
+      totalScanQR += (r.totalScanQR || 0);
+      totalManualTap += (r.totalManualTap || 0);
     });
 
     const persentase = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
@@ -243,6 +257,8 @@ function ReportPanel({
       belumAbsen,
       totalTidakHadir,
       totalHadir,
+      totalScanQR,
+      totalManualTap,
       persentase
     };
   }, [allRombelSummary]);
@@ -330,16 +346,23 @@ function ReportPanel({
   const [harianPageLimit, setHarianPageLimit] = useState(40);
 
   const harianReportData = useMemo(() => {
-    if (statusFilter === 'semua') return harianReportDataRaw;
-    if (statusFilter === 'hadir_total') return harianReportDataRaw.filter(r => r.status === 'Hadir' || r.status === 'Terlambat');
-    if (statusFilter === 'hadir') return harianReportDataRaw.filter(r => r.status === 'Hadir');
-    if (statusFilter === 'terlambat') return harianReportDataRaw.filter(r => r.status === 'Terlambat');
-    if (statusFilter === 'sakit') return harianReportDataRaw.filter(r => r.status === 'Sakit');
-    if (statusFilter === 'izin') return harianReportDataRaw.filter(r => r.status === 'Izin');
-    if (statusFilter === 'alfa') return harianReportDataRaw.filter(r => r.status === 'Alfa');
-    if (statusFilter === 'belum_absen') return harianReportDataRaw.filter(r => r.status === 'Belum Absen');
-    return harianReportDataRaw;
-  }, [harianReportDataRaw, statusFilter]);
+    let list = harianReportDataRaw;
+    if (sesiFilter !== 'semua') {
+      list = list.filter(r => {
+        const s = r.record?.shift || getAttendanceShift(r.record, r.siswa.kelas);
+        return sesiFilter === 'siang' ? s === 'Siang' : s === 'Pagi';
+      });
+    }
+    if (statusFilter === 'semua') return list;
+    if (statusFilter === 'hadir_total') return list.filter(r => r.status === 'Hadir' || r.status === 'Terlambat');
+    if (statusFilter === 'hadir') return list.filter(r => r.status === 'Hadir');
+    if (statusFilter === 'terlambat') return list.filter(r => r.status === 'Terlambat');
+    if (statusFilter === 'sakit') return list.filter(r => r.status === 'Sakit');
+    if (statusFilter === 'izin') return list.filter(r => r.status === 'Izin');
+    if (statusFilter === 'alfa') return list.filter(r => r.status === 'Alfa');
+    if (statusFilter === 'belum_absen') return list.filter(r => r.status === 'Belum Absen');
+    return list;
+  }, [harianReportDataRaw, statusFilter, sesiFilter]);
 
   const displayedHarianRows = useMemo(() => {
     return harianReportData.slice(0, harianPageLimit);
@@ -348,7 +371,7 @@ function ReportPanel({
   // Harian Statistics Summary for the active selection
   const harianStats = useMemo(() => {
     const total = harianReportDataRaw.length;
-    if (total === 0) return { total: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alfa: 0, belumAbsen: 0, totalHadirSemua: 0, totalTidakHadir: 0, percentage: 0 };
+    if (total === 0) return { total: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alfa: 0, belumAbsen: 0, totalHadirSemua: 0, totalTidakHadir: 0, percentage: 0, totalPagi: 0, totalSiang: 0 };
     
     let hadir = 0;
     let terlambat = 0;
@@ -356,8 +379,14 @@ function ReportPanel({
     let izin = 0;
     let alfa = 0;
     let belumAbsen = 0;
+    let totalPagi = 0;
+    let totalSiang = 0;
 
     harianReportDataRaw.forEach(row => {
+      const s = row.record?.shift || getAttendanceShift(row.record, row.siswa.kelas);
+      if (s === 'Siang') totalSiang++;
+      else totalPagi++;
+
       switch (row.status) {
         case 'Hadir': hadir++; break;
         case 'Terlambat': terlambat++; break;
@@ -1198,11 +1227,11 @@ function ReportPanel({
                 </div>
               </div>
 
-              {/* QUICK FILTER BAR KELAS YANG SUDAH ABSEN / SEDANG BERJALAN */}
+              {/* QUICK FILTER BAR KELAS YANG SUDAH ABSEN / SEDANG BERJALAN & SESI SHIFT */}
               <div className="px-5 py-2.5 bg-slate-100/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide">
-                    Filter Status Rombel:
+                    Filter Rombel:
                   </span>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
@@ -1214,7 +1243,7 @@ function ReportPanel({
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      Semua Kelas (12 Rombel)
+                      Semua ({allRombelSummary.length})
                     </button>
                     <button
                       type="button"
@@ -1226,7 +1255,7 @@ function ReportPanel({
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                      <span>✅ Sudah Tuntas Absen ({rombelStatusStats.tuntas} Kelas)</span>
+                      <span>✅ Tuntas ({rombelStatusStats.tuntas})</span>
                     </button>
                     <button
                       type="button"
@@ -1238,7 +1267,7 @@ function ReportPanel({
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
-                      <span>⏳ Sedang Berjalan ({rombelStatusStats.berjalan} Kelas)</span>
+                      <span>⏳ Berjalan ({rombelStatusStats.berjalan})</span>
                     </button>
                     {rombelStatusStats.belum > 0 && (
                       <button
@@ -1250,9 +1279,51 @@ function ReportPanel({
                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                         }`}
                       >
-                        ⚪ Belum Mulai ({rombelStatusStats.belum} Kelas)
+                        ⚪ Belum Mulai ({rombelStatusStats.belum})
                       </button>
                     )}
+                  </div>
+
+                  <span className="h-4 w-px bg-slate-300 mx-1 hidden sm:inline-block" />
+
+                  {/* Sesi / Shift filter */}
+                  <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide">
+                    Sesi:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSesiFilter('semua')}
+                      className={`text-[10px] font-black px-2 py-1 rounded-lg transition-all cursor-pointer border ${
+                        sesiFilter === 'semua'
+                          ? 'bg-slate-800 text-white border-slate-700 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Semua Sesi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSesiFilter('pagi')}
+                      className={`text-[10px] font-black px-2 py-1 rounded-lg transition-all cursor-pointer border flex items-center gap-1 ${
+                        sesiFilter === 'pagi'
+                          ? 'bg-sky-700 text-white border-sky-600 shadow-2xs'
+                          : 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100'
+                      }`}
+                    >
+                      <span>☀️ Pagi (07.00)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSesiFilter('siang')}
+                      className={`text-[10px] font-black px-2 py-1 rounded-lg transition-all cursor-pointer border flex items-center gap-1 ${
+                        sesiFilter === 'siang'
+                          ? 'bg-amber-600 text-white border-amber-500 shadow-2xs'
+                          : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                      }`}
+                    >
+                      <span>🌤️ Siang (12.30)</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1268,6 +1339,7 @@ function ReportPanel({
                       <th className="py-3 px-3 w-10 text-center">No</th>
                       <th className="py-3 px-3 w-28">Rombel</th>
                       <th className="py-3 px-3">Wali Kelas</th>
+                      <th className="py-3 px-2.5 text-center bg-amber-50 text-amber-950 font-black">Sesi / Shift</th>
                       <th className="py-3 px-3 text-center bg-indigo-50 text-indigo-950 font-black">Status Absen</th>
                       <th className="py-3 px-3 text-center bg-teal-50 text-teal-950 font-black">Metode Presensi</th>
                       <th className="py-3 px-2.5 text-center bg-slate-200/60 text-slate-800">Total Murid</th>
@@ -1304,6 +1376,19 @@ function ReportPanel({
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-slate-600 font-medium">👤 {rombel.waliKelas}</td>
+                          <td className="py-2.5 px-2.5 text-center">
+                            {rombel.shift === 'Siang' ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs">
+                                <span>🌤️ Siang</span>
+                                <span className="text-[9px] font-medium opacity-80">(12.30)</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-sky-100 text-sky-900 border border-sky-300 text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs">
+                                <span>☀️ Pagi</span>
+                                <span className="text-[9px] font-medium opacity-80">(07.00)</span>
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2.5 px-3 text-center">
                             {rombel.belumAbsen === 0 && rombel.totalHadir > 0 ? (
                               <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
@@ -1393,8 +1478,12 @@ function ReportPanel({
                       <td className="py-3 px-3 text-center">Σ</td>
                       <td className="py-3 px-3">TOTAL SEKOLAH</td>
                       <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel Kelas</td>
+                      <td className="py-3 px-2.5 text-center font-bold text-slate-700 bg-amber-100/40">Semua Sesi</td>
                       <td className="py-3 px-3 text-center font-black text-[10px] text-indigo-950 bg-indigo-100/70">
                         {rombelStatusStats.tuntas} Tuntas • {rombelStatusStats.berjalan} Berjalan
+                      </td>
+                      <td className="py-3 px-3 text-center text-teal-900 font-black bg-teal-100/60">
+                        {grandTotalSchool.totalScanQR} Scan • {grandTotalSchool.totalManualTap} Manual
                       </td>
                       <td className="py-3 px-2.5 text-center bg-slate-300/70 font-black text-slate-950">{grandTotalSchool.totalSiswa}</td>
                       <td className="py-3 px-2 text-center text-emerald-900 font-black">{grandTotalSchool.hadir}</td>
@@ -1539,6 +1628,7 @@ function ReportPanel({
                         <th className="py-3 px-4 w-28 font-mono">NIS</th>
                         <th className="py-3 px-4">Nama Lengkap</th>
                         <th className="py-3 px-4 w-24">Kelas</th>
+                        <th className="py-3 px-3 w-24 text-center bg-amber-50/70 text-amber-950 font-black">Sesi / Shift</th>
                         <th className="py-3 px-4 w-24 text-center">Waktu Scan</th>
                         <th className="py-3 px-4 w-32 text-center">Status Kehadiran</th>
                         <th className="py-3 px-4 w-36 text-center">Metode Presensi</th>
@@ -1588,12 +1678,25 @@ function ReportPanel({
                           }
                         }
 
+                        const studentShift = row.record?.shift || getAttendanceShift(row.record, row.siswa.kelas);
+
                         return (
                           <tr key={row.siswa.id} className="hover:bg-slate-50 transition-colors">
                             <td className="py-2.5 px-4 text-center text-slate-400 font-bold">{idx + 1}</td>
                             <td className="py-2.5 px-4 font-mono font-bold text-slate-600">{row.siswa.nis}</td>
                             <td className="py-2.5 px-4 font-extrabold text-slate-800 capitalize">{row.siswa.nama.toLowerCase()}</td>
                             <td className="py-2.5 px-4 text-slate-500 font-bold">{row.siswa.kelas}</td>
+                            <td className="py-2.5 px-3 text-center">
+                              {studentShift === 'Siang' ? (
+                                <span className="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                  <span>🌤️ Siang</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-black bg-sky-100 text-sky-900 border border-sky-300">
+                                  <span>☀️ Pagi</span>
+                                </span>
+                              )}
+                            </td>
                             <td className="py-2.5 px-4 text-center font-mono font-semibold text-slate-600">
                               {row.record ? row.record.waktu.slice(0, 8) : '-'}
                             </td>

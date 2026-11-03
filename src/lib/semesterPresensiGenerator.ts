@@ -112,7 +112,7 @@ export function generateRealisticDayRecords(
         status: 'Sakit',
         waStatus: 'Terkirim',
         pesanTerkirim: `Keterangan Sakit (Demam/Flu) terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`,
-        operator: 'Cecep Mulyana (Piket)',
+        operator: 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: 'MANUAL_TAP',
         metodeLabel: 'Manual Tap Wali Kelas',
         keterangan: 'Keterangan Sakit terkonfirmasi oleh Wali Murid ➔ Dicatat manual oleh Wali Kelas'
@@ -136,7 +136,7 @@ export function generateRealisticDayRecords(
         status: 'Izin',
         waStatus: 'Terkirim',
         pesanTerkirim: `Izin keperluan keluarga terkonfirmasi oleh Wali Murid (${parentPhone}) ➔ Tercatat pada Jurnal Kelas`,
-        operator: 'Cecep Mulyana (Piket)',
+        operator: 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: 'MANUAL_TAP',
         metodeLabel: 'Manual Tap Wali Kelas',
         keterangan: 'Izin keperluan keluarga ➔ Dicatat manual oleh Wali Kelas'
@@ -160,7 +160,7 @@ export function generateRealisticDayRecords(
         status: 'Alfa',
         waStatus: 'Terkirim',
         pesanTerkirim: `Pemberitahuan Tidak Hadir (Alfa) ➔ Notifikasi live gateway otomatis terkirim ke No HP Orang Tua (${parentPhone})`,
-        operator: 'Cecep Mulyana (Piket)',
+        operator: 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: 'MANUAL_OPERATOR',
         metodeLabel: 'Manual Operator',
         keterangan: 'Tidak Hadir Tanpa Keterangan (Alfa) ➔ Dicatat Operator Piket'
@@ -187,7 +187,7 @@ export function generateRealisticDayRecords(
         status: 'Terlambat',
         waStatus: 'Terkirim',
         pesanTerkirim: `Tercatat Terlambat masuk pukul ${waktu} WIB ➔ Terkirim otomatis via WA Gateway ke No HP Orang Tua (${parentPhone})`,
-        operator: 'Cecep Mulyana (Piket)',
+        operator: 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: 'QR_SCAN',
         metodeLabel: 'Scan QR Code Kartu',
         keterangan: `Tercatat Terlambat masuk pukul ${waktu} WIB via Scan QR Code Kartu Siswa`
@@ -214,7 +214,7 @@ export function generateRealisticDayRecords(
         status: 'Hadir',
         waStatus: 'Terkirim',
         pesanTerkirim: `Tercatat Hadir tepat waktu pukul ${waktu} WIB via QR Code Scanner ➔ Terkirim otomatis via WA Gateway ke (${parentPhone})`,
-        operator: isKelas6B ? 'Usman Fauzan Alan, S.Pd.Gr.' : 'Cecep Mulyana (Piket)',
+        operator: isKelas6B ? 'Usman Fauzan Alan, S.Pd.Gr.' : 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: 'QR_SCAN',
         metodeLabel: 'Scan QR Code Kartu',
         keterangan: `Tercatat Hadir tepat waktu pukul ${waktu} WIB via Scan QR Code Kartu Siswa`
@@ -297,7 +297,7 @@ export function auditAndSynchronizePresensi(
         waktu: rec.waktu || '06:45:00',
         status: (matchedStudent.kelas === 'Kelas 6-B') ? 'Hadir' : (rec.status || 'Hadir'),
         waStatus: rec.waStatus || 'Terkirim',
-        operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Cecep Mulyana (Piket)'),
+        operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)'),
         metode: resolvedMetode,
         metodeLabel: resolvedMetodeLabel,
         keterangan: resolvedKeterangan,
@@ -305,7 +305,7 @@ export function auditAndSynchronizePresensi(
       });
     } else {
       // Prioritaskan hasil scan presensi langsung / terkini
-      const isLiveScan = rec.operator !== 'Cecep Mulyana (Piket)' || rec.pesanTerkirim?.includes('via QR Code') || rec.pesanTerkirim?.includes('WA Gateway');
+      const isLiveScan = rec.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || rec.pesanTerkirim?.includes('via QR Code') || rec.pesanTerkirim?.includes('WA Gateway');
       const timeA = rec.waktu || '00:00:00';
       const timeB = currentBest.waktu || '00:00:00';
       if (isLiveScan || timeA >= timeB) {
@@ -320,7 +320,7 @@ export function auditAndSynchronizePresensi(
           waktu: rec.waktu || '06:45:00',
           status: (matchedStudent.kelas === 'Kelas 6-B') ? 'Hadir' : (rec.status || 'Hadir'),
           waStatus: rec.waStatus || 'Terkirim',
-          operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Cecep Mulyana (Piket)'),
+          operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)'),
           metode: resolvedMetode,
           metodeLabel: resolvedMetodeLabel,
           keterangan: resolvedKeterangan,

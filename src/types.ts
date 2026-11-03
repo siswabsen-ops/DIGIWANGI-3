@@ -75,6 +75,7 @@ export interface Presensi {
   waStatus: 'Pending' | 'Terkirim' | 'Gagal';
   pesanTerkirim?: string;
   operator: string; // Siapa yang menginput (Admin, Guru, Piket, Wali Kelas)
+  shift?: 'Pagi' | 'Siang'; // Sesi/Shift jam sekolah (Pagi: 07:00, Siang: 12:30)
   metode?: MetodePresensi; // 'QR_SCAN' | 'MANUAL_TAP' | 'MANUAL_OPERATOR'
   metodeLabel?: string; // "Scan QR Code Kartu" | "Manual Tap Wali Kelas" | "Manual Operator"
   keterangan?: string; // Catatan tambahan (misal: "Hadir via Scan Barcode", "Sakit flu", "Manual Tap Wali Kelas")

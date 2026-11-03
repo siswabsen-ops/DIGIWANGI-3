@@ -169,8 +169,8 @@ export const buildDailyAttendanceIndex = (
 
     const isNewer = (existing?: Presensi): boolean => {
       if (!existing) return true;
-      const isPRealScan = p.operator !== 'Cecep Mulyana (Piket)' || (p.pesanTerkirim && (p.pesanTerkirim.includes('via QR Code') || p.pesanTerkirim.includes('WA Gateway')));
-      const isExistingRealScan = existing.operator !== 'Cecep Mulyana (Piket)' || (existing.pesanTerkirim && (existing.pesanTerkirim.includes('via QR Code') || existing.pesanTerkirim.includes('WA Gateway')));
+      const isPRealScan = p.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (p.pesanTerkirim && (p.pesanTerkirim.includes('via QR Code') || p.pesanTerkirim.includes('WA Gateway')));
+      const isExistingRealScan = existing.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (existing.pesanTerkirim && (existing.pesanTerkirim.includes('via QR Code') || existing.pesanTerkirim.includes('WA Gateway')));
       if (isPRealScan && !isExistingRealScan) return true;
       if (!isPRealScan && isExistingRealScan) return false;
       const timeA = p.waktu || '00:00:00';
@@ -270,8 +270,8 @@ export const getLatestAttendanceForStudent = (
   if (matchingRecords.length === 1) return matchingRecords[0];
 
   return matchingRecords.sort((a, b) => {
-    const isAReal = a.operator !== 'Cecep Mulyana (Piket)' || (a.pesanTerkirim && (a.pesanTerkirim.includes('via QR Code') || a.pesanTerkirim.includes('WA Gateway')));
-    const isBReal = b.operator !== 'Cecep Mulyana (Piket)' || (b.pesanTerkirim && (b.pesanTerkirim.includes('via QR Code') || b.pesanTerkirim.includes('WA Gateway')));
+    const isAReal = a.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (a.pesanTerkirim && (a.pesanTerkirim.includes('via QR Code') || a.pesanTerkirim.includes('WA Gateway')));
+    const isBReal = b.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (b.pesanTerkirim && (b.pesanTerkirim.includes('via QR Code') || b.pesanTerkirim.includes('WA Gateway')));
     if (isAReal && !isBReal) return -1;
     if (!isAReal && isBReal) return 1;
     const timeA = a.waktu || '00:00:00';
@@ -403,7 +403,32 @@ export interface ClassRombelSummary {
   statusKeterangan: string;
   totalScanQR: number;
   totalManualTap: number;
+  shift?: 'Pagi' | 'Siang' | 'Campuran';
+  shiftLabel?: string;
+  totalPagi?: number;
+  totalSiang?: number;
 }
+
+/**
+ * Menentukan shift/sesi presensi (Pagi atau Siang)
+ * Standard SDN 3 Karamatwangi:
+ * - Pagi: Jam Masuk 07:00 WIB (Toleransi 07:15)
+ * - Siang: Jam Masuk 12:30 WIB (Toleransi 12:45)
+ */
+export const getAttendanceShift = (
+  record?: Presensi | null,
+  kelasName?: string,
+  targetTime?: string
+): 'Pagi' | 'Siang' => {
+  if (record?.shift) return record.shift;
+  const timeStr = record?.waktu || targetTime;
+  if (timeStr && timeStr !== '-') {
+    const hour = parseInt(timeStr.slice(0, 2), 10);
+    if (hour >= 11) return 'Siang';
+    if (hour > 0) return 'Pagi';
+  }
+  return 'Pagi';
+};
 
 /**
  * Helper tanggal aman zona waktu: memecah string YYYY-MM-DD ke komponen numerik
@@ -462,6 +487,9 @@ export const calculateAllRombelSummaryList = (
 
     let totalScanQR = 0;
     let totalManualTap = 0;
+    let totalPagi = 0;
+    let totalSiang = 0;
+
     classStudents.forEach((siswa) => {
       const rec = getAttendanceFromIndex(siswa, index);
       if (rec) {
@@ -470,8 +498,18 @@ export const calculateAllRombelSummaryList = (
         } else {
           totalManualTap++;
         }
+        const s = getAttendanceShift(rec, namaKelas);
+        if (s === 'Siang') totalSiang++;
+        else totalPagi++;
       }
     });
+
+    const shift: 'Pagi' | 'Siang' | 'Campuran' = 
+      totalSiang > 0 && totalPagi === 0 ? 'Siang' :
+      totalPagi > 0 && totalSiang === 0 ? 'Pagi' :
+      totalSiang > 0 && totalPagi > 0 ? 'Campuran' : 'Pagi';
+
+    const shiftLabel = shift === 'Siang' ? 'Siang (12.30 WIB)' : (shift === 'Campuran' ? 'Pagi & Siang' : 'Pagi (07.00 WIB)');
 
     const isTuntas = stats.belumAbsen === 0 && stats.totalHadirSemua > 0;
     const isBerjalan = stats.totalHadirSemua > 0 && stats.belumAbsen > 0;
@@ -502,7 +540,11 @@ export const calculateAllRombelSummaryList = (
       statusAbsen,
       statusKeterangan,
       totalScanQR,
-      totalManualTap
+      totalManualTap,
+      shift,
+      shiftLabel,
+      totalPagi,
+      totalSiang
     };
   });
 };
