@@ -122,7 +122,7 @@ export default function AttendancePrintModal({
         setDates.add(norm);
       }
     });
-    return Math.max(1, setDates.size || 20);
+    return Math.max(1, setDates.size);
   }, [presensiList, targetMonth]);
 
   // Semester metrics
@@ -143,7 +143,7 @@ export default function AttendancePrintModal({
         setDates.add(norm);
       }
     });
-    return Math.max(1, setDates.size || 100);
+    return Math.max(1, setDates.size);
   }, [presensiList, targetTahunAjaran, targetSemesterType]);
 
   const formattedDateIndo = useMemo(() => {
@@ -589,8 +589,7 @@ export default function AttendancePrintModal({
                     });
 
                     const totalSlots = filteredStudents.length * activeDaysCount;
-                    const rawAvgPersen = totalSlots > 0 ? Math.round((totalHAll / totalSlots) * 100) : 0;
-                    const avgPersen = rawAvgPersen >= 75 ? 92 : rawAvgPersen;
+                    const avgPersen = totalSlots > 0 ? Math.min(100, Math.round((totalHAll / totalSlots) * 100)) : 0;
 
                     return (
                       <>
@@ -755,7 +754,11 @@ export default function AttendancePrintModal({
                       const totalI = semesterRombelSummary.reduce((a, c) => a + c.izin, 0);
                       const totalA = semesterRombelSummary.reduce((a, c) => a + c.alfa, 0);
                       const totalM = totalH + totalT;
-                      const grandP = totalS > 0 ? Math.round((totalM / (totalS * semesterEffectiveDays)) * 100) : 0;
+                      const grandP = totalS > 0 ? Math.min(100, Math.round((totalM / (totalS * semesterEffectiveDays)) * 100)) : 0;
+                      let grandPredikat = 'Perlu Pendampingan';
+                      if (grandP >= 90) grandPredikat = 'Sangat Tinggi (A)';
+                      else if (grandP >= 80) grandPredikat = 'Tinggi (B)';
+                      else if (grandP >= 60) grandPredikat = 'Cukup (C)';
 
                       return (
                         <tr className="bg-slate-100 border-t-2 border-black text-black font-black">
@@ -768,7 +771,7 @@ export default function AttendancePrintModal({
                           <td className="border border-black py-2 px-2 text-center font-mono">{totalA}</td>
                           <td className="border border-black py-2 px-2 text-center font-mono">{totalM}</td>
                           <td className="border border-black py-2 px-2 text-center font-mono">{grandP}%</td>
-                          <td className="border border-black py-2 px-3 text-center">Sangat Baik (A)</td>
+                          <td className="border border-black py-2 px-3 text-center">{grandPredikat}</td>
                         </tr>
                       );
                     })()}

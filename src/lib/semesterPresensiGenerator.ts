@@ -4,14 +4,12 @@ import { getLocalDateString, normalizeDateKey, isPresensiMatchSiswa } from './at
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
 export const CURRENT_SEMESTER_DATE = '2026-10-30';
+export const HISTORICAL_ARCHIVE_END_DATE = '2026-10-30';
 
+// Arsip historis bawaan hanya mencakup rentang awal semester s/d 2026-10-30.
+// Hari-hari aktif setelahnya diisi secara real dari scan barcode siswa & tap guru kelas.
 export const getEffectiveTodayDate = (): string => {
-  try {
-    const today = getLocalDateString();
-    return today >= '2026-10-30' ? today : '2026-10-30';
-  } catch {
-    return '2026-10-30';
-  }
+  return HISTORICAL_ARCHIVE_END_DATE;
 };
 
 export const SEMESTER_1_HOLIDAYS = new Set<string>([
@@ -295,17 +293,22 @@ export function auditAndSynchronizePresensi(
         kelas: matchedStudent.kelas || rec.kelas,
         tanggal: dateKey,
         waktu: rec.waktu || '06:45:00',
-        status: (matchedStudent.kelas === 'Kelas 6-B') ? 'Hadir' : (rec.status || 'Hadir'),
+        status: rec.status || 'Hadir',
         waStatus: rec.waStatus || 'Terkirim',
-        operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)'),
+        operator: rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: resolvedMetode,
         metodeLabel: resolvedMetodeLabel,
         keterangan: resolvedKeterangan,
         scanError: rec.scanError
       });
     } else {
-      // Prioritaskan hasil scan presensi langsung / terkini
-      const isLiveScan = rec.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || rec.pesanTerkirim?.includes('via QR Code') || rec.pesanTerkirim?.includes('WA Gateway');
+      // Prioritaskan hasil scan presensi langsung / tap manual guru yang lebih baru
+      const isLiveScan =
+        rec.metode === 'QR_SCAN' ||
+        rec.metode === 'MANUAL_TAP' ||
+        rec.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' ||
+        rec.pesanTerkirim?.includes('via QR Code') ||
+        rec.pesanTerkirim?.includes('WA Gateway');
       const timeA = rec.waktu || '00:00:00';
       const timeB = currentBest.waktu || '00:00:00';
       if (isLiveScan || timeA >= timeB) {
@@ -318,9 +321,9 @@ export function auditAndSynchronizePresensi(
           kelas: matchedStudent.kelas || rec.kelas,
           tanggal: dateKey,
           waktu: rec.waktu || '06:45:00',
-          status: (matchedStudent.kelas === 'Kelas 6-B') ? 'Hadir' : (rec.status || 'Hadir'),
+          status: rec.status || 'Hadir',
           waStatus: rec.waStatus || 'Terkirim',
-          operator: (matchedStudent.kelas === 'Kelas 6-B') ? 'Usman Fauzan Alan, S.Pd.Gr.' : (rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)'),
+          operator: rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)',
           metode: resolvedMetode,
           metodeLabel: resolvedMetodeLabel,
           keterangan: resolvedKeterangan,
@@ -364,11 +367,13 @@ export function auditAndSynchronizePresensi(
     }
   }
 
-  // Masukkan rekaman hari ini dan hari selanjutnya (>= CURRENT_SEMESTER_DATE) atau hari yang tidak ada di schoolDays
+  // Pertahankan seluruh rekaman nyata hari berjalan (setelah arsip historis) tanpa mengisi otomatis siswa yang belum absen
+  const liveDatesSet = new Set<string>(schoolDays);
   existingMap.forEach((rec, key) => {
     const [dateKey] = key.split('__');
     if (!schoolDaysSet.has(dateKey)) {
       finalRecords.push(rec);
+      liveDatesSet.add(dateKey);
     }
   });
 
@@ -378,13 +383,15 @@ export function auditAndSynchronizePresensi(
     return a.nama.localeCompare(b.nama);
   });
 
+  const allSchoolDates = Array.from(liveDatesSet).sort();
+
   return {
     synchronizedRecords: finalRecords,
-    totalDays: schoolDays.length,
+    totalDays: allSchoolDates.length,
     totalStudents: students.length,
     totalRecords: finalRecords.length,
     addedDaysCount,
     repairedRecordsCount,
-    schoolDates: schoolDays
+    schoolDates: allSchoolDates
   };
 }

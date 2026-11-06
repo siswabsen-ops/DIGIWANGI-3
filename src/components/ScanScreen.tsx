@@ -346,14 +346,13 @@ function ScanScreen({
     const applicableJadwal = getApplicableJadwal(matchedSiswa.kelas, settings, waktuSekarang);
     const targetJamToleransi = applicableJadwal?.jamToleransi || settings.jamToleransi || '07:15';
 
-    // Status logic rule: if current time is after target "jamToleransi" -> "Terlambat", else "Hadir"
+    // Status logic rule: if current WIB time is after target "jamToleransi" -> "Terlambat", else "Hadir"
     let determinedStatus: StatusKehadiran = 'Hadir';
     if (customStatus) {
       determinedStatus = customStatus;
     } else {
       const [limitH, limitM] = targetJamToleransi.split(':').map(Number);
-      const curH = now.getHours();
-      const curM = now.getMinutes();
+      const [curH, curM] = waktuSekarang.split(':').map(Number);
 
       if (curH > limitH || (curH === limitH && curM > limitM)) {
         determinedStatus = 'Terlambat';
@@ -381,7 +380,7 @@ function ScanScreen({
       ? 'Scan QR Code Kartu' 
       : (methodType === 'MANUAL_TAP' ? 'Manual Tap Wali Kelas' : 'Input Manual NIS');
     const resolvedKeterangan = methodType === 'QR_SCAN'
-      ? `Tercatat Hadir pukul ${waktuSekarang.slice(0, 5)} WIB via Scan Barcode Kartu Siswa Resmi`
+      ? `Tercatat ${determinedStatus} pukul ${waktuSekarang.slice(0, 5)} WIB via Scan Barcode Kartu Siswa Resmi`
       : `Tercatat manual oleh ${currentUser.namaLengkap} [${determinedStatus}]`;
 
     const resolvedShift: 'Pagi' | 'Siang' = 
@@ -429,12 +428,12 @@ function ScanScreen({
     setManualStatus(null);
   };
 
-  // Direct mock scan via clicking student cards
+  // Direct barcode card scan via clicking student cards
   const handleVirtualScan = (siswa: Siswa, forcedStatus?: StatusKehadiran) => {
     setScannerStatus('SCANNING');
     const qrIdentifier = getStudentQRIdentifier(siswa);
     setTimeout(() => {
-      handleScanIdentify(qrIdentifier, forcedStatus, 'MANUAL_TAP');
+      handleScanIdentify(qrIdentifier, forcedStatus, 'QR_SCAN');
     }, 400); // Quick split-second visual laser delay
   };
 

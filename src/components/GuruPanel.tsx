@@ -1,25 +1,29 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import {
   Notebook,
   UserCheck,
-  Award,
-  Users,
   Search,
   CheckCircle,
-  AlertOctagon,
-  Clock,
   RefreshCw,
-  Filter,
   CheckCircle2,
-  AlertTriangle,
   Calendar,
   Layers,
   Download,
   FileArchive,
   Loader2,
-  QrCode
+  QrCode,
+  RotateCcw,
+  Lock
 } from 'lucide-react';
-import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS } from '../types';
+import {
+  Siswa,
+  Presensi,
+  StatusKehadiran,
+  SystemSettings,
+  WaliKelas,
+  DAFTAR_KELAS,
+  getApplicableJadwal
+} from '../types';
 import {
   getLocalDateString,
   getLocalTimeString,
@@ -28,6 +32,7 @@ import {
   isSameClass,
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
+  getAttendanceShift
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
@@ -35,30 +40,58 @@ import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport
 interface GuruPanelProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
+  settings?: SystemSettings;
+  waliKelasList?: WaliKelas[];
   currentUser: { namaLengkap: string; role: string; kelasSpesifik?: string };
   onAddPresensi: (presensi: Presensi) => void;
+  onDeletePresensi?: (siswa: Siswa, targetDate: string, recordId?: string) => void;
 }
 
 function GuruPanel({
   siswaList,
   presensiList,
+  settings,
+  waliKelasList,
   currentUser,
   onAddPresensi,
+  onDeletePresensi,
 }: GuruPanelProps) {
-  const defaultKelas = currentUser.kelasSpesifik || 'Kelas 6-A';
+  const isRestrictedToOwnClass =
+    currentUser.role === 'guru' &&
+    Boolean(currentUser.kelasSpesifik) &&
+    currentUser.kelasSpesifik !== 'Semua Kelas';
+
+  const defaultKelas = currentUser.kelasSpesifik && currentUser.kelasSpesifik !== 'Semua Kelas'
+    ? currentUser.kelasSpesifik
+    : 'Kelas 6-A';
+
   const [selectedKelas, setSelectedKelas] = useState<string>(defaultKelas);
   const [targetDate, setTargetDate] = useState<string>(() => getLocalDateString());
   const [filterSiswaName, setFilterSiswaName] = useState('');
   const [statusFilter, setStatusFilter] = useState<'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen'>('semua');
+  const [tapKeterangan, setTapKeterangan] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Jaga agar guru kelas selalu terisolasi pada kelasnya masing-masing
+  useEffect(() => {
+    if (isRestrictedToOwnClass && currentUser.kelasSpesifik) {
+      setSelectedKelas(currentUser.kelasSpesifik);
+    }
+  }, [isRestrictedToOwnClass, currentUser.kelasSpesifik]);
 
   // QR Download States
   const [isDownloadingQR, setIsDownloadingQR] = useState(false);
   const [qrProgress, setQrProgress] = useState<{ current: number; total: number; name: string } | null>(null);
 
-  const targetedKelas = selectedKelas;
-  const waliKelasName = getWaliKelasByKelas(targetedKelas);
+  const targetedKelas = isRestrictedToOwnClass && currentUser.kelasSpesifik
+    ? currentUser.kelasSpesifik
+    : selectedKelas;
+
+  const waliKelasName = useMemo(() => {
+    const found = waliKelasList?.find((w) => isSameClass(w.kelas, targetedKelas));
+    return found?.nama || getWaliKelasByKelas(targetedKelas);
+  }, [waliKelasList, targetedKelas]);
 
   // Extract class specific pupils list
   const classStudents = useMemo(() => {
@@ -107,13 +140,29 @@ function GuruPanel({
     });
   }, [classStudents, filterSiswaName, statusFilter, dailyIndex]);
 
-  // Single Manual Trigger specifically for this teacher class-room
+  // Single Manual Trigger specifically for this teacher class-room (Sakit, Izin, Alfa, atau penyesuaian kelas)
   const handleTeacherSetStatus = (siswa: Siswa, targetStatus: StatusKehadiran) => {
     const waktuSekarang = getLocalTimeString();
 
     // Look for previous same record to overwrite
     const existingRecord = getLatestAttendanceForStudent(siswa, presensiList, targetDate);
     const overwriteRecordId = existingRecord ? existingRecord.id : `pr-${siswa.id}-${targetDate}`;
+
+    const applicableJadwal = settings ? getApplicableJadwal(siswa.kelas, settings, waktuSekarang) : undefined;
+    const resolvedShift: 'Pagi' | 'Siang' =
+      applicableJadwal?.tipe === 'Siang' || parseInt(waktuSekarang.slice(0, 2), 10) >= 11
+        ? 'Siang'
+        : getAttendanceShift(null, siswa.kelas);
+
+    const customNote = tapKeterangan.trim();
+    const defaultNote =
+      targetStatus === 'Sakit'
+        ? 'Keterangan Sakit ➔ Di-tap oleh Wali Kelas'
+        : targetStatus === 'Izin'
+        ? 'Keterangan Izin ➔ Di-tap oleh Wali Kelas'
+        : targetStatus === 'Alfa'
+        ? 'Tanpa Keterangan (Alfa) ➔ Di-tap oleh Wali Kelas'
+        : `Dicatat ${targetStatus} oleh Wali Kelas (${waliKelasName})`;
 
     const newRecord: Presensi = {
       id: overwriteRecordId,
@@ -125,18 +174,26 @@ function GuruPanel({
       tanggal: targetDate,
       waktu: waktuSekarang,
       status: targetStatus,
+      shift: resolvedShift,
       waStatus: 'Terkirim',
-      pesanTerkirim: `Diproses via Server Utama WA Gateway (08214134551) ➔ Disinkronkan manual oleh Wali Kelas (${siswa.waOrangTua})`,
-      operator: currentUser.namaLengkap,
+      pesanTerkirim: `Diproses via Server Utama WA Gateway (08214134551) ➔ Tap Wali Kelas ${targetedKelas} [${targetStatus}] (${siswa.waOrangTua || '-'})`,
+      operator: currentUser.namaLengkap || waliKelasName,
       metode: 'MANUAL_TAP',
       metodeLabel: 'Manual Tap Wali Kelas',
-      keterangan: `Dicatat manual oleh Wali Kelas: ${currentUser.namaLengkap} [${targetStatus}]`
+      keterangan: customNote ? `${targetStatus} (${customNote}) ➔ Di-tap oleh Wali Kelas` : defaultNote
     };
 
     onAddPresensi(newRecord);
-    
-    setSuccessMsg(`Konfirmasi: Berhasil menyinkronkan status presensi ${siswa.nama} menjadi [${targetStatus}]. Notifikasi WA terkirim.`);
+
+    setSuccessMsg(`Berhasil menyimpan tap Wali Kelas: ${siswa.nama} [${targetStatus}]. Notifikasi WA otomatis dikirim ke Orang Tua.`);
     setTimeout(() => setSuccessMsg(''), 3500);
+  };
+
+  const handleResetStudentAttendance = (siswa: Siswa, registered?: Presensi) => {
+    if (!onDeletePresensi || !registered) return;
+    onDeletePresensi(siswa, targetDate, registered.id);
+    setSuccessMsg(`Presensi ${siswa.nama} direset menjadi Belum Absen.`);
+    setTimeout(() => setSuccessMsg(''), 3000);
   };
 
   const handleManualSync = () => {
@@ -230,46 +287,75 @@ function GuruPanel({
         </div>
       )}
 
-      {/* CLASS & DATE SELECTOR BAR */}
-      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-600" />
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Pilih Rombel:</span>
+      {/* CLASS & DATE SELECTOR BAR + KETERANGAN TAP */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Rombel Kelas:</span>
+            </div>
+            {isRestrictedToOwnClass ? (
+              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-black rounded-xl py-2 px-3">
+                <Lock className="w-3.5 h-3.5 text-emerald-700" />
+                <span>{targetedKelas} • {waliKelasName}</span>
+                <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded uppercase">Khusus Wali Kelas</span>
+              </div>
+            ) : (
+              <select
+                value={selectedKelas}
+                onChange={(e) => setSelectedKelas(e.target.value)}
+                className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl py-2 px-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+              >
+                {DAFTAR_KELAS.map((k) => {
+                  const wk = waliKelasList?.find((w) => isSameClass(w.kelas, k))?.nama || getWaliKelasByKelas(k);
+                  return (
+                    <option key={k} value={k}>
+                      {k} ({wk})
+                    </option>
+                  );
+                })}
+              </select>
+            )}
           </div>
-          <select
-            value={selectedKelas}
-            onChange={(e) => setSelectedKelas(e.target.value)}
-            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl py-2 px-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-          >
-            {DAFTAR_KELAS.map((k) => (
-              <option key={k} value={k}>
-                {k} ({getWaliKelasByKelas(k)})
-              </option>
-            ))}
-          </select>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <span className="text-xs font-bold text-slate-600">Tanggal:</span>
+            </div>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl py-1.5 px-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+            {targetDate !== getLocalDateString() && (
+              <button
+                type="button"
+                onClick={() => setTargetDate(getLocalDateString())}
+                className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                Hari Ini
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <span className="text-xs font-bold text-slate-600">Tanggal:</span>
+        {/* Catatan opsional untuk Tap Sakit / Izin / Alfa + Info Alur Real */}
+        <div className="pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+          <p className="text-slate-600">
+            <b className="text-emerald-800">Alur Real:</b> Kehadiran siswa terekam otomatis dari <b>Scan Barcode Kartu</b>. Wali Kelas cukup tap <b>Sakit / Izin / Alfa</b> bagi siswa yang berhalangan hadir di kelas <b>{targetedKelas}</b>.
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="text"
+              value={tapKeterangan}
+              onChange={(e) => setTapKeterangan(e.target.value)}
+              placeholder="Catatan alasan S/I/A (opsional)..."
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-56"
+            />
           </div>
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl py-1.5 px-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-          />
-          {targetDate !== getLocalDateString() && (
-            <button
-              type="button"
-              onClick={() => setTargetDate(getLocalDateString())}
-              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-            >
-              Hari Ini
-            </button>
-          )}
         </div>
       </div>
 
@@ -478,28 +564,49 @@ function GuruPanel({
                       NIS: <b>{siswa.nis}</b> • {siswa.jenisKelamin === 'L' ? 'Laki-Laki' : 'Perempuan'} • WA: {siswa.waOrangTua || '-'}
                     </p>
                     {registered ? (
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        <span className={`inline-flex items-center gap-1 font-black text-[9px] uppercase tracking-wider py-0.5 px-2 rounded-full ${
-                          registered.status === 'Hadir'
-                            ? 'text-emerald-800 bg-emerald-100 border border-emerald-300'
-                            : registered.status === 'Terlambat'
-                            ? 'text-amber-800 bg-amber-100 border border-amber-300'
-                            : registered.status === 'Sakit'
-                            ? 'text-indigo-800 bg-indigo-100 border border-indigo-300'
-                            : registered.status === 'Izin'
-                            ? 'text-sky-800 bg-sky-100 border border-sky-300'
-                            : 'text-rose-800 bg-rose-100 border border-rose-300'
-                        }`}>
-                          <UserCheck className="w-3 h-3" />
-                          {registered.status} • {registered.waktu.slice(0, 5)} WIB
-                        </span>
-                        <span className="text-[9px] text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded font-mono font-semibold">
-                          WA: {registered.waStatus || 'Terkirim'}
-                        </span>
+                      <div className="space-y-1 mt-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 font-black text-[9px] uppercase tracking-wider py-0.5 px-2 rounded-full ${
+                            registered.status === 'Hadir'
+                              ? 'text-emerald-800 bg-emerald-100 border border-emerald-300'
+                              : registered.status === 'Terlambat'
+                              ? 'text-amber-800 bg-amber-100 border border-amber-300'
+                              : registered.status === 'Sakit'
+                              ? 'text-indigo-800 bg-indigo-100 border border-indigo-300'
+                              : registered.status === 'Izin'
+                              ? 'text-sky-800 bg-sky-100 border border-sky-300'
+                              : 'text-rose-800 bg-rose-100 border border-rose-300'
+                          }`}>
+                            <UserCheck className="w-3 h-3" />
+                            {registered.status} • {registered.waktu.slice(0, 5)} WIB
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
+                            registered.metode === 'QR_SCAN'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}>
+                            {registered.metode === 'QR_SCAN' ? (
+                              <>
+                                <QrCode className="w-2.5 h-2.5" />
+                                <span>Scan Barcode</span>
+                              </>
+                            ) : (
+                              <span>👆 Tap Wali Kelas</span>
+                            )}
+                          </span>
+                          <span className="text-[9px] text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded font-mono font-semibold">
+                            WA: {registered.waStatus || 'Terkirim'}
+                          </span>
+                        </div>
+                        {registered.keterangan && (
+                          <p className="text-[10px] text-slate-600 italic truncate" title={registered.keterangan}>
+                            {registered.keterangan}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <span className="inline-block mt-1.5 font-black text-[9px] uppercase tracking-wider text-slate-500 bg-slate-100 py-0.5 px-2 rounded-lg border border-slate-200">
-                        Belum Presensi
+                        Belum Absen (Menunggu Scan Barcode / Tap Guru)
                       </span>
                     )}
                   </div>
@@ -516,7 +623,7 @@ function GuruPanel({
                       <span>QR</span>
                     </button>
 
-                    {(['Hadir', 'Sakit', 'Izin', 'Alfa', 'Terlambat'] as StatusKehadiran[]).map((st) => {
+                    {(['Sakit', 'Izin', 'Alfa', 'Hadir', 'Terlambat'] as StatusKehadiran[]).map((st) => {
                       const isCurrent = registered?.status === st;
                       return (
                         <button
@@ -534,6 +641,12 @@ function GuruPanel({
                                 : st === 'Alfa'
                                 ? 'bg-rose-700 text-white shadow-xs'
                                 : 'bg-amber-700 text-white shadow-xs'
+                              : st === 'Sakit'
+                              ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200'
+                              : st === 'Izin'
+                              ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200'
+                              : st === 'Alfa'
+                              ? 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
                               : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                           }`}
                         >
@@ -541,6 +654,18 @@ function GuruPanel({
                         </button>
                       );
                     })}
+
+                    {registered && onDeletePresensi && (
+                      <button
+                        type="button"
+                        onClick={() => handleResetStudentAttendance(siswa, registered)}
+                        className="text-[9px] font-bold py-1.5 px-2 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 border border-slate-200 transition-all cursor-pointer flex items-center gap-0.5"
+                        title="Batalkan / kembalikan ke status Belum Absen"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );

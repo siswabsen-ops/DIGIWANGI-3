@@ -511,16 +511,17 @@ export const calculateAllRombelSummaryList = (
 
     const shiftLabel = shift === 'Siang' ? 'Siang (12.30 WIB)' : (shift === 'Campuran' ? 'Pagi & Siang' : 'Pagi (07.00 WIB)');
 
-    const isTuntas = stats.belumAbsen === 0 && stats.totalHadirSemua > 0;
-    const isBerjalan = stats.totalHadirSemua > 0 && stats.belumAbsen > 0;
+    const totalTercatat = stats.totalSiswa - stats.belumAbsen;
+    const isTuntas = stats.totalSiswa > 0 && stats.belumAbsen === 0;
+    const isBerjalan = totalTercatat > 0 && stats.belumAbsen > 0;
     const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
       ? 'Tuntas' 
       : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
 
     const statusKeterangan = isTuntas
-      ? `${stats.totalHadirSemua}/${stats.totalSiswa} Tuntas (${stats.persentaseKeaktifan}% Hadir • ${totalScanQR} Scan QR)`
+      ? `${totalTercatat}/${stats.totalSiswa} Tuntas (${stats.totalHadirSemua} Masuk • ${totalScanQR} Scan, ${totalManualTap} Tap Guru)`
       : (isBerjalan 
-          ? `${stats.totalHadirSemua}/${stats.totalSiswa} Sedang Berjalan (${stats.belumAbsen} Belum Absen)`
+          ? `${totalTercatat}/${stats.totalSiswa} Tercatat (${totalScanQR} Scan, ${totalManualTap} Tap Guru • ${stats.belumAbsen} Belum)`
           : `Belum Melakukan Absen (0/${stats.totalSiswa})`);
 
     return {
@@ -608,8 +609,9 @@ export const calculateWeeklyRombelSummaryList = (
     // Evaluasi persentase kehadiran berdasarkan hari aktif/berjalan di minggu tersebut
     const evaluatedSlots = totalSiswa * effectiveDaysCount;
     const persentase = evaluatedSlots > 0 ? Math.min(100, Math.round((totalHadir / evaluatedSlots) * 100)) : 0;
-    const isTuntas = belumAbsen === 0 && totalHadir > 0;
-    const isBerjalan = totalHadir > 0 && belumAbsen > 0;
+    const totalTercatat = totalHadir + sakit + izin + alfa;
+    const isTuntas = evaluatedSlots > 0 && belumAbsen === 0;
+    const isBerjalan = totalTercatat > 0 && belumAbsen > 0;
     const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
       ? 'Tuntas' 
       : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
@@ -711,8 +713,9 @@ export const calculateMonthlyRombelSummaryList = (
     const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
     const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
-    const isTuntas = belumAbsen === 0 && totalHadir > 0;
-    const isBerjalan = totalHadir > 0 && belumAbsen > 0;
+    const totalTercatat = totalHadir + sakit + izin + alfa;
+    const isTuntas = totalPossibleSlots > 0 && belumAbsen === 0;
+    const isBerjalan = totalTercatat > 0 && belumAbsen > 0;
     const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
       ? 'Tuntas' 
       : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
@@ -830,8 +833,9 @@ export const calculateSemesterRombelSummaryList = (
     const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
     const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
-    const isTuntas = belumAbsen === 0 && totalHadir > 0;
-    const isBerjalan = totalHadir > 0 && belumAbsen > 0;
+    const totalTercatat = totalHadir + sakit + izin + alfa;
+    const isTuntas = totalPossibleSlots > 0 && belumAbsen === 0;
+    const isBerjalan = totalTercatat > 0 && belumAbsen > 0;
     const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
       ? 'Tuntas' 
       : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');

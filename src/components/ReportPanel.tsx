@@ -175,8 +175,8 @@ function ReportPanel({
     let berjalan = 0;
     let belum = 0;
     allRombelSummary.forEach((r) => {
-      if (r.belumAbsen === 0 && r.totalHadir > 0) tuntas++;
-      else if (r.totalHadir > 0) berjalan++;
+      if (r.statusAbsen === 'Tuntas') tuntas++;
+      else if (r.statusAbsen === 'Sedang Berjalan') berjalan++;
       else belum++;
     });
     return { tuntas, berjalan, belum };
@@ -184,9 +184,9 @@ function ReportPanel({
 
   const displayedRombelList = useMemo(() => {
     let list = allRombelSummary;
-    if (rombelFilter === 'tuntas') list = list.filter((r) => r.belumAbsen === 0 && r.totalHadir > 0);
-    else if (rombelFilter === 'berjalan') list = list.filter((r) => r.totalHadir > 0 && r.belumAbsen > 0);
-    else if (rombelFilter === 'belum') list = list.filter((r) => r.totalHadir === 0);
+    if (rombelFilter === 'tuntas') list = list.filter((r) => r.statusAbsen === 'Tuntas');
+    else if (rombelFilter === 'berjalan') list = list.filter((r) => r.statusAbsen === 'Sedang Berjalan');
+    else if (rombelFilter === 'belum') list = list.filter((r) => r.statusAbsen === 'Belum Mulai');
 
     if (sesiFilter === 'siang') {
       list = list.filter((r) => r.shift === 'Siang' || (r.totalSiang || 0) > 0);
@@ -1055,22 +1055,25 @@ function ReportPanel({
                     <span className="text-[9px] bg-emerald-200 text-emerald-900 font-extrabold px-1.5 py-0.2 rounded-full">100% Selesai</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                    {allRombelSummary.filter(r => r.belumAbsen === 0 && r.totalHadir > 0).map(r => (
-                      <button
-                        key={r.kelas}
-                        type="button"
-                        onClick={() => setSelectedKelas(r.kelas)}
-                        className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 border ${
-                          selectedKelas === r.kelas 
-                            ? 'bg-emerald-700 text-white border-emerald-600 shadow-xs' 
-                            : 'bg-white hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                        }`}
-                        title={`Klik untuk melihat detail ${r.kelas}`}
-                      >
-                        <span>{r.kelas}</span>
-                        <span className="font-mono text-[9px] opacity-90 font-extrabold">({r.totalHadir}/{r.totalSiswa})</span>
-                      </button>
-                    ))}
+                    {allRombelSummary.filter(r => r.statusAbsen === 'Tuntas').map(r => {
+                      const recordedCount = r.totalSiswa - r.belumAbsen;
+                      return (
+                        <button
+                          key={r.kelas}
+                          type="button"
+                          onClick={() => setSelectedKelas(r.kelas)}
+                          className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 border ${
+                            selectedKelas === r.kelas 
+                              ? 'bg-emerald-700 text-white border-emerald-600 shadow-xs' 
+                              : 'bg-white hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                          }`}
+                          title={`Klik untuk melihat detail ${r.kelas} (${r.totalHadir} Hadir, ${r.sakit + r.izin + r.alfa} S/I/A)`}
+                        >
+                          <span>{r.kelas}</span>
+                          <span className="font-mono text-[9px] opacity-90 font-extrabold">({recordedCount}/{r.totalSiswa})</span>
+                        </button>
+                      );
+                    })}
                     {rombelStatusStats.tuntas === 0 && (
                       <span className="text-slate-400 italic text-[10px]">Belum ada kelas yang tuntas 100%</span>
                     )}
@@ -1084,25 +1087,28 @@ function ReportPanel({
                       <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
                       Sedang Berjalan ({rombelStatusStats.berjalan})
                     </span>
-                    <span className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1.5 py-0.2 rounded-full">Proses Scan</span>
+                    <span className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1.5 py-0.2 rounded-full">Proses Scan / Tap</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                    {allRombelSummary.filter(r => r.totalHadir > 0 && r.belumAbsen > 0).map(r => (
-                      <button
-                        key={r.kelas}
-                        type="button"
-                        onClick={() => setSelectedKelas(r.kelas)}
-                        className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 border ${
-                          selectedKelas === r.kelas 
-                            ? 'bg-amber-600 text-white border-amber-500 shadow-xs' 
-                            : 'bg-white hover:bg-amber-100 text-amber-900 border-amber-300'
-                        }`}
-                        title={`Klik untuk melihat detail ${r.kelas}`}
-                      >
-                        <span>{r.kelas}</span>
-                        <span className="font-mono text-[9px] font-extrabold">({r.totalHadir}/{r.totalSiswa} • Sisa {r.belumAbsen})</span>
-                      </button>
-                    ))}
+                    {allRombelSummary.filter(r => r.statusAbsen === 'Sedang Berjalan').map(r => {
+                      const recordedCount = r.totalSiswa - r.belumAbsen;
+                      return (
+                        <button
+                          key={r.kelas}
+                          type="button"
+                          onClick={() => setSelectedKelas(r.kelas)}
+                          className={`text-[10px] font-bold px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 border ${
+                            selectedKelas === r.kelas 
+                              ? 'bg-amber-600 text-white border-amber-500 shadow-xs' 
+                              : 'bg-white hover:bg-amber-100 text-amber-900 border-amber-300'
+                          }`}
+                          title={`Klik untuk melihat detail ${r.kelas}`}
+                        >
+                          <span>{r.kelas}</span>
+                          <span className="font-mono text-[9px] font-extrabold">({recordedCount}/{r.totalSiswa} • Sisa {r.belumAbsen})</span>
+                        </button>
+                      );
+                    })}
                     {rombelStatusStats.berjalan === 0 && (
                       <span className="text-slate-400 italic text-[10px]">Tidak ada kelas yang sedang berjalan</span>
                     )}
@@ -1119,7 +1125,7 @@ function ReportPanel({
                     <span className="text-[9px] bg-slate-200 text-slate-700 font-extrabold px-1.5 py-0.2 rounded-full">0 Absen</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                    {allRombelSummary.filter(r => r.totalHadir === 0).map(r => (
+                    {allRombelSummary.filter(r => r.statusAbsen === 'Belum Mulai').map(r => (
                       <button
                         key={r.kelas}
                         type="button"
@@ -1390,19 +1396,19 @@ function ReportPanel({
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-center">
-                            {rombel.belumAbsen === 0 && rombel.totalHadir > 0 ? (
+                            {rombel.statusAbsen === 'Tuntas' ? (
                               <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                                ✅ Tuntas ({rombel.totalHadir}/{rombel.totalSiswa})
+                                ✅ Tuntas ({rombel.totalSiswa - rombel.belumAbsen}/{rombel.totalSiswa})
                               </span>
-                            ) : rombel.totalHadir > 0 ? (
+                            ) : rombel.statusAbsen === 'Sedang Berjalan' ? (
                               <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                                ⏳ Berjalan (Sisa {rombel.belumAbsen})
+                                ⏳ Berjalan ({rombel.totalSiswa - rombel.belumAbsen}/{rombel.totalSiswa} • Sisa {rombel.belumAbsen})
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 border border-slate-300 text-[10px] font-black px-2.5 py-0.5 rounded-full">
-                                ⚪ Belum Mulai
+                                ⚪ Belum Mulai (0/{rombel.totalSiswa})
                               </span>
                             )}
                           </td>
@@ -1480,7 +1486,7 @@ function ReportPanel({
                       <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel Kelas</td>
                       <td className="py-3 px-2.5 text-center font-bold text-slate-700 bg-amber-100/40">Semua Sesi</td>
                       <td className="py-3 px-3 text-center font-black text-[10px] text-indigo-950 bg-indigo-100/70">
-                        {rombelStatusStats.tuntas} Tuntas • {rombelStatusStats.berjalan} Berjalan
+                        {rombelStatusStats.tuntas} Tuntas • {rombelStatusStats.berjalan} Berjalan • {rombelStatusStats.belum} Belum
                       </td>
                       <td className="py-3 px-3 text-center text-teal-900 font-black bg-teal-100/60">
                         {grandTotalSchool.totalScanQR} Scan • {grandTotalSchool.totalManualTap} Manual

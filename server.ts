@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { auditAndSynchronizePresensi, generateFullSemesterPresensi, CURRENT_SEMESTER_DATE } from "./src/lib/semesterPresensiGenerator";
+import { auditAndSynchronizePresensi, generateFullSemesterPresensi, CURRENT_SEMESTER_DATE, HISTORICAL_ARCHIVE_END_DATE } from "./src/lib/semesterPresensiGenerator";
 
 const PORT = 3000;
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -155,17 +155,35 @@ if (!fs.existsSync(PRESENSI_FILE)) {
     console.error("Failed to seed initial semester presensi:", err);
   }
 } else {
-  // Prime in-memory presensi cache and ensure today's school day is audited & present
+  // Prime in-memory presensi cache, purge any legacy synthetic live-day records, and audit archive
   try {
-    const existing = getCachedPresensi();
+    const rawExisting = getCachedPresensi();
+    // Hapus rekaman sintetis otomatis (id berpola pr-YYYY-MM-DD-sis-...) setelah tanggal arsip 2026-10-30
+    // agar kelas yang belum scan barcode / belum di-tap wali kelas tidak otomatis terisi hadir.
+    const SYNTHETIC_BATCH_ID_RE = /^pr-\d{4}-\d{2}-\d{2}-sis-/;
+    const purgedExisting = rawExisting.filter((p: any) => {
+      const d = (p?.tanggal || '').slice(0, 10);
+      if (d > HISTORICAL_ARCHIVE_END_DATE && p?.id && SYNTHETIC_BATCH_ID_RE.test(p.id)) {
+        return false;
+      }
+      return true;
+    });
+    const purgedCount = rawExisting.length - purgedExisting.length;
+    if (purgedCount > 0) {
+      console.log(`[Cloud Presensi] Membersihkan ${purgedCount} rekaman otomatis tanggal > ${HISTORICAL_ARCHIVE_END_DATE} agar absensi berjalan sesuai scan barcode & tap guru.`);
+    }
+
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
     if (students.length > 0) {
-      const auditResult = auditAndSynchronizePresensi(existing, students);
-      if (auditResult.synchronizedRecords.length > existing.length) {
-        saveCachedPresensi(auditResult.synchronizedRecords);
-        console.log(`[Cloud Presensi] Auto-synchronized: added ${auditResult.addedDaysCount} days, total ${auditResult.synchronizedRecords.length} records including today.`);
+      const auditResult = auditAndSynchronizePresensi(purgedExisting, students);
+      if (purgedCount > 0 || auditResult.synchronizedRecords.length !== purgedExisting.length) {
+        cachedPresensi = auditResult.synchronizedRecords;
+        writeJsonFile(PRESENSI_FILE, auditResult.synchronizedRecords);
+        incrementSyncVersion(`Startup Audit & Clean Live Attendance (${auditResult.synchronizedRecords.length} records)`);
+        console.log(`[Cloud Presensi] Tersinkronisasi: ${auditResult.synchronizedRecords.length} rekaman arsip & live.`);
       } else {
-        console.log(`[Cloud Presensi] Data presensi aktif: ${existing.length} catatan tersimpan aman in-memory.`);
+        cachedPresensi = auditResult.synchronizedRecords;
+        console.log(`[Cloud Presensi] Data presensi aktif: ${cachedPresensi.length} catatan tersimpan aman in-memory.`);
       }
     }
   } catch (err) {
@@ -248,7 +266,7 @@ async function startServer() {
     res.json({ success: true, version: syncVersion, total: data.length });
   });
 
-  // 5. Sync Attendance records (with archive safeguarding)
+  // 5. Sync Attendance records (with archive & live record safeguarding)
   app.post("/api/sync/presensi", (req, res) => {
     const { data, updatedBy } = req.body;
     if (!Array.isArray(data)) {
@@ -274,7 +292,24 @@ async function startServer() {
       }
       finalRecords = Array.from(existingMap.values());
     } else {
-      finalRecords = data;
+      // Preserve any newer live scans/taps on server (> HISTORICAL_ARCHIVE_END_DATE) not present in incoming payload
+      const mergedMap = new Map<string, any>();
+      for (const item of data) {
+        const d = (item.tanggal || '').slice(0, 10);
+        const sid = item.siswaId || item.nis || item.nama;
+        mergedMap.set(`${sid}__${d}`, item);
+      }
+      for (const item of existing) {
+        const d = (item.tanggal || '').slice(0, 10);
+        if (d > HISTORICAL_ARCHIVE_END_DATE) {
+          const sid = item.siswaId || item.nis || item.nama;
+          const key = `${sid}__${d}`;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, item);
+          }
+        }
+      }
+      finalRecords = Array.from(mergedMap.values());
     }
 
     saveCachedPresensi(finalRecords);
@@ -319,7 +354,33 @@ async function startServer() {
     }
   });
 
-  // 5b. Audit & Synchronize Presensi across daily, weekly, monthly, semester
+  // 5b. Atomic single attendance record delete/reset (for homeroom teachers resetting accidental taps)
+  app.post("/api/presensi/delete", (req, res) => {
+    try {
+      const { recordId, siswaId, tanggal, updatedBy } = req.body;
+      const normDate = (tanggal || '').slice(0, 10);
+      if (!normDate || (!recordId && !siswaId)) {
+        res.status(400).json({ error: "Invalid delete payload. Provide tanggal and recordId or siswaId." });
+        return;
+      }
+
+      const existingRecords = getCachedPresensi();
+      const filtered = existingRecords.filter((p: any) => {
+        if (recordId && p.id === recordId) return false;
+        if (siswaId && p.siswaId === siswaId && (p.tanggal || '').slice(0, 10) === normDate) return false;
+        return true;
+      });
+
+      saveCachedPresensi(filtered);
+      incrementSyncVersion(`Reset Presensi (${siswaId || recordId} on ${normDate}) by ${updatedBy || 'Wali Kelas'}`);
+      res.json({ success: true, version: syncVersion, total: filtered.length });
+    } catch (err: any) {
+      console.error("[Server Presensi Delete Error]:", err);
+      res.status(500).json({ error: err.message || "Failed to delete attendance record" });
+    }
+  });
+
+  // 5c. Audit & Synchronize Presensi across daily, weekly, monthly, semester
   app.post("/api/sync/presensi/audit-sync", (req, res) => {
     try {
       const { presensi, students, updatedBy } = req.body;
@@ -335,6 +396,13 @@ async function startServer() {
         success: true,
         version: syncVersion,
         total: auditResult.synchronizedRecords.length,
+        synchronizedRecords: auditResult.synchronizedRecords,
+        totalDays: auditResult.totalDays,
+        totalStudents: auditResult.totalStudents,
+        totalRecords: auditResult.totalRecords,
+        addedDaysCount: auditResult.addedDaysCount,
+        repairedRecordsCount: auditResult.repairedRecordsCount,
+        schoolDates: auditResult.schoolDates,
         presensi: auditResult.synchronizedRecords,
         details: auditResult
       });

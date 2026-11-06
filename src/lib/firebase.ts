@@ -136,6 +136,11 @@ export const setQuotaExhausted = (exhausted: boolean = true) => {
   } catch {}
 };
 
+export const isPermissionError = (error: unknown): boolean => {
+  const errStr = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return errStr.includes('permission-denied') || errStr.includes('insufficient permissions');
+};
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   if (isQuotaError(error)) {
     setQuotaExhausted(true);
@@ -164,7 +169,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.warn('Firestore Operation Notice: ', JSON.stringify(errInfo));
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  if (isPermissionError(error)) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }
 
 // Connection validator per skill instructions
@@ -219,6 +227,11 @@ export const cleanPresensiForFirestore = (p: Presensi) => {
     operator: p.operator || 'Sistem',
   };
   if (p.nik) payload.nik = p.nik;
+  if (p.shift) payload.shift = p.shift;
+  if (p.metode) payload.metode = p.metode;
+  if (p.metodeLabel) payload.metodeLabel = p.metodeLabel;
+  if (p.keterangan) payload.keterangan = p.keterangan;
+  if (p.scanError) payload.scanError = p.scanError;
   if (p.pesanTerkirim) payload.pesanTerkirim = p.pesanTerkirim;
   return payload;
 };
@@ -458,7 +471,7 @@ export const syncMasterWaliKelasToCloud = async (waliKelasList: WaliKelas[], upd
 export const subscribeToCloudSync = (callbacks: {
   onStudentsChange?: (students: Siswa[]) => void;
   onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
-  onPresensiChange?: (presensi: Presensi[]) => void;
+  onPresensiChange?: (presensi: Presensi[], updatedAt?: number) => void;
   onSettingsChange?: (settings: SystemSettings) => void;
   onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
   onStatusChange?: (status: 'connected' | 'offline' | 'syncing') => void;
@@ -505,7 +518,7 @@ export const subscribeToCloudSync = (callbacks: {
       if (snapshot.exists()) {
         const payload = snapshot.data() as CloudSyncPayload<Presensi[]>;
         if (Array.isArray(payload?.data)) {
-          callbacks.onPresensiChange?.(payload.data);
+          callbacks.onPresensiChange?.(payload.data, payload.updatedAt);
           callbacks.onStatusChange?.('connected');
         }
       }

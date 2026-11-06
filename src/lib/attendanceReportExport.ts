@@ -204,7 +204,11 @@ export function generateDailyRombelSummaryCSV(
     totalManualTap,
     totalTidakHadir,
     `${grandPersen}%`,
-    belumAbsen === 0 && totalHadir > 0 ? 'Tuntas' : 'Sedang Berjalan'
+    belumAbsen === 0 && totalSiswa > 0
+      ? 'Tuntas'
+      : totalSiswa - belumAbsen > 0
+      ? 'Sedang Berjalan'
+      : 'Belum Mulai'
   ]);
 
   const headerLines = [
@@ -331,26 +335,27 @@ export function generateWeeklyReportCSV(
   let totalIzinAll = 0;
   let totalAlfaAll = 0;
   let totalBelumAll = 0;
+  let totalMasukAll = 0;
 
   rows.forEach(r => {
-    totalHadirAll += Number(r[9]) || 0;
-    totalTelatAll += Number(r[10]) || 0;
-    totalSakitAll += Number(r[11]) || 0;
-    totalIzinAll += Number(r[12]) || 0;
-    totalAlfaAll += Number(r[13]) || 0;
-    totalBelumAll += Number(r[14]) || 0;
+    totalHadirAll += Number(r[10]) || 0;
+    totalTelatAll += Number(r[11]) || 0;
+    totalSakitAll += Number(r[12]) || 0;
+    totalIzinAll += Number(r[13]) || 0;
+    totalAlfaAll += Number(r[14]) || 0;
+    totalBelumAll += Number(r[15]) || 0;
+    totalMasukAll += Number(r[16]) || 0;
   });
 
-  const totalMasukAll = totalHadirAll + totalTelatAll;
   const totalSlots = filteredStudents.length * activeDaysCount;
-  const rawAvgPersen = totalSlots > 0 ? Math.round((totalMasukAll / totalSlots) * 100) : 0;
-  const avgPersen = rawAvgPersen >= 75 ? 92 : rawAvgPersen;
+  const avgPersen = totalSlots > 0 ? Math.min(100, Math.round((totalMasukAll / totalSlots) * 100)) : 0;
 
   const totalRow = [
     'TOTAL',
     '',
     `Rata-Rata Kehadiran Kelas (${filteredStudents.length} Siswa)`,
     kelas,
+    '',
     ...weekDates.map(() => ''),
     totalHadirAll,
     totalTelatAll,
@@ -358,6 +363,7 @@ export function generateWeeklyReportCSV(
     totalIzinAll,
     totalAlfaAll,
     totalBelumAll,
+    totalMasukAll,
     `${avgPersen}%`
   ];
 
@@ -406,7 +412,7 @@ export function generateMonthlyReportCSV(
     }
   });
 
-  const effectiveDays = Math.max(1, rawDatesInMonth.size || 20);
+  const effectiveDays = Math.max(1, rawDatesInMonth.size);
 
   const headers = [
     'No',
@@ -535,7 +541,7 @@ export function generateSemesterReportCSV(
     }
   });
 
-  const effectiveDays = Math.max(1, rawDatesInSemester.size || 100);
+  const effectiveDays = Math.max(1, rawDatesInSemester.size);
 
   const headers = [
     'No',
@@ -671,7 +677,7 @@ export function generateSemesterRombelSummaryCSV(
     }
   });
 
-  const effectiveDays = Math.max(1, rawDatesInSemester.size || 100);
+  const effectiveDays = Math.max(1, rawDatesInSemester.size);
 
   const rows = DAFTAR_KELAS.map((namaKelas, idx) => {
     const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));

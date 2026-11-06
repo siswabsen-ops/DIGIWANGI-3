@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   SISWA_INITIAL,
   PRESENSI_INITIAL,
@@ -7,6 +7,7 @@ import {
   USER_DEMO_ACCOUNTS,
   DAFTAR_WALI_KELAS
 } from './lib/demoData';
+import { HISTORICAL_ARCHIVE_END_DATE } from './lib/semesterPresensiGenerator';
 import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User, WaliKelas } from './types';
 import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normalizeDateKey } from './lib/attendanceUtils';
@@ -18,6 +19,7 @@ import {
   syncWaliKelasToCloud,
   syncPresensiToCloud,
   recordSinglePresensiToCloud,
+  deleteSinglePresensiFromCloud,
   syncSettingsToCloud,
   syncAccountsToCloud,
   forceSyncNow,
@@ -95,31 +97,35 @@ export default function App() {
     return SISWA_INITIAL;
   });
 
+  const SYNTHETIC_LIVE_RECORD_RE = /^pr-\d{4}-\d{2}-\d{2}-sis-/;
+  const isLegacySyntheticLiveRecord = (p: Presensi): boolean => {
+    if (!p || !p.tanggal) return false;
+    const d = normalizeDateKey(p.tanggal);
+    return d > HISTORICAL_ARCHIVE_END_DATE && Boolean(p.id && SYNTHETIC_LIVE_RECORD_RE.test(p.id));
+  };
+
   const [presensiList, setPresensiList] = useState<Presensi[]>(() => {
     const cached = safeGetItem('karapres3_presensi_v5');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length >= 1000) {
-          const todayStr = getLocalDateString();
-          const hasToday = parsed.some((p: Presensi) => p.tanggal === todayStr);
-          if (hasToday) {
-            return parsed;
+          const cleaned = parsed.filter((p: Presensi) => !isLegacySyntheticLiveRecord(p));
+          if (cleaned.length !== parsed.length) {
+            safeSetItem('karapres3_presensi_v5', JSON.stringify(cleaned));
           }
-          // Merge today's records from PRESENSI_INITIAL if cache only had older dates
-          const todayInitials = PRESENSI_INITIAL.filter(p => p.tanggal === todayStr);
-          if (todayInitials.length > 0) {
-            const merged = [...parsed, ...todayInitials];
-            safeSetItem('karapres3_presensi_v5', JSON.stringify(merged));
-            return merged;
-          }
-          return parsed;
+          return cleaned;
         }
       } catch {}
     }
     safeSetItem('karapres3_presensi_v5', JSON.stringify(PRESENSI_INITIAL));
     return PRESENSI_INITIAL;
   });
+
+  // Lacak kunci presensi yang dicatat/dihapus aktif pada sesi browser ini
+  // agar cache localStorage lama tidak menimpa data real dari server.
+  const sessionRecordedKeysRef = useRef<Set<string>>(new Set());
+  const sessionDeletedKeysRef = useRef<Set<string>>(new Set());
 
   const [settings, setSettings] = useState<SystemSettings>(() => {
     const cached = safeGetItem('karapres3_settings');
@@ -260,30 +266,30 @@ export default function App() {
       if (data.presensi && Array.isArray(data.presensi) && data.presensi.length >= 1000) {
         setPresensiList((currentList) => {
           const map = new Map<string, Presensi>();
-          for (let i = 0; i < data.presensi.length; i++) {
-            const p = data.presensi[i];
-            const sid = p.siswaId || p.nis || p.nama;
-            const d = normalizeDateKey(p.tanggal);
-            map.set(`${sid}__${d}`, p);
-          }
-          // Preserve any live scans already performed in current session
-          for (let i = 0; i < currentList.length; i++) {
-            const p = currentList[i];
+          for (let i = 0; i < data.presensi!.length; i++) {
+            const p = data.presensi![i];
+            if (isLegacySyntheticLiveRecord(p)) continue;
             const sid = p.siswaId || p.nis || p.nama;
             const d = normalizeDateKey(p.tanggal);
             const key = `${sid}__${d}`;
-            const existing = map.get(key);
-            if (!existing) {
+            if (!sessionDeletedKeysRef.current.has(key)) {
               map.set(key, p);
-            } else {
-              const isLocalLiveScan = p.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (p.pesanTerkirim && p.pesanTerkirim.includes('via QR Code'));
-              if (isLocalLiveScan) {
-                map.set(key, p);
-              }
+            }
+          }
+          // Hanya pertahankan rekaman lokal yang benar-benar di-scan/di-tap pada sesi aktif ini
+          for (let i = 0; i < currentList.length; i++) {
+            const p = currentList[i];
+            if (isLegacySyntheticLiveRecord(p)) continue;
+            const sid = p.siswaId || p.nis || p.nama;
+            const d = normalizeDateKey(p.tanggal);
+            const key = `${sid}__${d}`;
+            if (sessionRecordedKeysRef.current.has(key)) {
+              map.set(key, p);
             }
           }
           const merged = Array.from(map.values());
           safeSetItem('karapres3_presensi_v5', JSON.stringify(merged));
+          syncMasterPresensiToCloud(merged, 'Server Sync Clean').catch(() => {});
           return merged;
         });
       } else {
@@ -322,14 +328,21 @@ export default function App() {
           safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
         }
       },
-      onPresensiChange: (incomingPresensi) => {
+      onPresensiChange: (incomingPresensi, updatedAt) => {
         if (!isMounted) return;
+        // Abaikan snapshot Firestore lama sebelum pembersihan otomatis agar data kosong tetap bersih
+        if (typeof updatedAt === 'number' && updatedAt < Date.parse('2026-11-06T00:00:00Z')) {
+          return;
+        }
         if (incomingPresensi && Array.isArray(incomingPresensi) && incomingPresensi.length > 0) {
+          const validIncoming = incomingPresensi.filter((p) => !isLegacySyntheticLiveRecord(p));
+          if (validIncoming.length === 0) return;
+
           setPresensiList((prev) => {
-            if (incomingPresensi.length >= prev.length) {
-              return incomingPresensi;
+            if (validIncoming.length >= prev.length && validIncoming.length >= 1000) {
+              return validIncoming;
             }
-            // If incoming is smaller (e.g. Firestore sync slice of recent scans), merge into existing
+            // Merge slice (mis. dari Firestore recent window) ke arsip lokal yang ada
             const map = new Map<string, Presensi>();
             for (let i = 0; i < prev.length; i++) {
               const p = prev[i];
@@ -337,11 +350,14 @@ export default function App() {
               const d = normalizeDateKey(p.tanggal);
               map.set(`${sid}__${d}`, p);
             }
-            for (let i = 0; i < incomingPresensi.length; i++) {
-              const p = incomingPresensi[i];
+            for (let i = 0; i < validIncoming.length; i++) {
+              const p = validIncoming[i];
               const sid = p.siswaId || p.nis || p.nama;
               const d = normalizeDateKey(p.tanggal);
-              map.set(`${sid}__${d}`, p);
+              const key = `${sid}__${d}`;
+              if (!sessionDeletedKeysRef.current.has(key)) {
+                map.set(key, p);
+              }
             }
             return Array.from(map.values());
           });
@@ -843,11 +859,16 @@ export default function App() {
 
   // Record a scanned or manually marked attendance
   const handleAddPresensi = useCallback((newPresensi: Presensi) => {
+    const targetNormDate = normalizeDateKey(newPresensi.tanggal);
+    const sid = newPresensi.siswaId || newPresensi.nis || newPresensi.nama;
+    const recordKey = `${sid}__${targetNormDate}`;
+    sessionRecordedKeysRef.current.add(recordKey);
+    sessionDeletedKeysRef.current.delete(recordKey);
+
     savePresensiToFirestore(newPresensi);
     recordSinglePresensiToCloud(newPresensi, currentUser?.namaLengkap || 'Scanner Piket');
 
     setPresensiList((prev) => {
-      const targetNormDate = normalizeDateKey(newPresensi.tanggal);
       const idx = prev.findIndex(
         (p) =>
           p.id === newPresensi.id ||
@@ -862,6 +883,7 @@ export default function App() {
         updated = [...prev, newPresensi];
       }
       safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
+      syncMasterPresensiToCloud(updated, currentUser?.namaLengkap || 'Scanner Piket').catch(() => {});
       return updated;
     });
 
@@ -875,8 +897,45 @@ export default function App() {
       console.warn('[WA Gateway Warning]:', err);
     });
 
-    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi otomatis langsung terkirim ke WhatsApp Orang Tua`);
+    const metodeInfo = newPresensi.metode === 'QR_SCAN' ? 'Scan Barcode QR' : 'Tap Wali Kelas';
+    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] (${metodeInfo}) untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi otomatis terkirim ke WA Orang Tua`);
   }, [currentUser, siswaList, settings, addActivityLog]);
+
+  // Reset / batalkan satu presensi siswa pada tanggal tertentu (oleh Wali Kelas)
+  const handleDeletePresensi = useCallback((siswa: Siswa, targetDate: string, recordId?: string) => {
+    const normDate = normalizeDateKey(targetDate);
+    const sid = siswa.id || siswa.nis || siswa.nama;
+    const recordKey = `${sid}__${normDate}`;
+    sessionDeletedKeysRef.current.add(recordKey);
+    sessionRecordedKeysRef.current.delete(recordKey);
+
+    if (recordId) {
+      deletePresensiFromFirestore(recordId);
+    }
+    deleteSinglePresensiFromCloud(
+      { recordId, siswaId: siswa.id, tanggal: normDate },
+      currentUser?.namaLengkap || 'Wali Kelas'
+    );
+
+    setPresensiList((prev) => {
+      const updated = prev.filter((p) => {
+        if (recordId && p.id === recordId) return false;
+        const pDate = normalizeDateKey(p.tanggal);
+        const sameSiswa =
+          p.siswaId === siswa.id ||
+          (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
+          (p.nama === siswa.nama && p.kelas === siswa.kelas);
+        if (sameSiswa && pDate === normDate) return false;
+        return true;
+      });
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
+      syncMasterPresensiToCloud(updated, currentUser?.namaLengkap || 'Wali Kelas').catch(() => {});
+      return updated;
+    });
+
+    addActivityLog('Reset Presensi Siswa', `Mengembalikan status presensi ${siswa.nama} (${siswa.kelas}) tanggal ${normDate} menjadi Belum Absen.`);
+    triggerNotice(`Status presensi ${siswa.nama} dikembalikan menjadi Belum Absen.`, 'info');
+  }, [currentUser, addActivityLog]);
 
   // Quick reset logs
   const handleClearLogs = useCallback(() => {
@@ -1078,8 +1137,11 @@ export default function App() {
                     <GuruPanel
                       siswaList={siswaList}
                       presensiList={presensiList}
+                      settings={settings}
+                      waliKelasList={waliKelasList}
                       currentUser={currentUser}
                       onAddPresensi={handleAddPresensi}
+                      onDeletePresensi={handleDeletePresensi}
                     />
                   )}
 

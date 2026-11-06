@@ -236,9 +236,26 @@ export function getApplicableJadwal(
 
   if (classMatches.length > 1) {
     if (currentHourMinute) {
-      // Pick the schedule closest to current time
       const [nowH, nowM] = currentHourMinute.split(':').map(Number);
       const nowTotalMin = (nowH || 0) * 60 + (nowM || 0);
+
+      // Pisahkan jadwal Pagi (< 11:00) dan Siang (>= 11:00) agar siswa yang terlambat pagi
+      // tetap dievaluasi menggunakan toleransi Jadwal Pagi, bukan loncat ke Jadwal Siang.
+      const morningSchedules = classMatches.filter((s) => {
+        const [inH] = (s.jamMasuk || '07:00').split(':').map(Number);
+        return (inH || 0) < 11;
+      });
+      const afternoonSchedules = classMatches.filter((s) => {
+        const [inH] = (s.jamMasuk || '07:00').split(':').map(Number);
+        return (inH || 0) >= 11;
+      });
+
+      if (morningSchedules.length > 0 && afternoonSchedules.length > 0) {
+        const [aftH, aftM] = (afternoonSchedules[0].jamMasuk || '12:30').split(':').map(Number);
+        const afternoonStartWindow = (aftH || 12) * 60 + (aftM || 30) - 90; // Mulai 11:00 WIB
+        const pool = nowTotalMin >= afternoonStartWindow ? afternoonSchedules : morningSchedules;
+        return pool[0];
+      }
 
       let closest = classMatches[0];
       let minDiff = Infinity;

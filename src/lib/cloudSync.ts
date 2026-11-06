@@ -21,7 +21,7 @@ export interface CloudMasterPayload {
 export interface SyncCallbacks {
   onStudentsChange?: (students: Siswa[]) => void;
   onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
-  onPresensiChange?: (presensi: Presensi[]) => void;
+  onPresensiChange?: (presensi: Presensi[], updatedAt?: number) => void;
   onSettingsChange?: (settings: SystemSettings) => void;
   onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
 }
@@ -148,6 +148,30 @@ export async function recordSinglePresensiToCloud(record: Presensi, updatedBy: s
     }
   } catch (err) {
     console.warn('[CloudSync] Fast presensi record notice:', err);
+  }
+  return false;
+}
+
+/**
+ * Menghapus/mereset satu catatan presensi harian (misalnya pembatalan tap manual wali kelas)
+ */
+export async function deleteSinglePresensiFromCloud(
+  params: { recordId?: string; siswaId?: string; tanggal: string },
+  updatedBy: string = 'Wali Kelas'
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/presensi/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...params, updatedBy })
+    });
+    if (res.ok) {
+      const respJson = await res.json();
+      if (respJson?.version) localSyncVersion = respJson.version;
+      return true;
+    }
+  } catch (err) {
+    console.warn('[CloudSync] Fast presensi delete notice:', err);
   }
   return false;
 }
@@ -348,9 +372,9 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
           callbacks.onWaliKelasChange(wk);
         }
       },
-      onPresensiChange: (pre) => {
+      onPresensiChange: (pre, updatedAt) => {
         if (isSubscribed && pre && callbacks.onPresensiChange) {
-          callbacks.onPresensiChange(pre);
+          callbacks.onPresensiChange(pre, updatedAt);
         }
       },
       onSettingsChange: (set) => {
