@@ -303,15 +303,22 @@ export function auditAndSynchronizePresensi(
       });
     } else {
       // Prioritaskan hasil scan presensi langsung / tap manual guru yang lebih baru
-      const isLiveScan =
-        rec.metode === 'QR_SCAN' ||
-        rec.metode === 'MANUAL_TAP' ||
-        rec.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' ||
+      const isRecExplicit = Boolean(
+        rec.metode ||
         rec.pesanTerkirim?.includes('via QR Code') ||
-        rec.pesanTerkirim?.includes('WA Gateway');
+        rec.pesanTerkirim?.includes('WA Gateway')
+      );
+      const isBestExplicit = Boolean(
+        currentBest.metode ||
+        currentBest.pesanTerkirim?.includes('via QR Code') ||
+        currentBest.pesanTerkirim?.includes('WA Gateway')
+      );
       const timeA = rec.waktu || '00:00:00';
       const timeB = currentBest.waktu || '00:00:00';
-      if (isLiveScan || timeA >= timeB) {
+      const shouldReplace =
+        (isRecExplicit && !isBestExplicit) ||
+        (isRecExplicit === isBestExplicit && timeA >= timeB);
+      if (shouldReplace) {
         existingMap.set(lookupKey, {
           ...rec,
           siswaId: matchedStudent.id,

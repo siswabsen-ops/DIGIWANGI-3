@@ -3,6 +3,7 @@ import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
 import {
   getLocalDateString,
   isSameClass,
+  isPresensiMatchSiswa,
   calculateClassAttendanceStats,
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
@@ -432,12 +433,9 @@ export function generateMonthlyReportCSV(
   ];
 
   const rows = filteredStudents.map((siswa, idx) => {
-    // Collect all records for this student in this month
+    // Collect all records for this student in this month using collision-free matcher
     const studentRecords = presensiList.filter(p => {
-      const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
-                         (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-                         (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
-      if (!matchSiswa) return false;
+      if (!isPresensiMatchSiswa(p, siswa)) return false;
       const norm = normalizeDateKey(p.tanggal);
       return norm.startsWith(targetPrefix);
     });
@@ -448,16 +446,18 @@ export function generateMonthlyReportCSV(
     let izin = 0;
     let alfa = 0;
 
-    // Deduplicate by date
-    const dateMap = new Map<string, string>();
+    // Deduplicate by date (keep latest timestamp on same date)
+    const dateMap = new Map<string, Presensi>();
     studentRecords.forEach(r => {
       const d = normalizeDateKey(r.tanggal);
-      if (!dateMap.has(d)) {
-        dateMap.set(d, r.status);
+      const existing = dateMap.get(d);
+      if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+        dateMap.set(d, r);
       }
     });
 
-    dateMap.forEach(status => {
+    dateMap.forEach(rec => {
+      const status = rec.status;
       if (status === 'Hadir') hadir++;
       else if (status === 'Terlambat') terlambat++;
       else if (status === 'Sakit') sakit++;
@@ -562,10 +562,7 @@ export function generateSemesterReportCSV(
 
   const rows = filteredStudents.map((siswa, idx) => {
     const studentRecords = presensiList.filter(p => {
-      const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
-                         (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-                         (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
-      if (!matchSiswa) return false;
+      if (!isPresensiMatchSiswa(p, siswa)) return false;
       const norm = normalizeDateKey(p.tanggal);
       return targetYearMonths.some(ym => norm.startsWith(ym));
     });
@@ -576,15 +573,17 @@ export function generateSemesterReportCSV(
     let izin = 0;
     let alfa = 0;
 
-    const dateMap = new Map<string, string>();
+    const dateMap = new Map<string, Presensi>();
     studentRecords.forEach(r => {
       const d = normalizeDateKey(r.tanggal);
-      if (!dateMap.has(d)) {
-        dateMap.set(d, r.status);
+      const existing = dateMap.get(d);
+      if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+        dateMap.set(d, r);
       }
     });
 
-    dateMap.forEach(status => {
+    dateMap.forEach(rec => {
+      const status = rec.status;
       if (status === 'Hadir') hadir++;
       else if (status === 'Terlambat') terlambat++;
       else if (status === 'Sakit') sakit++;
@@ -691,23 +690,22 @@ export function generateSemesterRombelSummaryCSV(
 
     classStudents.forEach(siswa => {
       const studentRecords = presensiList.filter(p => {
-        const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
-                           (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-                           (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
-        if (!matchSiswa) return false;
+        if (!isPresensiMatchSiswa(p, siswa)) return false;
         const norm = normalizeDateKey(p.tanggal);
         return targetYearMonths.some(ym => norm.startsWith(ym));
       });
 
-      const dateMap = new Map<string, string>();
+      const dateMap = new Map<string, Presensi>();
       studentRecords.forEach(r => {
         const d = normalizeDateKey(r.tanggal);
-        if (!dateMap.has(d)) {
-          dateMap.set(d, r.status);
+        const existing = dateMap.get(d);
+        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+          dateMap.set(d, r);
         }
       });
 
-      dateMap.forEach(status => {
+      dateMap.forEach(rec => {
+        const status = rec.status;
         if (status === 'Hadir') hadir++;
         else if (status === 'Terlambat') terlambat++;
         else if (status === 'Sakit') sakit++;

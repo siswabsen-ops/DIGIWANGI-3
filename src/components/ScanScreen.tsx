@@ -46,18 +46,23 @@ function ScanScreen({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanTimeoutRef = useRef<any>(null);
+  const handleScanIdentifyRef = useRef<any>(null);
+  const inputTimingRef = useRef<{ lastTime: number; rapidCount: number }>({ lastTime: 0, rapidCount: 0 });
 
-  // Fast O(1) today attendance lookup map
+  // Fast O(1) today attendance lookup map (namespaced by ID/NIS to prevent collisions)
   const todayAttendanceMap = useMemo(() => {
     const todayDate = getLocalDateString();
     const map = new Map<string, Presensi>();
     recentPresensi.forEach((p) => {
       if (isPresensiDateMatch(p.tanggal, todayDate)) {
-        if (p.siswaId) map.set(p.siswaId, p);
-        if (p.nis) {
+        if (p.siswaId) map.set(`id:${p.siswaId}`, p);
+        if (p.nis && p.nis.trim().length >= 4) {
           const cleanNis = p.nis.trim();
-          map.set(cleanNis, p);
-          map.set(cleanNis.replace(/^0+/, ''), p);
+          map.set(`nis:${cleanNis}`, p);
+          const noZero = cleanNis.replace(/^0+/, '');
+          if (noZero.length >= 4) {
+            map.set(`nis:${noZero}`, p);
+          }
         }
       }
     });
@@ -141,7 +146,7 @@ function ScanScreen({
 
             try {
               const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: 'dontInvert',
+                inversionAttempts: 'attemptBoth',
               });
 
               if (code && code.data) {
@@ -151,7 +156,7 @@ function ScanScreen({
                   // Cooldown of 2 seconds for the exact same student to prevent accidental duplicate triggers, but 0ms for different students
                   if (nowTime - lastScanned > 2000) {
                     lastScannedMapRef.current[decodedCode] = nowTime;
-                    handleScanIdentify(decodedCode);
+                    handleScanIdentifyRef.current?.(decodedCode);
                   }
                 }
               }
@@ -178,6 +183,48 @@ function ScanScreen({
       }
     };
   }, [useCamera, cameraStream, isActive]);
+
+  // Global USB / Bluetooth Hardware Barcode Scanner (Keyboard Wedge) listener when ScanScreen is active
+  useEffect(() => {
+    if (!isActive || typeof window === 'undefined') return;
+    let buffer = '';
+    let lastKeyAt = 0;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastKeyAt > 120) {
+        buffer = '';
+      }
+      lastKeyAt = now;
+
+      if (e.key === 'Enter') {
+        if (buffer.length >= 4) {
+          e.preventDefault();
+          const scanned = buffer.trim();
+          buffer = '';
+          handleScanIdentifyRef.current?.(scanned, undefined, 'QR_SCAN');
+        } else {
+          buffer = '';
+        }
+        return;
+      }
+
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [isActive]);
 
   // Turn on/off real browser camera
   const toggleCamera = async () => {
@@ -320,10 +367,17 @@ function ScanScreen({
           code: cleanDisplay,
           reason: exactErrorWarning,
           operator: currentUser.namaLengkap,
+          kelasHint: selectedSimKelas !== 'Semua Kelas' ? selectedSimKelas : undefined,
           date: getLocalDateString(new Date()),
           timestamp: getLocalTimeString(new Date())
         })
-      }).catch(() => {});
+      })
+        .then(() => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('digiwangi-qr-error'));
+          }
+        })
+        .catch(() => {});
 
       // Auto reset status kembali ke SCANNING setelah 4.5 detik
       scanTimeoutRef.current = setTimeout(() => {
@@ -361,19 +415,38 @@ function ScanScreen({
 
     const todayDate = getLocalDateString(now);
 
-    // Check if pupil already scanned today to avoid duplicate records
+    // Check if pupil already scanned today to avoid duplicate records or overwriting earlier Hadir/Terlambat
     const alreadyScanned = recentPresensi.find(
       (p) => isPresensiMatchSiswa(p, matchedSiswa) && isPresensiDateMatch(p.tanggal, todayDate)
     );
 
+    if (
+      alreadyScanned &&
+      !customStatus &&
+      (alreadyScanned.status === 'Hadir' || alreadyScanned.status === 'Terlambat')
+    ) {
+      playAudioFeedback('warning');
+      setErrorMsg(
+        `Peringatan: ${matchedSiswa.nama} (${matchedSiswa.kelas}) sudah tercatat ${alreadyScanned.status} hari ini pukul ${alreadyScanned.waktu.slice(0, 5)} WIB.`
+      );
+      setScannedResult(alreadyScanned);
+      setScannerStatus('SUCCESS');
+      scanTimeoutRef.current = setTimeout(() => {
+        setScannerStatus('SCANNING');
+        setScannedResult(null);
+        setErrorMsg('');
+      }, 2800);
+      return;
+    }
+
     if (alreadyScanned && !customStatus) {
       playAudioFeedback('warning');
-      setErrorMsg(`Peringatan: ${matchedSiswa.nama} (${matchedSiswa.kelas}) sudah tercatat presensi hari ini pukul ${alreadyScanned.waktu.slice(0, 5)} WIB (${alreadyScanned.status}). Catatan diperbarui.`);
+      setErrorMsg(`Catatan ${matchedSiswa.nama} (${matchedSiswa.kelas}) diperbarui dari ${alreadyScanned.status} menjadi ${determinedStatus}.`);
     } else {
       playAudioFeedback('success');
     }
 
-    // Deterministic unique ID per student per day so Firestore updates in-place
+    // Deterministic unique ID per student per day so Firestore & server update in-place cleanly
     const newPresensiId = alreadyScanned ? alreadyScanned.id : `pr-${matchedSiswa.id}-${todayDate}`;
     const parentPhone = matchedSiswa.waOrangTua || '081234567890';
     const resolvedMetodeLabel = methodType === 'QR_SCAN' 
@@ -420,10 +493,15 @@ function ScanScreen({
     }, 2800);
   };
 
+  // Keep latest handleScanIdentify reference for real-time camera & hardware barcode listeners
+  handleScanIdentifyRef.current = handleScanIdentify;
+
   const handleNisSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nisInput.trim()) return;
-    handleScanIdentify(nisInput, manualStatus || undefined, 'MANUAL_OPERATOR');
+    const isHardwareWedge = !manualStatus && inputTimingRef.current.rapidCount >= 4;
+    inputTimingRef.current = { lastTime: 0, rapidCount: 0 };
+    handleScanIdentify(nisInput, manualStatus || undefined, isHardwareWedge ? 'QR_SCAN' : 'MANUAL_OPERATOR');
     setNisInput('');
     setManualStatus(null);
   };
@@ -580,7 +658,7 @@ function ScanScreen({
                       </span>
                       <span className="bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        WA Gateway: Otomatis Terkirim ke Wali Kelas & Ortu ✔✔
+                        WA Gateway: Otomatis Terkirim ke WhatsApp Orang Tua ✔✔
                       </span>
                     </div>
                   </div>
@@ -695,8 +773,18 @@ function ScanScreen({
                 <input
                   type="text"
                   value={nisInput}
-                  onChange={(e) => setNisInput(e.target.value)}
-                  placeholder="Ketik NIS, NISN, atau NIK Siswa..."
+                  onChange={(e) => {
+                    const now = Date.now();
+                    const diff = now - inputTimingRef.current.lastTime;
+                    if (e.target.value.length > nisInput.length && diff > 0 && diff <= 80) {
+                      inputTimingRef.current.rapidCount += 1;
+                    } else if (e.target.value.length <= 1 || diff > 120) {
+                      inputTimingRef.current.rapidCount = 0;
+                    }
+                    inputTimingRef.current.lastTime = now;
+                    setNisInput(e.target.value);
+                  }}
+                  placeholder="Scan / Ketik NIS, NISN, atau NIK..."
                   className="w-full bg-white border border-gray-300 rounded-xl py-2 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-700 font-mono font-medium"
                 />
               </div>
@@ -811,10 +899,12 @@ function ScanScreen({
           {/* Interactive Virtual Students Card Matrix */}
           <div className="space-y-2 max-h-[304px] overflow-y-auto pr-1">
             {filteredSimSiswa.slice(0, simLimit).map((siswa) => {
-              // Fast O(1) check using memoized todayAttendanceMap
-              const presentToday = todayAttendanceMap.get(siswa.id) || 
-                                   todayAttendanceMap.get(siswa.nis) || 
-                                   todayAttendanceMap.get(siswa.nis.replace(/^0+/, ''));
+              // Fast O(1) check using namespaced todayAttendanceMap (zero cross-student collision)
+              const byId = todayAttendanceMap.get(`id:${siswa.id}`);
+              const byNis = siswa.nis && siswa.nis.trim().length >= 4
+                ? (todayAttendanceMap.get(`nis:${siswa.nis.trim()}`) || todayAttendanceMap.get(`nis:${siswa.nis.trim().replace(/^0+/, '')}`))
+                : undefined;
+              const presentToday = byId || (byNis && (!byNis.siswaId || byNis.siswaId === siswa.id) ? byNis : undefined);
 
               return (
                 <div

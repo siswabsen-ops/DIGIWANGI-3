@@ -86,31 +86,48 @@ export const isSameClass = (classA?: string, classB?: string): boolean => {
 
 /**
  * Memeriksa apakah suatu catatan presensi sesuai dengan siswa yang dicari
+ * (Bebas benturan substring ID seperti sis-1 vs sis-12 atau nama sama beda kelas)
  */
 export const isPresensiMatchSiswa = (p: Presensi, s: Siswa): boolean => {
   if (!p || !s) return false;
 
-  // 1. Direct matching ID
+  // 1. Direct matching siswaId
   if (p.siswaId && s.id && p.siswaId === s.id) return true;
-  if (p.id && s.id && (p.id === s.id || p.id === `pr-${s.id}-${p.tanggal}` || p.id.includes(s.id))) return true;
 
-  // 2. Matching NIS (string & numeric)
-  if (p.nis && s.nis) {
-    const pNisClean = p.nis.trim();
-    const sNisClean = s.nis.trim();
-    if (pNisClean.length >= 3 && sNisClean.length >= 3) {
-      if (pNisClean === sNisClean) return true;
-      if (pNisClean.replace(/^0+/, '') === sNisClean.replace(/^0+/, '')) return true;
+  // 2. Exact structural record ID match (never use .includes() which collides sis-1 with sis-12!)
+  if (p.id && s.id) {
+    if (
+      p.id === s.id ||
+      p.id === `pr-${s.id}` ||
+      p.id.startsWith(`pr-${s.id}-`) ||
+      (p.tanggal && p.id === `pr-${normalizeDateKey(p.tanggal)}-${s.id}`)
+    ) {
+      return true;
     }
   }
 
-  // 3. Matching NIK
-  if (p.nik && s.nik && p.nik.trim().length >= 8 && s.nik.trim().length >= 8) {
+  // If both record and student carry explicit distinct siswaId values, do not cross-match via weaker fields
+  const hasDistinctSiswaIds = Boolean(p.siswaId && s.id && p.siswaId !== s.id);
+
+  // 3. Matching NIS (string & numeric leading-zero normalized)
+  if (!hasDistinctSiswaIds && p.nis && s.nis) {
+    const pNisClean = p.nis.trim();
+    const sNisClean = s.nis.trim();
+    if (pNisClean.length >= 4 && sNisClean.length >= 4) {
+      if (pNisClean === sNisClean) return true;
+      const pNoZero = pNisClean.replace(/^0+/, '');
+      const sNoZero = sNisClean.replace(/^0+/, '');
+      if (pNoZero.length >= 4 && pNoZero === sNoZero) return true;
+    }
+  }
+
+  // 4. Matching NIK
+  if (!hasDistinctSiswaIds && p.nik && s.nik && p.nik.trim().length >= 8 && s.nik.trim().length >= 8) {
     if (p.nik.trim() === s.nik.trim()) return true;
   }
 
-  // 4. Matching NISN
-  if (s.nisn && p.nis && s.nisn.trim().length >= 8) {
+  // 5. Matching NISN
+  if (!hasDistinctSiswaIds && s.nisn && p.nis && s.nisn.trim().length >= 8) {
     const pNisClean = p.nis.trim();
     const sNisnClean = s.nisn.trim();
     if (pNisClean === sNisnClean || pNisClean.replace(/^0+/, '') === sNisnClean.replace(/^0+/, '')) {
@@ -118,8 +135,11 @@ export const isPresensiMatchSiswa = (p: Presensi, s: Siswa): boolean => {
     }
   }
 
-  // 5. Name + Class exact normalized matching (strictly within the same class)
-  if (p.nama && s.nama && isSameClass(p.kelas, s.kelas)) {
+  // 6. Name + Class exact normalized matching (strictly within the same class, never across different NIS/siswaId)
+  const hasDistinctNis = Boolean(
+    p.nis && s.nis && p.nis.trim().length >= 4 && s.nis.trim().length >= 4 && p.nis.trim() !== s.nis.trim()
+  );
+  if (!hasDistinctSiswaIds && !hasDistinctNis && p.nama && s.nama && isSameClass(p.kelas, s.kelas)) {
     const pNorm = normalizeStudentName(p.nama);
     const sNorm = normalizeStudentName(s.nama);
 
@@ -148,6 +168,23 @@ export interface AttendanceIndex {
   byNameOnly: Map<string, Presensi>;
 }
 
+const isRecordNewer = (candidate: Presensi, existing?: Presensi): boolean => {
+  if (!existing) return true;
+  const isCandidateExplicit = Boolean(
+    candidate.metode ||
+    (candidate.pesanTerkirim && (candidate.pesanTerkirim.includes('via QR Code') || candidate.pesanTerkirim.includes('WA Gateway')))
+  );
+  const isExistingExplicit = Boolean(
+    existing.metode ||
+    (existing.pesanTerkirim && (existing.pesanTerkirim.includes('via QR Code') || existing.pesanTerkirim.includes('WA Gateway')))
+  );
+  if (isCandidateExplicit && !isExistingExplicit) return true;
+  if (!isCandidateExplicit && isExistingExplicit) return false;
+  const timeA = candidate.waktu || '00:00:00';
+  const timeB = existing.waktu || '00:00:00';
+  return timeA >= timeB;
+};
+
 /**
  * Membangun index harian berkecepatan tinggi O(N) untuk pemrosesan presensi instan
  */
@@ -167,47 +204,35 @@ export const buildDailyAttendanceIndex = (
     const p = presensiList[i];
     if (!p.tanggal || normalizeDateKey(p.tanggal) !== targetKey) continue;
 
-    const isNewer = (existing?: Presensi): boolean => {
-      if (!existing) return true;
-      const isPRealScan = p.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (p.pesanTerkirim && (p.pesanTerkirim.includes('via QR Code') || p.pesanTerkirim.includes('WA Gateway')));
-      const isExistingRealScan = existing.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (existing.pesanTerkirim && (existing.pesanTerkirim.includes('via QR Code') || existing.pesanTerkirim.includes('WA Gateway')));
-      if (isPRealScan && !isExistingRealScan) return true;
-      if (!isPRealScan && isExistingRealScan) return false;
-      const timeA = p.waktu || '00:00:00';
-      const timeB = existing.waktu || '00:00:00';
-      return timeA >= timeB;
-    };
-
-    if (p.siswaId && isNewer(bySiswaId.get(p.siswaId))) {
+    if (p.siswaId && isRecordNewer(p, bySiswaId.get(p.siswaId))) {
       bySiswaId.set(p.siswaId, p);
     }
-    if (p.nis && p.nis.trim().length >= 3) {
+    if (p.nis && p.nis.trim().length >= 4) {
       const nisClean = p.nis.trim();
-      if (isNewer(byNis.get(nisClean))) {
+      if (isRecordNewer(p, byNis.get(nisClean))) {
         byNis.set(nisClean, p);
       }
       const noZero = nisClean.replace(/^0+/, '');
-      if (isNewer(byNisClean.get(noZero))) {
+      if (noZero.length >= 4 && isRecordNewer(p, byNisClean.get(noZero))) {
         byNisClean.set(noZero, p);
       }
     }
     if (p.nik && p.nik.trim().length >= 8) {
       const nikClean = p.nik.trim();
-      if (isNewer(byNik.get(nikClean))) {
+      if (isRecordNewer(p, byNik.get(nikClean))) {
         byNik.set(nikClean, p);
       }
     }
     if (p.nama) {
       const normName = normalizeStudentName(p.nama);
-      if (isNewer(byNameOnly.get(normName))) {
-        byNameOnly.set(normName, p);
-      }
       if (p.kelas) {
         const classKey = normalizeKelasCode(p.kelas);
         const comboKey = `${normName}__${classKey}`;
-        if (isNewer(byNameAndClass.get(comboKey))) {
+        if (isRecordNewer(p, byNameAndClass.get(comboKey))) {
           byNameAndClass.set(comboKey, p);
         }
+      } else if (isRecordNewer(p, byNameOnly.get(normName))) {
+        byNameOnly.set(normName, p);
       }
     }
   }
@@ -216,7 +241,7 @@ export const buildDailyAttendanceIndex = (
 };
 
 /**
- * Mengambil catatan presensi dari Index O(1)
+ * Mengambil catatan presensi dari Index O(1) dengan validasi anti-benturan antar siswa
  */
 export const getAttendanceFromIndex = (
   siswa: Siswa,
@@ -225,24 +250,35 @@ export const getAttendanceFromIndex = (
   if (siswa.id && index.bySiswaId.has(siswa.id)) {
     return index.bySiswaId.get(siswa.id)!;
   }
-  if (siswa.nis && siswa.nis.trim().length >= 3) {
+  const canUseFallback = (rec?: Presensi): rec is Presensi => {
+    if (!rec) return false;
+    if (rec.siswaId && siswa.id && rec.siswaId !== siswa.id) return false;
+    return true;
+  };
+  if (siswa.nis && siswa.nis.trim().length >= 4) {
     const nisClean = siswa.nis.trim();
-    if (index.byNis.has(nisClean)) return index.byNis.get(nisClean)!;
+    const byExactNis = index.byNis.get(nisClean);
+    if (canUseFallback(byExactNis)) return byExactNis;
     const noZero = nisClean.replace(/^0+/, '');
-    if (index.byNisClean.has(noZero)) return index.byNisClean.get(noZero)!;
+    if (noZero.length >= 4) {
+      const byZeroNis = index.byNisClean.get(noZero);
+      if (canUseFallback(byZeroNis)) return byZeroNis;
+    }
   }
-  if (siswa.nik && siswa.nik.trim().length >= 8 && index.byNik.has(siswa.nik.trim())) {
-    return index.byNik.get(siswa.nik.trim())!;
+  if (siswa.nik && siswa.nik.trim().length >= 8) {
+    const byNikRec = index.byNik.get(siswa.nik.trim());
+    if (canUseFallback(byNikRec)) return byNikRec;
   }
   if (siswa.nama) {
     const normName = normalizeStudentName(siswa.nama);
     if (siswa.kelas) {
       const classKey = normalizeKelasCode(siswa.kelas);
       const comboKey = `${normName}__${classKey}`;
-      if (index.byNameAndClass.has(comboKey)) return index.byNameAndClass.get(comboKey)!;
-    }
-    if (index.byNameOnly.has(normName)) {
-      return index.byNameOnly.get(normName)!;
+      const byNameCls = index.byNameAndClass.get(comboKey);
+      if (canUseFallback(byNameCls)) return byNameCls;
+    } else {
+      const byNameRec = index.byNameOnly.get(normName);
+      if (canUseFallback(byNameRec)) return byNameRec;
     }
   }
   return null;
@@ -257,27 +293,18 @@ export const getLatestAttendanceForStudent = (
   targetDateStr: string = getLocalDateString()
 ): Presensi | null => {
   const targetKey = normalizeDateKey(targetDateStr);
-  const matchingRecords: Presensi[] = [];
+  let bestRecord: Presensi | null = null;
 
   for (let i = 0; i < presensiList.length; i++) {
     const p = presensiList[i];
     if (p.tanggal && normalizeDateKey(p.tanggal) === targetKey && isPresensiMatchSiswa(p, siswa)) {
-      matchingRecords.push(p);
+      if (!bestRecord || isRecordNewer(p, bestRecord)) {
+        bestRecord = p;
+      }
     }
   }
 
-  if (matchingRecords.length === 0) return null;
-  if (matchingRecords.length === 1) return matchingRecords[0];
-
-  return matchingRecords.sort((a, b) => {
-    const isAReal = a.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (a.pesanTerkirim && (a.pesanTerkirim.includes('via QR Code') || a.pesanTerkirim.includes('WA Gateway')));
-    const isBReal = b.operator !== 'Panji Teguh Amarta S, S.Pd.I (Piket)' || (b.pesanTerkirim && (b.pesanTerkirim.includes('via QR Code') || b.pesanTerkirim.includes('WA Gateway')));
-    if (isAReal && !isBReal) return -1;
-    if (!isAReal && isBReal) return 1;
-    const timeA = a.waktu || '00:00:00';
-    const timeB = b.waktu || '00:00:00';
-    return timeB.localeCompare(timeA);
-  })[0];
+  return bestRecord;
 };
 
 export interface AttendanceStatsSummary {
@@ -681,8 +708,11 @@ export const calculateMonthlyRombelSummaryList = (
 
     classStudents.forEach(siswa => {
       let studentRecs = recordsByStudentKey.get(siswa.id);
-      if (!studentRecs && siswa.nis) {
-        studentRecs = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+      if (!studentRecs && siswa.nis && siswa.nis.trim().length >= 4) {
+        const byNisArr = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+        if (byNisArr) {
+          studentRecs = byNisArr.filter(r => !r.siswaId || r.siswaId === siswa.id || isSameClass(r.kelas, siswa.kelas));
+        }
       }
       if (!studentRecs) studentRecs = [];
 
@@ -691,7 +721,7 @@ export const calculateMonthlyRombelSummaryList = (
         const r = studentRecs[j];
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
-        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+        if (isRecordNewer(r, existing)) {
           dateMap.set(dKey, r);
         }
       }
@@ -801,8 +831,11 @@ export const calculateSemesterRombelSummaryList = (
 
     classStudents.forEach(siswa => {
       let studentRecs = recordsByStudentKey.get(siswa.id);
-      if (!studentRecs && siswa.nis) {
-        studentRecs = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+      if (!studentRecs && siswa.nis && siswa.nis.trim().length >= 4) {
+        const byNisArr = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
+        if (byNisArr) {
+          studentRecs = byNisArr.filter(r => !r.siswaId || r.siswaId === siswa.id || isSameClass(r.kelas, siswa.kelas));
+        }
       }
       if (!studentRecs) studentRecs = [];
 
@@ -811,7 +844,7 @@ export const calculateSemesterRombelSummaryList = (
         const r = studentRecs[j];
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
-        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+        if (isRecordNewer(r, existing)) {
           dateMap.set(dKey, r);
         }
       }

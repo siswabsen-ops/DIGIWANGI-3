@@ -148,13 +148,13 @@ export function getStudentQRIdentifier(siswa: Siswa): string {
 /**
  * Mencari data siswa berdasarkan input scan (bisa berupa NIS, NIK, NISN, ID, atau payload JSON)
  */
-export function findStudentByCode(siswaList: Siswa[], code: string): Siswa | undefined {
-  if (!code) return undefined;
+export function findStudentByCode(siswaList: Siswa[], code: string, depth: number = 0): Siswa | undefined {
+  if (!code || depth > 2) return undefined;
   const clean = code.trim();
   if (!clean) return undefined;
 
   // 1. Direct exact match (NIS, NIK, NISN, ID)
-  const exact = siswaList.find((s) => 
+  const exact = siswaList.find((s) =>
     (s.nis && s.nis.trim() === clean) ||
     (s.nik && s.nik.trim() === clean) ||
     (s.nisn && s.nisn.trim() === clean) ||
@@ -162,15 +162,20 @@ export function findStudentByCode(siswaList: Siswa[], code: string): Siswa | und
   );
   if (exact) return exact;
 
-  // 2. Strip standard prefixes: NIK:, NIS:, NISN:, ID:
-  const stripped = clean.replace(/^(nik|nis|nisn|id)\s*[:=-]\s*/i, '').trim();
+  // 1b. Case-insensitive exact match (ID, NIS, NIK, NISN)
+  const lowerClean = clean.toLowerCase();
+  const exactCI = siswaList.find((s) =>
+    (s.id && s.id.trim().toLowerCase() === lowerClean) ||
+    (s.nis && s.nis.trim().toLowerCase() === lowerClean) ||
+    (s.nik && s.nik.trim().toLowerCase() === lowerClean) ||
+    (s.nisn && s.nisn.trim().toLowerCase() === lowerClean)
+  );
+  if (exactCI) return exactCI;
+
+  // 2. Strip standard prefixes: NIK:, NIS:, NISN:, ID:, KODE:, QR:
+  const stripped = clean.replace(/^(nik|nis|nisn|id|kode|qr)\s*[:=-]\s*/i, '').trim();
   if (stripped && stripped !== clean) {
-    const strippedMatch = siswaList.find((s) => 
-      (s.nis && s.nis.trim() === stripped) ||
-      (s.nik && s.nik.trim() === stripped) ||
-      (s.nisn && s.nisn.trim() === stripped) ||
-      (s.id && s.id.trim() === stripped)
-    );
+    const strippedMatch = findStudentByCode(siswaList, stripped, depth + 1);
     if (strippedMatch) return strippedMatch;
   }
 
@@ -178,25 +183,52 @@ export function findStudentByCode(siswaList: Siswa[], code: string): Siswa | und
   if (clean.startsWith('{') && clean.endsWith('}')) {
     try {
       const parsed = JSON.parse(clean);
-      const target = parsed.nik || parsed.nis || parsed.nisn || parsed.id;
-      if (target) {
-        return findStudentByCode(siswaList, String(target));
+      const target = parsed.nik ?? parsed.nis ?? parsed.nisn ?? parsed.id ?? parsed.kode;
+      if (typeof target === 'string' || typeof target === 'number') {
+        const targetStr = String(target).trim();
+        if (targetStr && targetStr !== clean) {
+          return findStudentByCode(siswaList, targetStr, depth + 1);
+        }
       }
     } catch {
-      // ignore
+      // ignore invalid JSON
     }
   }
 
-  // 4. Case-insensitive alphanumeric match
+  // 4. Case-insensitive alphanumeric exact match (only for codes >= 4 alphanumeric chars to prevent short false positives)
   const alphaClean = clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-  if (alphaClean) {
+  if (alphaClean.length >= 4) {
     const alphaMatch = siswaList.find((s) => {
+      const sId = s.id ? s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
       const sNis = s.nis ? s.nis.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
       const sNik = s.nik ? s.nik.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
       const sNisn = s.nisn ? s.nisn.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
-      return (sNis && sNis === alphaClean) || (sNik && sNik === alphaClean) || (sNisn && sNisn === alphaClean);
+      return (
+        (sId && sId === alphaClean) ||
+        (sNis && sNis === alphaClean) ||
+        (sNik && sNik === alphaClean) ||
+        (sNisn && sNisn === alphaClean)
+      );
     });
     if (alphaMatch) return alphaMatch;
+  }
+
+  // 5. Numeric barcode leading-zero tolerance (when scanner strips leading zeros on >= 5-digit numbers)
+  if (/^\d{5,}$/.test(clean)) {
+    const noZero = clean.replace(/^0+/, '');
+    if (noZero.length >= 5) {
+      const numMatch = siswaList.find((s) => {
+        const sNis = s.nis ? s.nis.trim().replace(/^0+/, '') : '';
+        const sNik = s.nik ? s.nik.trim().replace(/^0+/, '') : '';
+        const sNisn = s.nisn ? s.nisn.trim().replace(/^0+/, '') : '';
+        return (
+          (sNis.length >= 5 && sNis === noZero) ||
+          (sNik.length >= 5 && sNik === noZero) ||
+          (sNisn.length >= 5 && sNisn === noZero)
+        );
+      });
+      if (numMatch) return numMatch;
+    }
   }
 
   return undefined;

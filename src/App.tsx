@@ -339,17 +339,7 @@ export default function App() {
           if (validIncoming.length === 0) return;
 
           setPresensiList((prev) => {
-            if (validIncoming.length >= prev.length && validIncoming.length >= 1000) {
-              return validIncoming;
-            }
-            // Merge slice (mis. dari Firestore recent window) ke arsip lokal yang ada
             const map = new Map<string, Presensi>();
-            for (let i = 0; i < prev.length; i++) {
-              const p = prev[i];
-              const sid = p.siswaId || p.nis || p.nama;
-              const d = normalizeDateKey(p.tanggal);
-              map.set(`${sid}__${d}`, p);
-            }
             for (let i = 0; i < validIncoming.length; i++) {
               const p = validIncoming[i];
               const sid = p.siswaId || p.nis || p.nama;
@@ -357,6 +347,31 @@ export default function App() {
               const key = `${sid}__${d}`;
               if (!sessionDeletedKeysRef.current.has(key)) {
                 map.set(key, p);
+              }
+            }
+            // If incoming was a partial slice (< 1000), preserve earlier archive entries from prev
+            if (validIncoming.length < 1000) {
+              for (let i = 0; i < prev.length; i++) {
+                const p = prev[i];
+                const sid = p.siswaId || p.nis || p.nama;
+                const d = normalizeDateKey(p.tanggal);
+                const key = `${sid}__${d}`;
+                if (!sessionDeletedKeysRef.current.has(key) && !map.has(key)) {
+                  map.set(key, p);
+                }
+              }
+            }
+            // Always preserve uncommitted/newer scans recorded in this active session
+            for (let i = 0; i < prev.length; i++) {
+              const p = prev[i];
+              const sid = p.siswaId || p.nis || p.nama;
+              const d = normalizeDateKey(p.tanggal);
+              const key = `${sid}__${d}`;
+              if (sessionRecordedKeysRef.current.has(key)) {
+                const inc = map.get(key);
+                if (!inc || (p.waktu && inc.waktu && p.waktu > inc.waktu)) {
+                  map.set(key, p);
+                }
               }
             }
             return Array.from(map.values());
@@ -869,20 +884,19 @@ export default function App() {
     recordSinglePresensiToCloud(newPresensi, currentUser?.namaLengkap || 'Scanner Piket');
 
     setPresensiList((prev) => {
-      const idx = prev.findIndex(
-        (p) =>
-          p.id === newPresensi.id ||
-          ((p.siswaId === newPresensi.siswaId || (p.nis && newPresensi.nis && p.nis === newPresensi.nis) || (p.nama === newPresensi.nama && p.kelas === newPresensi.kelas)) &&
-           normalizeDateKey(p.tanggal) === targetNormDate)
-      );
-      let updated: Presensi[];
-      if (idx >= 0) {
-        updated = [...prev];
-        updated[idx] = newPresensi;
-      } else {
-        updated = [...prev, newPresensi];
-      }
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
+      const filtered = prev.filter((p) => {
+        if (p.id === newPresensi.id) return false;
+        if (normalizeDateKey(p.tanggal) !== targetNormDate) return true;
+        if (p.siswaId && newPresensi.siswaId && p.siswaId === newPresensi.siswaId) return false;
+        const hasDistinctIds = Boolean(p.siswaId && newPresensi.siswaId && p.siswaId !== newPresensi.siswaId);
+        if (!hasDistinctIds && p.nis && newPresensi.nis && p.nis.trim().length >= 4 && p.nis.trim() === newPresensi.nis.trim()) {
+          return false;
+        }
+        return true;
+      });
+      // Append at end so recentPresensiSlice (.slice(-300)) always includes every live scan/update
+      const updated = [...filtered, newPresensi];
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated.slice(-300)));
       syncMasterPresensiToCloud(updated, currentUser?.namaLengkap || 'Scanner Piket').catch(() => {});
       return updated;
     });
@@ -890,14 +904,14 @@ export default function App() {
     // Automatically dispatch WhatsApp notification directly & exclusively to Parents
     const matchedSiswa = siswaList.find(s => 
       s.id === newPresensi.siswaId || 
-      (s.nis && newPresensi.nis && s.nis.trim() === newPresensi.nis.trim()) ||
+      (s.nis && newPresensi.nis && s.nis.trim().length >= 4 && s.nis.trim() === newPresensi.nis.trim()) ||
       (s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() && s.kelas === newPresensi.kelas)
     );
     sendAutomaticWhatsAppNotification(newPresensi, matchedSiswa, settings).catch((err) => {
       console.warn('[WA Gateway Warning]:', err);
     });
 
-    const metodeInfo = newPresensi.metode === 'QR_SCAN' ? 'Scan Barcode QR' : 'Tap Wali Kelas';
+    const metodeInfo = newPresensi.metode === 'QR_SCAN' ? 'Scan Barcode QR' : (newPresensi.metode === 'MANUAL_TAP' ? 'Tap Wali Kelas' : 'Input Manual');
     addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] (${metodeInfo}) untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi otomatis terkirim ke WA Orang Tua`);
   }, [currentUser, siswaList, settings, addActivityLog]);
 
@@ -921,14 +935,16 @@ export default function App() {
       const updated = prev.filter((p) => {
         if (recordId && p.id === recordId) return false;
         const pDate = normalizeDateKey(p.tanggal);
-        const sameSiswa =
-          p.siswaId === siswa.id ||
-          (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-          (p.nama === siswa.nama && p.kelas === siswa.kelas);
-        if (sameSiswa && pDate === normDate) return false;
+        if (pDate !== normDate) return true;
+        if (p.siswaId && siswa.id && p.siswaId === siswa.id) return false;
+        const hasDistinctIds = Boolean(p.siswaId && siswa.id && p.siswaId !== siswa.id);
+        if (!hasDistinctIds && p.nis && siswa.nis && p.nis.trim().length >= 4 && p.nis.trim() === siswa.nis.trim()) {
+          return false;
+        }
+        if (!hasDistinctIds && p.nama === siswa.nama && p.kelas === siswa.kelas) return false;
         return true;
       });
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated));
+      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated.slice(-300)));
       syncMasterPresensiToCloud(updated, currentUser?.namaLengkap || 'Wali Kelas').catch(() => {});
       return updated;
     });
@@ -1153,6 +1169,7 @@ export default function App() {
                       onAddPresensi={handleAddPresensi}
                       recentPresensi={recentPresensiSlice}
                       isActive={true}
+                      waliKelasList={waliKelasList}
                     />
                   )}
                 </>

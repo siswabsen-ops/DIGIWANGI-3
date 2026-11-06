@@ -150,15 +150,23 @@ function ReportPanel({
   const [showQrErrorModal, setShowQrErrorModal] = useState(false);
 
   useEffect(() => {
-    fetch('/api/qr-errors')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.errors && Array.isArray(d.errors)) {
-          setQrErrors(d.errors);
-        }
-      })
-      .catch(() => {});
-  }, [harianDate]);
+    const loadQrErrors = () => {
+      fetch('/api/qr-errors')
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.errors && Array.isArray(d.errors)) {
+            setQrErrors(d.errors);
+          }
+        })
+        .catch(() => {});
+    };
+
+    loadQrErrors();
+    window.addEventListener('digiwangi-qr-error', loadQrErrors);
+    return () => {
+      window.removeEventListener('digiwangi-qr-error', loadQrErrors);
+    };
+  }, [harianDate, presensiList.length]);
 
   const dailyQrErrors = useMemo(() => {
     return qrErrors.filter((e) => (e.date || '').slice(0, 10) === harianDate);
@@ -462,19 +470,22 @@ function ReportPanel({
     }
 
     return filteredStudents.map(siswa => {
-      let studentMonthRecords = recordsByStudentKey.get(siswa.id);
-      if (!studentMonthRecords && siswa.nis) {
-        studentMonthRecords = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
-      }
-      if (!studentMonthRecords) {
-        studentMonthRecords = monthRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      const byId = recordsByStudentKey.get(siswa.id) || [];
+      const byNisRaw = siswa.nis && siswa.nis.trim().length >= 4 ? (recordsByStudentKey.get(`nis:${siswa.nis.trim()}`) || []) : [];
+      const seen = new Set<Presensi>(byId);
+      const studentMonthRecords: Presensi[] = [...byId];
+      for (const r of byNisRaw) {
+        if (!seen.has(r) && isPresensiMatchSiswa(r, siswa)) {
+          seen.add(r);
+          studentMonthRecords.push(r);
+        }
       }
       
       const dateMap = new Map<string, Presensi>();
       studentMonthRecords.forEach(r => {
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
-        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
           dateMap.set(dKey, r);
         }
       });
@@ -573,19 +584,22 @@ function ReportPanel({
     }
 
     return filteredStudents.map(siswa => {
-      let studentSemesterRecords = recordsByStudentKey.get(siswa.id);
-      if (!studentSemesterRecords && siswa.nis) {
-        studentSemesterRecords = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
-      }
-      if (!studentSemesterRecords) {
-        studentSemesterRecords = semesterRecords.filter(p => isPresensiMatchSiswa(p, siswa));
+      const byId = recordsByStudentKey.get(siswa.id) || [];
+      const byNisRaw = siswa.nis && siswa.nis.trim().length >= 4 ? (recordsByStudentKey.get(`nis:${siswa.nis.trim()}`) || []) : [];
+      const seen = new Set<Presensi>(byId);
+      const studentSemesterRecords: Presensi[] = [...byId];
+      for (const r of byNisRaw) {
+        if (!seen.has(r) && isPresensiMatchSiswa(r, siswa)) {
+          seen.add(r);
+          studentSemesterRecords.push(r);
+        }
       }
 
       const dateMap = new Map<string, Presensi>();
       studentSemesterRecords.forEach(r => {
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
-        if (!existing || (r.waktu && existing.waktu && r.waktu > existing.waktu)) {
+        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
           dateMap.set(dKey, r);
         }
       });

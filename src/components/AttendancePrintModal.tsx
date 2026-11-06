@@ -16,7 +16,8 @@ import { DIGIWANGI_LOGO_BASE64 } from '../assets/logoBase64';
 import { 
   buildDailyAttendanceIndex, 
   getAttendanceFromIndex, 
-  isSameClass, 
+  isSameClass,
+  isPresensiMatchSiswa,
   calculateAllRombelSummaryList,
   calculateSemesterRombelSummaryList,
   normalizeDateKey
@@ -646,22 +647,23 @@ export default function AttendancePrintModal({
                 <tbody>
                   {filteredStudents.map((siswa, idx) => {
                     const studentRecords = presensiList.filter(p => {
-                      const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
-                                         (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-                                         (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
-                      if (!matchSiswa) return false;
+                      if (!isPresensiMatchSiswa(p, siswa)) return false;
                       const norm = normalizeDateKey(p.tanggal);
                       return norm.startsWith(targetMonth);
                     });
 
                     let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
-                    const dateMap = new Map<string, string>();
+                    const dateMap = new Map<string, Presensi>();
                     studentRecords.forEach(r => {
                       const d = normalizeDateKey(r.tanggal);
-                      if (!dateMap.has(d)) dateMap.set(d, r.status);
+                      const existing = dateMap.get(d);
+                      if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+                        dateMap.set(d, r);
+                      }
                     });
 
-                    dateMap.forEach(status => {
+                    dateMap.forEach(rec => {
+                      const status = rec.status;
                       if (status === 'Hadir') hadir++;
                       else if (status === 'Terlambat') terlambat++;
                       else if (status === 'Sakit') sakit++;
@@ -807,22 +809,23 @@ export default function AttendancePrintModal({
                         : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
 
                       const studentRecords = presensiList.filter(p => {
-                        const matchSiswa = (p.siswaId && p.siswaId === siswa.id) ||
-                                           (p.nis && siswa.nis && p.nis.trim() === siswa.nis.trim()) ||
-                                           (p.nama && p.nama.trim().toLowerCase() === siswa.nama.trim().toLowerCase() && isSameClass(p.kelas, siswa.kelas));
-                        if (!matchSiswa || !p.tanggal) return false;
+                        if (!isPresensiMatchSiswa(p, siswa) || !p.tanggal) return false;
                         const norm = normalizeDateKey(p.tanggal);
                         return targetYearMonths.some(ym => norm.startsWith(ym));
                       });
 
                       let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
-                      const dateMap = new Map<string, string>();
+                      const dateMap = new Map<string, Presensi>();
                       studentRecords.forEach(r => {
                         const d = normalizeDateKey(r.tanggal);
-                        if (!dateMap.has(d)) dateMap.set(d, r.status);
+                        const existing = dateMap.get(d);
+                        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+                          dateMap.set(d, r);
+                        }
                       });
 
-                      dateMap.forEach(status => {
+                      dateMap.forEach(rec => {
+                        const status = rec.status;
                         if (status === 'Hadir') hadir++;
                         else if (status === 'Terlambat') terlambat++;
                         else if (status === 'Sakit') sakit++;
