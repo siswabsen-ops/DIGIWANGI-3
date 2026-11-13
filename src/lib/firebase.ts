@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Siswa, Presensi, User, SystemSettings, ActivityLog, WaliKelas } from '../types';
+import { getLocalDateString, normalizeDateKey, isSyntheticDemoPresensi } from './attendanceUtils';
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
@@ -99,7 +100,9 @@ export const isUnavailableOrOfflineError = (error: unknown): boolean => {
   );
 };
 
-const QUOTA_STORAGE_KEY = 'karapres3_firestore_quota_exhausted_v1';
+const READ_QUOTA_STORAGE_KEY = 'karapres3_firestore_read_quota_v2';
+const WRITE_QUOTA_STORAGE_KEY = 'karapres3_firestore_write_quota_v2';
+const FIRESTORE_SEEDED_STORAGE_KEY = 'karapres3_firestore_seeded_v2';
 
 export const getFirestoreDatabaseConsoleUrl = (): string => {
   const projectId = (firebaseConfig as any).projectId || 'ai-studio-applet-webapp-6532a';
@@ -107,18 +110,19 @@ export const getFirestoreDatabaseConsoleUrl = (): string => {
   return `https://console.firebase.google.com/project/${projectId}/firestore/databases/${dbId}/data?openUpgradeDialog=true`;
 };
 
-let inMemoryQuotaExhausted = false;
+let inMemoryReadQuotaExhausted = false;
+let inMemoryWriteQuotaExhausted = false;
 
-export const getIsQuotaExhausted = (): boolean => {
-  if (inMemoryQuotaExhausted) return true;
+export const getIsReadQuotaExhausted = (): boolean => {
+  if (inMemoryReadQuotaExhausted) return true;
   if (typeof window === 'undefined') return false;
   try {
-    const raw = localStorage.getItem(QUOTA_STORAGE_KEY);
+    const raw = localStorage.getItem(READ_QUOTA_STORAGE_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateString();
     if (parsed.date === today && parsed.exhausted) {
-      inMemoryQuotaExhausted = true;
+      inMemoryReadQuotaExhausted = true;
       return true;
     }
     return false;
@@ -127,14 +131,44 @@ export const getIsQuotaExhausted = (): boolean => {
   }
 };
 
-export const setQuotaExhausted = (exhausted: boolean = true) => {
-  inMemoryQuotaExhausted = exhausted;
+export const setReadQuotaExhausted = (exhausted: boolean = true) => {
+  inMemoryReadQuotaExhausted = exhausted;
   if (typeof window === 'undefined') return;
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    localStorage.setItem(QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted }));
+    const today = getLocalDateString();
+    localStorage.setItem(READ_QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted }));
   } catch {}
 };
+
+export const getIsWriteQuotaExhausted = (): boolean => {
+  if (inMemoryWriteQuotaExhausted) return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem(WRITE_QUOTA_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const today = getLocalDateString();
+    if (parsed.date === today && parsed.exhausted) {
+      inMemoryWriteQuotaExhausted = true;
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+export const setWriteQuotaExhausted = (exhausted: boolean = true) => {
+  inMemoryWriteQuotaExhausted = exhausted;
+  if (typeof window === 'undefined') return;
+  try {
+    const today = getLocalDateString();
+    localStorage.setItem(WRITE_QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted }));
+  } catch {}
+};
+
+export const getIsQuotaExhausted = getIsWriteQuotaExhausted;
+export const setQuotaExhausted = setWriteQuotaExhausted;
 
 export const isPermissionError = (error: unknown): boolean => {
   const errStr = (error instanceof Error ? error.message : String(error)).toLowerCase();
@@ -143,8 +177,17 @@ export const isPermissionError = (error: unknown): boolean => {
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   if (isQuotaError(error)) {
-    setQuotaExhausted(true);
-    console.warn(`[Firestore Quota Guard] Free daily quota limit reached on ${operationType} (${path || 'collection'}). Seamlessly running via Server Sync & Local Engine.`);
+    const errStr = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    const isReadOp =
+      operationType === OperationType.GET ||
+      operationType === OperationType.LIST ||
+      (errStr.includes('read units') && !errStr.includes('write units'));
+    if (isReadOp) {
+      setReadQuotaExhausted(true);
+    } else {
+      setWriteQuotaExhausted(true);
+    }
+    console.warn(`[Firestore Quota Guard] Free daily ${isReadOp ? 'read' : 'write'} quota reached on ${operationType} (${path || 'collection'}). Continuing via Server Sync & Local Engine.`);
     return;
   }
 
@@ -233,6 +276,7 @@ export const cleanPresensiForFirestore = (p: Presensi) => {
   if (p.keterangan) payload.keterangan = p.keterangan;
   if (p.scanError) payload.scanError = p.scanError;
   if (p.pesanTerkirim) payload.pesanTerkirim = p.pesanTerkirim;
+  if (typeof p.updatedAt === 'number' && !isNaN(p.updatedAt)) payload.updatedAt = p.updatedAt;
   return payload;
 };
 
@@ -293,22 +337,43 @@ export const deleteSiswaFromFirestore = async (siswaId: string) => {
 
 // Presensi CRUD
 export const savePresensiToFirestore = async (presensi: Presensi) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsWriteQuotaExhausted()) return;
   const path = `presensi/${presensi.id}`;
   try {
     await setDoc(doc(db, 'presensi', presensi.id), cleanPresensiForFirestore(presensi));
+    const normDate = normalizeDateKey(presensi.tanggal);
+    const legacyId = `pr-${normDate}-${presensi.siswaId}`;
+    if (presensi.siswaId && normDate && presensi.id !== legacyId) {
+      deleteDoc(doc(db, 'presensi', legacyId)).catch(() => {});
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
   }
 };
 
-export const deletePresensiFromFirestore = async (presensiId: string) => {
-  if (getIsQuotaExhausted()) return;
-  const path = `presensi/${presensiId}`;
+export const deletePresensiFromFirestore = async (
+  presensiId?: string,
+  siswaId?: string,
+  tanggal?: string
+) => {
+  if (getIsWriteQuotaExhausted()) return;
+  const normDate = tanggal ? normalizeDateKey(tanggal) : '';
+  const candidateIds = new Set<string>();
+  if (presensiId) candidateIds.add(presensiId);
+  if (siswaId && normDate) {
+    candidateIds.add(`pr-${siswaId}-${normDate}`);
+    candidateIds.add(`pr-${normDate}-${siswaId}`);
+  }
+  if (candidateIds.size === 0) return;
+
   try {
-    await deleteDoc(doc(db, 'presensi', presensiId));
+    const batch = writeBatch(db);
+    candidateIds.forEach((cid) => {
+      batch.delete(doc(db, 'presensi', cid));
+    });
+    await batch.commit();
   } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, path);
+    handleFirestoreError(err, OperationType.DELETE, `presensi/${Array.from(candidateIds)[0]}`);
   }
 };
 
@@ -389,20 +454,22 @@ export const clearActivityLogsInFirestore = async (logs: ActivityLog[]) => {
   }
 };
 
-// ==========================================
-// MASTER MULTI-DEVICE CLOUD SYNC ENGINE
-// ==========================================
+export interface DeletedTombstone {
+  key: string;
+  ts: number;
+}
 
 export interface CloudSyncPayload<T> {
   data: T;
   updatedAt: number;
   updatedBy?: string;
   total?: number;
+  deletedKeys?: DeletedTombstone[];
 }
 
 // Push master students dataset to Cloud Sync doc (Syncs to PC, Android, etc. in 1 atomic read/write)
 export const syncMasterStudentsToCloud = async (students: Siswa[], updatedBy?: string) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsWriteQuotaExhausted()) return;
   const path = 'sync/students';
   try {
     const cleaned = students.map(cleanSiswaForFirestore);
@@ -417,28 +484,81 @@ export const syncMasterStudentsToCloud = async (students: Siswa[], updatedBy?: s
   }
 };
 
-// Push master presensi dataset to Cloud Sync doc
-export const syncMasterPresensiToCloud = async (presensiList: Presensi[], updatedBy?: string) => {
-  if (getIsQuotaExhausted()) return;
-  const path = 'sync/presensi';
+let presensiSyncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Push master presensi dataset to Cloud Sync doc (2000 chronological records with <850KB size guard + deletedKeys)
+export const syncMasterPresensiToCloud = async (
+  presensiList: Presensi[],
+  updatedBy?: string,
+  deletedKeys?: DeletedTombstone[]
+): Promise<void> => {
+  if (getIsWriteQuotaExhausted()) return;
+
+  if (presensiSyncDebounceTimer) {
+    clearTimeout(presensiSyncDebounceTimer);
+  }
+
+  return new Promise<void>((resolve) => {
+    presensiSyncDebounceTimer = setTimeout(async () => {
+      presensiSyncDebounceTimer = null;
+      if (getIsWriteQuotaExhausted()) {
+        resolve();
+        return;
+      }
+      const path = 'sync/presensi';
+      try {
+        // Sort chronologically so latest 2,000 records always include 100% of live records
+        const validSorted = presensiList
+          .filter((p) => p && p.tanggal && !isSyntheticDemoPresensi(p))
+          .slice()
+          .sort((a, b) => normalizeDateKey(a.tanggal).localeCompare(normalizeDateKey(b.tanggal)));
+
+        let windowRecords = validSorted.length > 2000 ? validSorted.slice(-2000) : validSorted;
+        let cleaned = windowRecords.map(cleanPresensiForFirestore);
+
+        // Enforce strict < 850KB payload size guard (well under Firestore's 1 MiB document limit)
+        while (cleaned.length > 450 && JSON.stringify(cleaned).length > 850000) {
+          cleaned = cleaned.slice(Math.max(1, Math.floor(cleaned.length * 0.15)));
+        }
+
+        const payload: Record<string, any> = {
+          data: cleaned,
+          updatedAt: Date.now(),
+          updatedBy: updatedBy || 'Client Device',
+          total: presensiList.length
+        };
+        if (deletedKeys && deletedKeys.length > 0) {
+          payload.deletedKeys = deletedKeys.slice(-250);
+        }
+
+        await setDoc(doc(db, 'sync', 'presensi'), payload);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, path);
+      } finally {
+        resolve();
+      }
+    }, 300);
+  });
+};
+
+// Fetch sync/presensi ONCE (1 single read unit) for initial hydration on mount
+export const fetchCloudSyncPresensiOnce = async (): Promise<CloudSyncPayload<Presensi[]> | null> => {
+  if (getIsReadQuotaExhausted()) return null;
   try {
-    // Keep safely within Firestore 1MB document limit: sync the latest 350 active records (~60KB)
-    const recentWindow = presensiList.length > 350 ? presensiList.slice(-350) : presensiList;
-    const cleaned = recentWindow.map(cleanPresensiForFirestore);
-    await setDoc(doc(db, 'sync', 'presensi'), {
-      data: cleaned,
-      updatedAt: Date.now(),
-      updatedBy: updatedBy || 'Client Device',
-      total: presensiList.length
-    });
+    const snap = await getDoc(doc(db, 'sync', 'presensi'));
+    if (!snap.exists()) return null;
+    const payload = snap.data() as CloudSyncPayload<Presensi[]>;
+    if (!payload || !Array.isArray(payload.data)) return null;
+    return payload;
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
+    handleFirestoreError(err, OperationType.GET, 'sync/presensi');
+    return null;
   }
 };
 
 // Push master accounts dataset to Cloud Sync doc
 export const syncMasterAccountsToCloud = async (accounts: { user: User; pin: string }[]) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsWriteQuotaExhausted()) return;
   const path = 'sync/accounts';
   try {
     await setDoc(doc(db, 'sync', 'accounts'), {
@@ -453,7 +573,7 @@ export const syncMasterAccountsToCloud = async (accounts: { user: User; pin: str
 
 // Push master wali kelas dataset to Cloud Sync doc
 export const syncMasterWaliKelasToCloud = async (waliKelasList: WaliKelas[], updatedBy?: string) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsWriteQuotaExhausted()) return;
   const path = 'sync/wali_kelas';
   try {
     await setDoc(doc(db, 'sync', 'wali_kelas'), {
@@ -467,130 +587,60 @@ export const syncMasterWaliKelasToCloud = async (waliKelasList: WaliKelas[], upd
   }
 };
 
-// Real-time multi-device subscription (Android & PC instant sync)
+// Real-time multi-device subscription (1 listener on sync/presensi to minimize read unit usage)
 export const subscribeToCloudSync = (callbacks: {
   onStudentsChange?: (students: Siswa[]) => void;
   onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
-  onPresensiChange?: (presensi: Presensi[], updatedAt?: number) => void;
+  onPresensiChange?: (presensi: Presensi[], updatedAt?: number, deletedKeys?: DeletedTombstone[]) => void;
   onSettingsChange?: (settings: SystemSettings) => void;
   onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
   onStatusChange?: (status: 'connected' | 'offline' | 'syncing') => void;
 }) => {
-  const unsubs: (() => void)[] = [];
-
-  const handleListenerError = (err: unknown, path: string, myUnsub?: () => void) => {
-    if (isQuotaError(err)) {
-      setQuotaExhausted(true);
-      try { myUnsub?.(); } catch {}
-      callbacks.onStatusChange?.('offline');
-      console.warn(`[Firestore Quota Guard] Snapshot listener at ${path} reached quota. Running via High-Speed Server Sync.`);
-    } else if (isUnavailableOrOfflineError(err)) {
-      callbacks.onStatusChange?.('offline');
-      console.warn(`[Firestore Network] Backend unreachable temporarily on ${path}. Operating smoothly via High-Speed Server Sync.`);
-    } else {
-      handleFirestoreError(err, OperationType.GET, path);
-    }
-  };
-
-  // 1. Subscribe to master students doc
-  let unsubStudents: (() => void) | undefined;
-  try {
-    unsubStudents = onSnapshot(doc(db, 'sync', 'students'), (snapshot) => {
-      if (snapshot.exists()) {
-        const payload = snapshot.data() as CloudSyncPayload<Siswa[]>;
-        if (Array.isArray(payload?.data) && payload.data.length > 0) {
-          callbacks.onStudentsChange?.(payload.data);
-          callbacks.onStatusChange?.('connected');
-        }
-      }
-    }, (err) => {
-      handleListenerError(err, 'sync/students', unsubStudents);
-    });
-    unsubs.push(unsubStudents);
-  } catch (err) {
-    handleListenerError(err, 'sync/students');
+  if (getIsReadQuotaExhausted()) {
+    callbacks.onStatusChange?.('offline');
+    return () => {};
   }
 
-  // 2. Subscribe to master presensi doc
   let unsubPresensi: (() => void) | undefined;
   try {
     unsubPresensi = onSnapshot(doc(db, 'sync', 'presensi'), (snapshot) => {
       if (snapshot.exists()) {
         const payload = snapshot.data() as CloudSyncPayload<Presensi[]>;
         if (Array.isArray(payload?.data)) {
-          callbacks.onPresensiChange?.(payload.data, payload.updatedAt);
+          callbacks.onPresensiChange?.(payload.data, payload.updatedAt, payload.deletedKeys);
           callbacks.onStatusChange?.('connected');
         }
       }
     }, (err) => {
-      handleListenerError(err, 'sync/presensi', unsubPresensi);
-    });
-    unsubs.push(unsubPresensi);
-  } catch (err) {
-    handleListenerError(err, 'sync/presensi');
-  }
-
-  // 3. Subscribe to wali kelas doc
-  let unsubWaliKelas: (() => void) | undefined;
-  try {
-    unsubWaliKelas = onSnapshot(doc(db, 'sync', 'wali_kelas'), (snapshot) => {
-      if (snapshot.exists()) {
-        const payload = snapshot.data() as CloudSyncPayload<WaliKelas[]>;
-        if (Array.isArray(payload?.data) && payload.data.length > 0) {
-          callbacks.onWaliKelasChange?.(payload.data);
+      if (isQuotaError(err)) {
+        const errStr = (err instanceof Error ? err.message : String(err)).toLowerCase();
+        if (errStr.includes('write units')) {
+          setWriteQuotaExhausted(true);
+        } else {
+          setReadQuotaExhausted(true);
         }
+        try { unsubPresensi?.(); } catch {}
+        callbacks.onStatusChange?.('offline');
+        console.warn('[Firestore Quota Guard] Snapshot listener at sync/presensi reached read quota. Running via High-Speed Server Sync.');
+      } else if (isUnavailableOrOfflineError(err)) {
+        callbacks.onStatusChange?.('offline');
+        console.warn('[Firestore Network] Backend unreachable temporarily on sync/presensi. Operating smoothly via High-Speed Server Sync.');
+      } else {
+        handleFirestoreError(err, OperationType.GET, 'sync/presensi');
       }
-    }, (err) => {
-      handleListenerError(err, 'sync/wali_kelas', unsubWaliKelas);
     });
-    unsubs.push(unsubWaliKelas);
   } catch (err) {
-    handleListenerError(err, 'sync/wali_kelas');
-  }
-
-  // 4. Subscribe to settings
-  let unsubSettings: (() => void) | undefined;
-  try {
-    unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (snapshot) => {
-      if (snapshot.exists()) {
-        callbacks.onSettingsChange?.(snapshot.data() as SystemSettings);
-        callbacks.onStatusChange?.('connected');
-      }
-    }, (err) => {
-      handleListenerError(err, 'settings/system', unsubSettings);
-    });
-    unsubs.push(unsubSettings);
-  } catch (err) {
-    handleListenerError(err, 'settings/system');
-  }
-
-  // 5. Subscribe to accounts
-  let unsubAccounts: (() => void) | undefined;
-  try {
-    unsubAccounts = onSnapshot(doc(db, 'sync', 'accounts'), (snapshot) => {
-      if (snapshot.exists()) {
-        const payload = snapshot.data() as CloudSyncPayload<{ user: User; pin: string }[]>;
-        if (Array.isArray(payload?.data) && payload.data.length > 0) {
-          callbacks.onAccountsChange?.(payload.data);
-          callbacks.onStatusChange?.('connected');
-        }
-      }
-    }, (err) => {
-      handleListenerError(err, 'sync/accounts', unsubAccounts);
-    });
-    unsubs.push(unsubAccounts);
-  } catch (err) {
-    handleListenerError(err, 'sync/accounts');
+    handleFirestoreError(err, OperationType.GET, 'sync/presensi');
   }
 
   return () => {
-    unsubs.forEach(fn => { try { fn(); } catch {} });
+    try { unsubPresensi?.(); } catch {}
   };
 };
 
 // Batch Sync all students to Firestore database
 export const syncAllStudentsToFirestore = async (students: Siswa[]) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsWriteQuotaExhausted()) return;
   try {
     const chunkSize = 200;
     for (let i = 0; i < students.length; i += chunkSize) {
@@ -614,43 +664,50 @@ export const seedInitialDataIfDocsEmpty = async (
   siswaSource: Siswa[],
   accountsSource: { user: User; pin: string }[],
   settingsSource: SystemSettings,
-  logsSource: ActivityLog[],
+  _logsSource: ActivityLog[],
   presensiSource?: Presensi[]
 ) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsReadQuotaExhausted() || getIsWriteQuotaExhausted()) return;
+  if (typeof window !== 'undefined' && safeFlagCheck(FIRESTORE_SEEDED_STORAGE_KEY)) {
+    return;
+  }
   try {
-    // 1. Check Master Sync Students doc (Only 1 atomic read!)
+    // Single 1-read check on sync/students
     const syncSiswaDoc = await getDoc(doc(db, 'sync', 'students'));
-    if (!syncSiswaDoc.exists() || !syncSiswaDoc.data()?.data?.length) {
-      console.log(`Seeding master catalog of ${siswaSource.length} students to Cloud Sync...`);
-      await syncMasterStudentsToCloud(siswaSource, 'Initial Seeding');
+    if (syncSiswaDoc.exists() && syncSiswaDoc.data()?.data?.length > 0) {
+      markFirestoreSeeded();
+      return;
     }
 
-    // 2. Check Accounts Sync doc (1 atomic read)
-    const syncAccountsDoc = await getDoc(doc(db, 'sync', 'accounts'));
-    if (!syncAccountsDoc.exists() || !syncAccountsDoc.data()?.data?.length) {
-      await syncMasterAccountsToCloud(accountsSource);
-    }
-
-    // 3. Check Settings doc (1 atomic read)
-    const settingsDoc = await getDoc(doc(db, 'settings', 'system'));
-    if (!settingsDoc.exists()) {
-      await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settingsSource));
-    }
-
-    // 4. Check Presensi Sync doc (1 atomic read)
+    console.log(`Seeding master catalog of ${siswaSource.length} students to Cloud Sync...`);
+    await syncMasterStudentsToCloud(siswaSource, 'Initial Seeding');
+    await syncMasterAccountsToCloud(accountsSource);
+    await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settingsSource));
     if (presensiSource && presensiSource.length > 0) {
-      const syncPresensiDoc = await getDoc(doc(db, 'sync', 'presensi'));
-      if (!syncPresensiDoc.exists()) {
-        await syncMasterPresensiToCloud(presensiSource.slice(-350), 'Initial Seeding');
-      }
+      await syncMasterPresensiToCloud(presensiSource.slice(-450), 'Initial Seeding');
     }
+    markFirestoreSeeded();
   } catch (err: any) {
     if (isQuotaError(err)) {
-      setQuotaExhausted(true);
-      console.warn('[Firestore Seeding] Cloud quota limit reached. Preserving rich offline local database seamlessly.');
+      setReadQuotaExhausted(true);
+      console.warn('[Firestore Seeding] Cloud read quota limit reached. Skipping initial read check.');
     } else {
       console.warn('[Firestore Seeding] Cloud seeding notice:', err);
     }
   }
 };
+
+function safeFlagCheck(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markFirestoreSeeded(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(FIRESTORE_SEEDED_STORAGE_KEY, '1');
+  } catch {}
+}

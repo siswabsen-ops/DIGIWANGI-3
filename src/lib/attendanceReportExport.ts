@@ -1,15 +1,18 @@
 import JSZip from 'jszip';
-import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, SystemSettings, DAFTAR_KELAS } from '../types';
 import {
-  getLocalDateString,
   isSameClass,
   isPresensiMatchSiswa,
-  calculateClassAttendanceStats,
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
   calculateAllRombelSummaryList,
   normalizeDateKey,
-  getAttendanceShift
+  getAttendanceShift,
+  getMondayOfWeek,
+  safeAddDays,
+  safeDateParts,
+  formatMonthIndo,
+  isRecordNewer
 } from './attendanceUtils';
 import { getWaliKelasByKelas } from './demoData';
 import { triggerFileDownload } from './qrCodeExport';
@@ -36,7 +39,8 @@ export function generateDailyReportCSV(
   kelas: string,
   dateStr: string,
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  settings?: SystemSettings
 ): string {
   const isAll = kelas === 'Semua Kelas' || !kelas;
   const filteredStudents = isAll
@@ -74,7 +78,7 @@ export function generateDailyReportCSV(
     const waktu = record ? record.waktu : '-';
     const waStatus = record ? (record.waStatus || 'Terkirim') : '-';
     const operator = record ? record.operator : '-';
-    const shiftVal = record?.shift || getAttendanceShift(record, siswa.kelas);
+    const shiftVal = record?.shift || getAttendanceShift(record, siswa.kelas, record?.waktu, settings);
     const shiftLabel = shiftVal === 'Siang' ? 'Shift Siang (12.30 WIB)' : 'Shift Pagi (07.00 WIB)';
     const metodeLabel = record ? (record.metodeLabel || (record.metode === 'QR_SCAN' ? 'Scan QR Code Kartu' : 'Manual Tap Wali Kelas')) : '-';
     const keterangan = record ? (record.keterangan || (status === 'Hadir' ? 'Tercatat Hadir via Scan Kartu' : `Keterangan ${status}`)) : 'Belum Melakukan Presensi';
@@ -116,9 +120,10 @@ export function generateDailyReportCSV(
 export function generateDailyRombelSummaryCSV(
   dateStr: string,
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  settings?: SystemSettings
 ): string {
-  const allRombel = calculateAllRombelSummaryList(siswaList, presensiList, dateStr);
+  const allRombel = calculateAllRombelSummaryList(siswaList, presensiList, dateStr, settings);
   
   let totalSiswa = 0;
   let hadir = 0;
@@ -232,7 +237,8 @@ export function generateWeeklyReportCSV(
   kelas: string,
   mondayDateStr: string,
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  settings?: SystemSettings
 ): string {
   const isAll = kelas === 'Semua Kelas' || !kelas;
   const filteredStudents = isAll
@@ -244,21 +250,19 @@ export function generateWeeklyReportCSV(
     return a.nama.localeCompare(b.nama);
   });
 
-  // Calculate 5 days dates
-  const baseDate = new Date(mondayDateStr);
+  // Calculate 5 days dates (timezone-safe)
+  const monday = getMondayOfWeek(mondayDateStr);
   const indonesianDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
+  const shortMonths = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const weekDates: { dateStr: string; label: string }[] = [];
 
   for (let i = 0; i < 5; i++) {
-    const nextDate = new Date(baseDate);
-    nextDate.setDate(baseDate.getDate() + i);
-    const tzOffset = nextDate.getTimezoneOffset() * 60000;
-    const dateStr = (new Date(nextDate.getTime() - tzOffset)).toISOString().slice(0, 10);
-    const dayNum = nextDate.getDate();
-    const monthShort = nextDate.toLocaleDateString('id-ID', { month: 'short' });
+    const dateStr = safeAddDays(monday, i);
+    const { day, month } = safeDateParts(dateStr);
+    const monthShort = shortMonths[month] || '';
     weekDates.push({
       dateStr,
-      label: `${indonesianDays[i]} (${dayNum} ${monthShort})`
+      label: `${indonesianDays[i]} (${day} ${monthShort})`
     });
   }
 
@@ -309,7 +313,7 @@ export function generateWeeklyReportCSV(
 
     const totalMasuk = hadirCount + telatCount;
     const persen = Math.min(100, Math.round((totalMasuk / activeDaysCount) * 100));
-    const shiftLabel = getAttendanceShift(null, siswa.kelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+    const shiftLabel = getAttendanceShift(null, siswa.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
 
     return [
       idx + 1,
@@ -390,7 +394,8 @@ export function generateMonthlyReportCSV(
   kelas: string,
   monthStr: string, // YYYY-MM
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  settings?: SystemSettings
 ): string {
   const isAll = kelas === 'Semua Kelas' || !kelas;
   const filteredStudents = isAll
@@ -446,12 +451,12 @@ export function generateMonthlyReportCSV(
     let izin = 0;
     let alfa = 0;
 
-    // Deduplicate by date (keep latest timestamp on same date)
+    // Deduplicate by date (keep latest updatedAt / timestamp on same date)
     const dateMap = new Map<string, Presensi>();
     studentRecords.forEach(r => {
       const d = normalizeDateKey(r.tanggal);
       const existing = dateMap.get(d);
-      if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+      if (isRecordNewer(r, existing)) {
         dateMap.set(d, r);
       }
     });
@@ -473,7 +478,7 @@ export function generateMonthlyReportCSV(
     else if (persen >= 80) predikat = 'Baik';
     else if (persen >= 60) predikat = 'Cukup';
 
-    const shiftLabel = getAttendanceShift(null, siswa.kelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+    const shiftLabel = getAttendanceShift(null, siswa.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
 
     return [
       idx + 1,
@@ -493,8 +498,7 @@ export function generateMonthlyReportCSV(
     ];
   });
 
-  const monthObj = new Date(`${monthStr}-02`);
-  const monthName = monthObj.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  const monthName = formatMonthIndo(monthStr);
 
   const headerLines = [
     `BUKU REKAPITULASI PRESENSI BULANAN SISWA - SDN 3 KARAMATWANGI`,
@@ -517,7 +521,8 @@ export function generateSemesterReportCSV(
   semesterType: '1' | '2',
   tahunAjaran: string,
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  settings?: SystemSettings
 ): string {
   const isAll = !kelas || kelas === 'Semua Kelas' || kelas === 'SEMUA KELAS';
   const filteredStudents = isAll
@@ -577,7 +582,7 @@ export function generateSemesterReportCSV(
     studentRecords.forEach(r => {
       const d = normalizeDateKey(r.tanggal);
       const existing = dateMap.get(d);
-      if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+      if (isRecordNewer(r, existing)) {
         dateMap.set(d, r);
       }
     });
@@ -599,7 +604,7 @@ export function generateSemesterReportCSV(
     else if (persen >= 80) predikat = 'Baik (B)';
     else if (persen >= 60) predikat = 'Cukup (C)';
 
-    const shiftLabel = getAttendanceShift(null, siswa.kelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+    const shiftLabel = getAttendanceShift(null, siswa.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
 
     return [
       idx + 1,
@@ -641,7 +646,8 @@ export function generateSemesterRombelSummaryCSV(
   semesterType: '1' | '2',
   tahunAjaran: string,
   siswaList: Siswa[],
-  presensiList: Presensi[]
+  presensiList: Presensi[],
+  settings?: SystemSettings
 ): string {
   const headers = [
     'No',
@@ -699,7 +705,7 @@ export function generateSemesterRombelSummaryCSV(
       studentRecords.forEach(r => {
         const d = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(d);
-        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+        if (isRecordNewer(r, existing)) {
           dateMap.set(d, r);
         }
       });
@@ -723,7 +729,7 @@ export function generateSemesterRombelSummaryCSV(
     else if (persen >= 80) predikat = 'Tinggi (B)';
     else if (persen >= 60) predikat = 'Cukup (C)';
 
-    const shiftLabel = getAttendanceShift(null, namaKelas) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
+    const shiftLabel = getAttendanceShift(null, namaKelas, undefined, settings) === 'Siang' ? 'Siang (12.30 WIB)' : 'Pagi (07.00 WIB)';
 
     return [
       idx + 1,
@@ -765,25 +771,26 @@ export function downloadSingleClassReport(
   dateOrPeriod: string,
   siswaList: Siswa[],
   presensiList: Presensi[],
-  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string }
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string },
+  settings?: SystemSettings
 ) {
   let content = '';
   let filename = '';
   const cleanKelas = kelas.replace(/[\s-]+/g, '_').toUpperCase();
 
   if (type === 'harian') {
-    content = generateDailyReportCSV(kelas, dateOrPeriod, siswaList, presensiList);
+    content = generateDailyReportCSV(kelas, dateOrPeriod, siswaList, presensiList, settings);
     filename = `REKAP_PRESENSI_HARIAN_${cleanKelas}_${dateOrPeriod}.csv`;
   } else if (type === 'mingguan') {
-    content = generateWeeklyReportCSV(kelas, dateOrPeriod, siswaList, presensiList);
+    content = generateWeeklyReportCSV(kelas, dateOrPeriod, siswaList, presensiList, settings);
     filename = `REKAP_PRESENSI_MINGGUAN_${cleanKelas}_MULAI_${dateOrPeriod}.csv`;
   } else if (type === 'bulanan') {
-    content = generateMonthlyReportCSV(kelas, dateOrPeriod, siswaList, presensiList);
+    content = generateMonthlyReportCSV(kelas, dateOrPeriod, siswaList, presensiList, settings);
     filename = `REKAP_PRESENSI_BULANAN_${cleanKelas}_${dateOrPeriod}.csv`;
   } else {
     const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
     const thn = semesterOptions?.tahunAjaran || '2026/2027';
-    content = generateSemesterReportCSV(kelas, semType, thn, siswaList, presensiList);
+    content = generateSemesterReportCSV(kelas, semType, thn, siswaList, presensiList, settings);
     filename = `REKAP_PRESENSI_SEMESTER_${semType}_${cleanKelas}_${thn.replace('/', '-')}.csv`;
   }
 
@@ -800,7 +807,8 @@ export async function downloadAllClassesZip(
   siswaList: Siswa[],
   presensiList: Presensi[],
   onProgress?: (current: number, total: number, className: string) => void,
-  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string }
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string },
+  settings?: SystemSettings
 ) {
   const zip = new JSZip();
   const classes = DAFTAR_KELAS;
@@ -809,7 +817,7 @@ export async function downloadAllClassesZip(
   if (type === 'harian') {
     // 1. Add Master School Rombel Summary
     onProgress?.(1, total, 'Rekapitulasi Seluruh Rombel');
-    const rombelSummary = generateDailyRombelSummaryCSV(dateOrPeriod, siswaList, presensiList);
+    const rombelSummary = generateDailyRombelSummaryCSV(dateOrPeriod, siswaList, presensiList, settings);
     zip.file(`00_REKAPITULASI_SELURUH_ROMBEL_${dateOrPeriod}.csv`, rombelSummary);
 
     // 2. Add each class file
@@ -817,7 +825,7 @@ export async function downloadAllClassesZip(
       const cls = classes[i];
       onProgress?.(i + 2, total, `Rekap ${cls}`);
       const cleanName = cls.replace(/[\s-]+/g, '_');
-      const csv = generateDailyReportCSV(cls, dateOrPeriod, siswaList, presensiList);
+      const csv = generateDailyReportCSV(cls, dateOrPeriod, siswaList, presensiList, settings);
       zip.file(`REKAP_HARIAN_${cleanName}_${dateOrPeriod}.csv`, csv);
     }
 
@@ -827,7 +835,7 @@ export async function downloadAllClassesZip(
   } else if (type === 'mingguan') {
     // 1. Add All Students Master
     onProgress?.(1, total, 'Rekapitulasi Semua Siswa');
-    const masterWeekly = generateWeeklyReportCSV('Semua Kelas', dateOrPeriod, siswaList, presensiList);
+    const masterWeekly = generateWeeklyReportCSV('Semua Kelas', dateOrPeriod, siswaList, presensiList, settings);
     zip.file(`00_REKAP_MINGGUAN_SEMUA_SISWA_MULAI_${dateOrPeriod}.csv`, masterWeekly);
 
     // 2. Add each class file
@@ -835,7 +843,7 @@ export async function downloadAllClassesZip(
       const cls = classes[i];
       onProgress?.(i + 2, total, `Rekap ${cls}`);
       const cleanName = cls.replace(/[\s-]+/g, '_');
-      const csv = generateWeeklyReportCSV(cls, dateOrPeriod, siswaList, presensiList);
+      const csv = generateWeeklyReportCSV(cls, dateOrPeriod, siswaList, presensiList, settings);
       zip.file(`REKAP_MINGGUAN_${cleanName}_MULAI_${dateOrPeriod}.csv`, csv);
     }
 
@@ -845,7 +853,7 @@ export async function downloadAllClassesZip(
   } else if (type === 'bulanan') {
     // 1. Add All Students Master Bulanan
     onProgress?.(1, total, 'Rekapitulasi Bulanan Semua Siswa');
-    const masterMonthly = generateMonthlyReportCSV('Semua Kelas', dateOrPeriod, siswaList, presensiList);
+    const masterMonthly = generateMonthlyReportCSV('Semua Kelas', dateOrPeriod, siswaList, presensiList, settings);
     zip.file(`00_REKAP_BULANAN_SEMUA_SISWA_${dateOrPeriod}.csv`, masterMonthly);
 
     // 2. Add each class file
@@ -853,7 +861,7 @@ export async function downloadAllClassesZip(
       const cls = classes[i];
       onProgress?.(i + 2, total, `Rekap ${cls}`);
       const cleanName = cls.replace(/[\s-]+/g, '_');
-      const csv = generateMonthlyReportCSV(cls, dateOrPeriod, siswaList, presensiList);
+      const csv = generateMonthlyReportCSV(cls, dateOrPeriod, siswaList, presensiList, settings);
       zip.file(`REKAP_BULANAN_${cleanName}_${dateOrPeriod}.csv`, csv);
     }
 
@@ -868,7 +876,7 @@ export async function downloadAllClassesZip(
 
     // 1. Add Master School Rombel Summary for Semester
     onProgress?.(1, total, 'Rekapitulasi Rombel Semester');
-    const semSummary = generateSemesterRombelSummaryCSV(semType, thn, siswaList, presensiList);
+    const semSummary = generateSemesterRombelSummaryCSV(semType, thn, siswaList, presensiList, settings);
     zip.file(`00_REKAPITULASI_ROMBEL_SEMESTER_${semType}_${thnClean}.csv`, semSummary);
 
     // 2. Add each class file
@@ -876,7 +884,7 @@ export async function downloadAllClassesZip(
       const cls = classes[i];
       onProgress?.(i + 2, total, `Rekap ${cls}`);
       const cleanName = cls.replace(/[\s-]+/g, '_');
-      const csv = generateSemesterReportCSV(cls, semType, thn, siswaList, presensiList);
+      const csv = generateSemesterReportCSV(cls, semType, thn, siswaList, presensiList, settings);
       zip.file(`REKAP_SEMESTER_${semType}_${cleanName}_${thnClean}.csv`, csv);
     }
 

@@ -1,5 +1,12 @@
 import { Siswa, Presensi } from '../types';
-import { getLocalDateString, normalizeDateKey, isPresensiMatchSiswa } from './attendanceUtils';
+import {
+  normalizeDateKey,
+  isPresensiMatchSiswa,
+  isRecordNewer,
+  isSyntheticDemoPresensi
+} from './attendanceUtils';
+
+export { isSyntheticDemoPresensi };
 
 export const SEMESTER_1_START_DATE = '2026-07-20';
 export const APP_INCEPTION_DATE = '2026-08-18';
@@ -302,23 +309,7 @@ export function auditAndSynchronizePresensi(
         scanError: rec.scanError
       });
     } else {
-      // Prioritaskan hasil scan presensi langsung / tap manual guru yang lebih baru
-      const isRecExplicit = Boolean(
-        rec.metode ||
-        rec.pesanTerkirim?.includes('via QR Code') ||
-        rec.pesanTerkirim?.includes('WA Gateway')
-      );
-      const isBestExplicit = Boolean(
-        currentBest.metode ||
-        currentBest.pesanTerkirim?.includes('via QR Code') ||
-        currentBest.pesanTerkirim?.includes('WA Gateway')
-      );
-      const timeA = rec.waktu || '00:00:00';
-      const timeB = currentBest.waktu || '00:00:00';
-      const shouldReplace =
-        (isRecExplicit && !isBestExplicit) ||
-        (isRecExplicit === isBestExplicit && timeA >= timeB);
-      if (shouldReplace) {
+      if (isRecordNewer(rec, currentBest)) {
         existingMap.set(lookupKey, {
           ...rec,
           siswaId: matchedStudent.id,

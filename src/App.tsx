@@ -10,7 +10,7 @@ import {
 import { HISTORICAL_ARCHIVE_END_DATE } from './lib/semesterPresensiGenerator';
 import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User, WaliKelas } from './types';
-import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normalizeDateKey } from './lib/attendanceUtils';
+import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normalizeDateKey, isSyntheticDemoPresensi, isRecordNewer, mergePresensiLists } from './lib/attendanceUtils';
 import Header from './components/Header';
 import {
   fetchCloudMasterData,
@@ -27,9 +27,7 @@ import {
 } from './lib/cloudSync';
 import { sendDualWhatsAppNotification, sendAutomaticWhatsAppNotification } from './lib/whatsappGateway';
 import { 
-  db,
   ensureAuthenticated, 
-  validateFirestoreConnection,
   saveSiswaToFirestore, 
   deleteSiswaFromFirestore, 
   savePresensiToFirestore, 
@@ -40,15 +38,14 @@ import {
   saveSettingsToFirestore, 
   saveActivityLogToFirestore, 
   clearActivityLogsInFirestore,
-  seedInitialDataIfDocsEmpty,
   syncAllStudentsToFirestore,
   syncMasterStudentsToCloud,
   syncMasterPresensiToCloud,
   syncMasterAccountsToCloud,
-  subscribeToCloudSync,
+  fetchCloudSyncPresensiOnce,
+  DeletedTombstone,
   getIsQuotaExhausted
 } from './lib/firebase';
-import { onSnapshot, collection, doc } from 'firebase/firestore';
 import {
   googleSignIn,
   logoutGoogle,
@@ -97,35 +94,116 @@ export default function App() {
     return SISWA_INITIAL;
   });
 
-  const SYNTHETIC_LIVE_RECORD_RE = /^pr-\d{4}-\d{2}-\d{2}-sis-/;
-  const isLegacySyntheticLiveRecord = (p: Presensi): boolean => {
-    if (!p || !p.tanggal) return false;
-    const d = normalizeDateKey(p.tanggal);
-    return d > HISTORICAL_ARCHIVE_END_DATE && Boolean(p.id && SYNTHETIC_LIVE_RECORD_RE.test(p.id));
+  const PRESENSI_STORAGE_KEY = 'karapres3_presensi_v5';
+  const DELETED_TOMBSTONES_STORAGE_KEY = 'karapres3_deleted_presensi_v1';
+
+  const loadDeletedTombstones = (): Record<string, number> => {
+    const raw = safeGetItem(DELETED_TOMBSTONES_STORAGE_KEY);
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const clean: Record<string, number> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (typeof v === 'number' && v >= cutoff) {
+            clean[k] = v;
+          }
+        }
+        return clean;
+      }
+    } catch {}
+    return {};
+  };
+
+  const persistDeletedTombstones = (map: Record<string, number>) => {
+    const entries = Object.entries(map).slice(-500);
+    const trimmed: Record<string, number> = {};
+    for (const [k, v] of entries) {
+      trimmed[k] = v;
+    }
+    safeSetItem(DELETED_TOMBSTONES_STORAGE_KEY, JSON.stringify(trimmed));
+  };
+
+  const toTombstoneArray = (map: Record<string, number>): DeletedTombstone[] => {
+    return Object.entries(map)
+      .slice(-250)
+      .map(([key, ts]) => ({ key, ts }));
+  };
+
+  const persistPresensiToStorage = (records: Presensi[]) => {
+    const sorted = records
+      .filter((p) => p && p.tanggal && !isSyntheticDemoPresensi(p))
+      .slice()
+      .sort((a, b) => normalizeDateKey(a.tanggal).localeCompare(normalizeDateKey(b.tanggal)));
+
+    const liveRecords = sorted.filter((p) => normalizeDateKey(p.tanggal) > HISTORICAL_ARCHIVE_END_DATE);
+    const archiveRecords = sorted.filter((p) => normalizeDateKey(p.tanggal) <= HISTORICAL_ARCHIVE_END_DATE);
+
+    // Simpan hingga 2200 rekaman terbaru (seluruh bulan berjalan + arsip lengkap); pangkas hanya arsip terlama bila kuota penuh
+    const maxTotal = 2200;
+    const candidate = sorted.length > maxTotal
+      ? [...archiveRecords.slice(-(maxTotal - liveRecords.length)), ...liveRecords]
+      : sorted;
+
+    if (safeSetItem(PRESENSI_STORAGE_KEY, JSON.stringify(candidate))) return;
+
+    const fallbackCounts = [1200, 700, 300];
+    for (const cap of fallbackCounts) {
+      const archiveCap = Math.max(0, cap - liveRecords.length);
+      const smaller = [...archiveRecords.slice(-archiveCap), ...liveRecords];
+      if (safeSetItem(PRESENSI_STORAGE_KEY, JSON.stringify(smaller))) return;
+    }
+  };
+
+  const arePresensiListsEqual = (a: Presensi[], b: Presensi[]): boolean => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i];
+      const y = b[i];
+      if (
+        x.id !== y.id ||
+        x.siswaId !== y.siswaId ||
+        x.tanggal !== y.tanggal ||
+        x.waktu !== y.waktu ||
+        x.status !== y.status ||
+        x.metode !== y.metode ||
+        x.keterangan !== y.keterangan ||
+        x.updatedAt !== y.updatedAt
+      ) {
+        return false;
+      }
+    }
+    return true;
   };
 
   const [presensiList, setPresensiList] = useState<Presensi[]>(() => {
-    const cached = safeGetItem('karapres3_presensi_v5');
+    const tombstones = loadDeletedTombstones();
+    const cached = safeGetItem(PRESENSI_STORAGE_KEY);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length >= 1000) {
-          const cleaned = parsed.filter((p: Presensi) => !isLegacySyntheticLiveRecord(p));
-          if (cleaned.length !== parsed.length) {
-            safeSetItem('karapres3_presensi_v5', JSON.stringify(cleaned));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = parsed.filter((p: Presensi) => !isSyntheticDemoPresensi(p));
+          const hasLive = cleaned.some((p: Presensi) => normalizeDateKey(p.tanggal) > HISTORICAL_ARCHIVE_END_DATE);
+          if (cleaned.length >= 400 || hasLive) {
+            return mergePresensiLists([], cleaned, undefined, tombstones);
           }
-          return cleaned;
         }
       } catch {}
     }
-    safeSetItem('karapres3_presensi_v5', JSON.stringify(PRESENSI_INITIAL));
-    return PRESENSI_INITIAL;
+    const initialMerged = mergePresensiLists([], PRESENSI_INITIAL, undefined, tombstones);
+    persistPresensiToStorage(initialMerged);
+    return initialMerged;
   });
 
-  // Lacak kunci presensi yang dicatat/dihapus aktif pada sesi browser ini
-  // agar cache localStorage lama tidak menimpa data real dari server.
-  const sessionRecordedKeysRef = useRef<Set<string>>(new Set());
-  const sessionDeletedKeysRef = useRef<Set<string>>(new Set());
+  const latestPresensiRef = useRef<Presensi[]>(presensiList);
+  latestPresensiRef.current = presensiList;
+
+  const latestSiswaRef = useRef<Siswa[]>(siswaList);
+  latestSiswaRef.current = siswaList;
+
+  const deletedTombstonesRef = useRef<Record<string, number>>(loadDeletedTombstones());
 
   const [settings, setSettings] = useState<SystemSettings>(() => {
     const cached = safeGetItem('karapres3_settings');
@@ -230,7 +308,7 @@ export default function App() {
 
   // Listen to Google/Firebase auth initialization
   useEffect(() => {
-    validateFirestoreConnection().catch(() => {});
+    ensureAuthenticated().catch(() => {});
     const unsub = initAuth(
       (user, token) => {
         setGoogleToken(token);
@@ -248,65 +326,106 @@ export default function App() {
     };
   }, []);
 
+  const mergeIncomingDeletedKeys = (
+    incomingDeletedKeys?: Record<string, number> | DeletedTombstone[]
+  ) => {
+    if (!incomingDeletedKeys) return;
+    let changed = false;
+    if (Array.isArray(incomingDeletedKeys)) {
+      for (const item of incomingDeletedKeys) {
+        if (item && typeof item.key === 'string' && typeof item.ts === 'number') {
+          if ((deletedTombstonesRef.current[item.key] || 0) < item.ts) {
+            deletedTombstonesRef.current[item.key] = item.ts;
+            changed = true;
+          }
+        }
+      }
+    } else if (typeof incomingDeletedKeys === 'object') {
+      for (const [k, v] of Object.entries(incomingDeletedKeys)) {
+        if (typeof v === 'number' && (deletedTombstonesRef.current[k] || 0) < v) {
+          deletedTombstonesRef.current[k] = v;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      persistDeletedTombstones(deletedTombstonesRef.current);
+    }
+  };
+
   // Multi-Device Cloud Synchronizer (Instant sync across Android, PC, Laptop, Tablet)
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Cloud Master Load on Mount (When opened on Android or another PC)
-    fetchCloudMasterData().then((data) => {
-      if (!isMounted || !data) return;
-      if (data.students && Array.isArray(data.students) && data.students.length > 0) {
+    // 1. Initial Cloud Master Load on Mount (Server + Firestore sync/presensi 1-read hydration)
+    Promise.all([
+      fetchCloudMasterData(),
+      fetchCloudSyncPresensiOnce().catch(() => null)
+    ]).then(([data, cloudSyncSnap]) => {
+      if (!isMounted) return;
+
+      let activeStudents = latestSiswaRef.current;
+      if (data?.students && Array.isArray(data.students) && data.students.length > 0) {
+        activeStudents = data.students;
+        latestSiswaRef.current = data.students;
         setSiswaList(data.students);
         safeSetItem('karapres3_siswa_v5', JSON.stringify(data.students));
       }
-      if (data.waliKelas && Array.isArray(data.waliKelas) && data.waliKelas.length > 0) {
+
+      if (data?.waliKelas && Array.isArray(data.waliKelas) && data.waliKelas.length > 0) {
         setWaliKelasList(data.waliKelas);
         safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(data.waliKelas));
       }
-      if (data.presensi && Array.isArray(data.presensi) && data.presensi.length >= 1000) {
-        setPresensiList((currentList) => {
-          const map = new Map<string, Presensi>();
-          for (let i = 0; i < data.presensi!.length; i++) {
-            const p = data.presensi![i];
-            if (isLegacySyntheticLiveRecord(p)) continue;
-            const sid = p.siswaId || p.nis || p.nama;
-            const d = normalizeDateKey(p.tanggal);
-            const key = `${sid}__${d}`;
-            if (!sessionDeletedKeysRef.current.has(key)) {
-              map.set(key, p);
-            }
-          }
-          // Hanya pertahankan rekaman lokal yang benar-benar di-scan/di-tap pada sesi aktif ini
-          for (let i = 0; i < currentList.length; i++) {
-            const p = currentList[i];
-            if (isLegacySyntheticLiveRecord(p)) continue;
-            const sid = p.siswaId || p.nis || p.nama;
-            const d = normalizeDateKey(p.tanggal);
-            const key = `${sid}__${d}`;
-            if (sessionRecordedKeysRef.current.has(key)) {
-              map.set(key, p);
-            }
-          }
-          const merged = Array.from(map.values());
-          safeSetItem('karapres3_presensi_v5', JSON.stringify(merged));
-          syncMasterPresensiToCloud(merged, 'Server Sync Clean').catch(() => {});
-          return merged;
-        });
+
+      mergeIncomingDeletedKeys(data?.deletedKeys);
+      mergeIncomingDeletedKeys(cloudSyncSnap?.deletedKeys);
+
+      const serverPresensi = Array.isArray(data?.presensi) ? data!.presensi : [];
+      const firestorePresensi = Array.isArray(cloudSyncSnap?.data) ? cloudSyncSnap!.data : [];
+
+      if (serverPresensi.length >= 1000) {
+        const merged = mergePresensiLists(
+          latestPresensiRef.current,
+          [...serverPresensi, ...firestorePresensi],
+          activeStudents,
+          deletedTombstonesRef.current
+        );
+        latestPresensiRef.current = merged;
+        setPresensiList(merged);
+        persistPresensiToStorage(merged);
+
+        const serverHasMissingFirestore = firestorePresensi.length > 0 && !arePresensiListsEqual(merged, serverPresensi);
+        if (serverHasMissingFirestore) {
+          syncPresensiToCloud(merged, 'Cloud Merge Sync', toTombstoneArray(deletedTombstonesRef.current)).catch(() => {});
+        }
       } else {
-        const activeStudents = (data.students && data.students.length > 0) ? data.students : siswaList;
-        auditAndSyncSemesterPresensi(data.presensi || presensiList, activeStudents).then((auditRes) => {
+        const seedInput = mergePresensiLists(
+          latestPresensiRef.current,
+          [...serverPresensi, ...firestorePresensi],
+          activeStudents,
+          deletedTombstonesRef.current
+        );
+        auditAndSyncSemesterPresensi(seedInput, activeStudents).then((auditRes) => {
           if (!isMounted) return;
           if (auditRes?.synchronizedRecords?.length) {
-            setPresensiList(auditRes.synchronizedRecords);
-            safeSetItem('karapres3_presensi_v5', JSON.stringify(auditRes.synchronizedRecords));
+            const merged = mergePresensiLists(
+              auditRes.synchronizedRecords,
+              seedInput,
+              activeStudents,
+              deletedTombstonesRef.current
+            );
+            latestPresensiRef.current = merged;
+            setPresensiList(merged);
+            persistPresensiToStorage(merged);
           }
         }).catch(() => {});
       }
-      if (data.settings) {
+
+      if (data?.settings) {
         setSettings((prev) => ({ ...prev, ...data.settings }));
         safeSetItem('karapres3_settings', JSON.stringify(data.settings));
       }
-      if (data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
+      if (data?.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
         setAccountsList(data.accounts);
         safeSetItem('karapres3_accounts_v4', JSON.stringify(data.accounts));
       }
@@ -317,6 +436,7 @@ export default function App() {
       onStudentsChange: (incomingStudents) => {
         if (!isMounted) return;
         if (incomingStudents && Array.isArray(incomingStudents) && incomingStudents.length > 0) {
+          latestSiswaRef.current = incomingStudents;
           setSiswaList(incomingStudents);
           safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
         }
@@ -328,54 +448,25 @@ export default function App() {
           safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
         }
       },
-      onPresensiChange: (incomingPresensi, updatedAt) => {
+      onPresensiChange: (incomingPresensi, _updatedAt, incomingDeletedKeys) => {
         if (!isMounted) return;
-        // Abaikan snapshot Firestore lama sebelum pembersihan otomatis agar data kosong tetap bersih
-        if (typeof updatedAt === 'number' && updatedAt < Date.parse('2026-11-06T00:00:00Z')) {
-          return;
-        }
-        if (incomingPresensi && Array.isArray(incomingPresensi) && incomingPresensi.length > 0) {
-          const validIncoming = incomingPresensi.filter((p) => !isLegacySyntheticLiveRecord(p));
-          if (validIncoming.length === 0) return;
+        mergeIncomingDeletedKeys(incomingDeletedKeys);
+        const validIncoming = Array.isArray(incomingPresensi)
+          ? incomingPresensi.filter((p) => !isSyntheticDemoPresensi(p))
+          : [];
+        if (validIncoming.length === 0 && !incomingDeletedKeys) return;
 
-          setPresensiList((prev) => {
-            const map = new Map<string, Presensi>();
-            for (let i = 0; i < validIncoming.length; i++) {
-              const p = validIncoming[i];
-              const sid = p.siswaId || p.nis || p.nama;
-              const d = normalizeDateKey(p.tanggal);
-              const key = `${sid}__${d}`;
-              if (!sessionDeletedKeysRef.current.has(key)) {
-                map.set(key, p);
-              }
-            }
-            // If incoming was a partial slice (< 1000), preserve earlier archive entries from prev
-            if (validIncoming.length < 1000) {
-              for (let i = 0; i < prev.length; i++) {
-                const p = prev[i];
-                const sid = p.siswaId || p.nis || p.nama;
-                const d = normalizeDateKey(p.tanggal);
-                const key = `${sid}__${d}`;
-                if (!sessionDeletedKeysRef.current.has(key) && !map.has(key)) {
-                  map.set(key, p);
-                }
-              }
-            }
-            // Always preserve uncommitted/newer scans recorded in this active session
-            for (let i = 0; i < prev.length; i++) {
-              const p = prev[i];
-              const sid = p.siswaId || p.nis || p.nama;
-              const d = normalizeDateKey(p.tanggal);
-              const key = `${sid}__${d}`;
-              if (sessionRecordedKeysRef.current.has(key)) {
-                const inc = map.get(key);
-                if (!inc || (p.waktu && inc.waktu && p.waktu > inc.waktu)) {
-                  map.set(key, p);
-                }
-              }
-            }
-            return Array.from(map.values());
-          });
+        const merged = mergePresensiLists(
+          latestPresensiRef.current,
+          validIncoming,
+          latestSiswaRef.current,
+          deletedTombstonesRef.current
+        );
+
+        if (!arePresensiListsEqual(merged, latestPresensiRef.current)) {
+          latestPresensiRef.current = merged;
+          setPresensiList(merged);
+          persistPresensiToStorage(merged);
         }
       },
       onSettingsChange: (incomingSettings) => {
@@ -400,15 +491,6 @@ export default function App() {
       }
     });
 
-    // 3. Secondary Firestore seed if empty
-    ensureAuthenticated()
-      .then(() => {
-        if (!getIsQuotaExhausted()) {
-          seedInitialDataIfDocsEmpty(SISWA_INITIAL, USER_DEMO_ACCOUNTS, SETTINGS_INITIAL, LOGS_INITIAL, PRESENSI_INITIAL);
-        }
-      })
-      .catch(() => {});
-
     return () => {
       isMounted = false;
       unsubMultiDevice();
@@ -419,16 +501,6 @@ export default function App() {
   useEffect(() => {
     safeSetItem('karapres3_siswa_v5', JSON.stringify(siswaList));
   }, [siswaList]);
-
-  useEffect(() => {
-    // Only cache recent 300 records in localStorage for lightning fast startup.
-    // The complete semester archive is safely persisted on the server & cloud.
-    if (presensiList.length > 300) {
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(presensiList.slice(-300)));
-    } else {
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(presensiList));
-    }
-  }, [presensiList]);
 
   useEffect(() => {
     safeSetItem('karapres3_settings', JSON.stringify(settings));
@@ -695,10 +767,18 @@ export default function App() {
             safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
           }
         },
-        onPresensiChange: (incomingPresensi) => {
+        onPresensiChange: (incomingPresensi, _updatedAt, incomingDeletedKeys) => {
+          mergeIncomingDeletedKeys(incomingDeletedKeys);
           if (incomingPresensi) {
-            setPresensiList(incomingPresensi);
-            safeSetItem('karapres3_presensi_v5', JSON.stringify(incomingPresensi));
+            const merged = mergePresensiLists(
+              latestPresensiRef.current,
+              incomingPresensi,
+              latestSiswaRef.current,
+              deletedTombstonesRef.current
+            );
+            latestPresensiRef.current = merged;
+            setPresensiList(merged);
+            persistPresensiToStorage(merged);
           }
         },
         onSettingsChange: (incomingSettings) => {
@@ -733,10 +813,17 @@ export default function App() {
     try {
       const res = await auditAndSyncSemesterPresensi(presensiList, siswaList, currentUser?.namaLengkap || 'Operator Laporan');
       if (res && res.synchronizedRecords && res.synchronizedRecords.length > 0) {
-        setPresensiList(res.synchronizedRecords);
-        safeSetItem('karapres3_presensi_v5', JSON.stringify(res.synchronizedRecords));
-        triggerNotice(`Presensi berhasil disinkronkan! ${res.totalRecords} rekaman di ${res.totalDays} hari sekolah Semester 1 telah sinkron 100%.`, 'success');
-        addActivityLog('Sinkronisasi Presensi', `Menyinkronkan dan memperbaiki ${res.totalRecords} rekaman presensi semester (${res.totalDays} hari efektif).`);
+        const merged = mergePresensiLists(
+          res.synchronizedRecords,
+          latestPresensiRef.current,
+          siswaList,
+          deletedTombstonesRef.current
+        );
+        latestPresensiRef.current = merged;
+        setPresensiList(merged);
+        persistPresensiToStorage(merged);
+        triggerNotice(`Presensi berhasil disinkronkan! ${merged.length} rekaman di ${res.totalDays} hari sekolah Semester 1 telah sinkron 100%.`, 'success');
+        addActivityLog('Sinkronisasi Presensi', `Menyinkronkan dan memperbaiki ${merged.length} rekaman presensi semester (${res.totalDays} hari efektif).`);
       }
     } catch (err: any) {
       console.error('Error during audit and sync:', err);
@@ -872,82 +959,110 @@ export default function App() {
     triggerNotice('Pengaturan sistem berhasil disimpan & disinkronkan ke seluruh perangkat.', 'success');
   }, [addActivityLog]);
 
-  // Record a scanned or manually marked attendance
+  // Record a scanned or manually marked attendance (100% atomic, side-effect-free state update)
   const handleAddPresensi = useCallback((newPresensi: Presensi) => {
     const targetNormDate = normalizeDateKey(newPresensi.tanggal);
-    const sid = newPresensi.siswaId || newPresensi.nis || newPresensi.nama;
-    const recordKey = `${sid}__${targetNormDate}`;
-    sessionRecordedKeysRef.current.add(recordKey);
-    sessionDeletedKeysRef.current.delete(recordKey);
-
-    savePresensiToFirestore(newPresensi);
-    recordSinglePresensiToCloud(newPresensi, currentUser?.namaLengkap || 'Scanner Piket');
-
-    setPresensiList((prev) => {
-      const filtered = prev.filter((p) => {
-        if (p.id === newPresensi.id) return false;
-        if (normalizeDateKey(p.tanggal) !== targetNormDate) return true;
-        if (p.siswaId && newPresensi.siswaId && p.siswaId === newPresensi.siswaId) return false;
-        const hasDistinctIds = Boolean(p.siswaId && newPresensi.siswaId && p.siswaId !== newPresensi.siswaId);
-        if (!hasDistinctIds && p.nis && newPresensi.nis && p.nis.trim().length >= 4 && p.nis.trim() === newPresensi.nis.trim()) {
-          return false;
-        }
-        return true;
-      });
-      // Append at end so recentPresensiSlice (.slice(-300)) always includes every live scan/update
-      const updated = [...filtered, newPresensi];
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated.slice(-300)));
-      syncMasterPresensiToCloud(updated, currentUser?.namaLengkap || 'Scanner Piket').catch(() => {});
-      return updated;
-    });
-
-    // Automatically dispatch WhatsApp notification directly & exclusively to Parents
-    const matchedSiswa = siswaList.find(s => 
+    const activeStudents = latestSiswaRef.current;
+    const matchedSiswa = activeStudents.find(s => 
       s.id === newPresensi.siswaId || 
       (s.nis && newPresensi.nis && s.nis.trim().length >= 4 && s.nis.trim() === newPresensi.nis.trim()) ||
       (s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() && s.kelas === newPresensi.kelas)
     );
-    sendAutomaticWhatsAppNotification(newPresensi, matchedSiswa, settings).catch((err) => {
+
+    const canonicalSiswaId = matchedSiswa?.id || newPresensi.siswaId;
+    const canonicalId = newPresensi.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(newPresensi.id)
+      ? newPresensi.id
+      : `pr-${canonicalSiswaId}-${targetNormDate}`;
+
+    const enrichedPresensi: Presensi = {
+      ...newPresensi,
+      id: canonicalId,
+      siswaId: canonicalSiswaId,
+      nis: matchedSiswa?.nis || newPresensi.nis,
+      nik: matchedSiswa?.nik || newPresensi.nik,
+      nama: matchedSiswa?.nama || newPresensi.nama,
+      kelas: matchedSiswa?.kelas || newPresensi.kelas,
+      tanggal: targetNormDate,
+      updatedAt: typeof newPresensi.updatedAt === 'number' ? newPresensi.updatedAt : Date.now(),
+    };
+
+    // Hapus tombstone lama jika siswa kembali discan/ditap pada tanggal ini
+    delete deletedTombstonesRef.current[`${canonicalSiswaId}__${targetNormDate}`];
+    if (newPresensi.siswaId) {
+      delete deletedTombstonesRef.current[`${newPresensi.siswaId}__${targetNormDate}`];
+    }
+    if (enrichedPresensi.nis && enrichedPresensi.nis.trim().length >= 4) {
+      delete deletedTombstonesRef.current[`${enrichedPresensi.nis.trim()}__${targetNormDate}`];
+    }
+    persistDeletedTombstones(deletedTombstonesRef.current);
+
+    const updatedList = mergePresensiLists(
+      latestPresensiRef.current,
+      [enrichedPresensi],
+      activeStudents,
+      deletedTombstonesRef.current
+    );
+    latestPresensiRef.current = updatedList;
+    persistPresensiToStorage(updatedList);
+    setPresensiList(updatedList);
+
+    const operatorName = currentUser?.namaLengkap || 'Scanner Piket';
+    const tombstones = toTombstoneArray(deletedTombstonesRef.current);
+    savePresensiToFirestore(enrichedPresensi).catch(() => {});
+    recordSinglePresensiToCloud(enrichedPresensi, operatorName).catch(() => {});
+    syncMasterPresensiToCloud(updatedList, operatorName, tombstones).catch(() => {});
+
+    // Automatically dispatch WhatsApp notification directly & exclusively to Parents
+    sendAutomaticWhatsAppNotification(enrichedPresensi, matchedSiswa, settings).catch((err) => {
       console.warn('[WA Gateway Warning]:', err);
     });
 
-    const metodeInfo = newPresensi.metode === 'QR_SCAN' ? 'Scan Barcode QR' : (newPresensi.metode === 'MANUAL_TAP' ? 'Tap Wali Kelas' : 'Input Manual');
-    addActivityLog('Presensi Berhasil', `Mencatat status [${newPresensi.status}] (${metodeInfo}) untuk ${newPresensi.nama} (${newPresensi.kelas}) ➔ Notifikasi otomatis terkirim ke WA Orang Tua`);
-  }, [currentUser, siswaList, settings, addActivityLog]);
+    const metodeInfo = enrichedPresensi.metode === 'QR_SCAN' ? 'Scan Barcode QR' : (enrichedPresensi.metode === 'MANUAL_TAP' ? 'Tap Wali Kelas' : 'Input Manual');
+    addActivityLog('Presensi Berhasil', `Mencatat status [${enrichedPresensi.status}] (${metodeInfo}) untuk ${enrichedPresensi.nama} (${enrichedPresensi.kelas}) ➔ Notifikasi otomatis terkirim ke WA Orang Tua`);
+  }, [currentUser, settings, addActivityLog]);
 
   // Reset / batalkan satu presensi siswa pada tanggal tertentu (oleh Wali Kelas)
   const handleDeletePresensi = useCallback((siswa: Siswa, targetDate: string, recordId?: string) => {
     const normDate = normalizeDateKey(targetDate);
+    const nowTs = Date.now();
     const sid = siswa.id || siswa.nis || siswa.nama;
-    const recordKey = `${sid}__${normDate}`;
-    sessionDeletedKeysRef.current.add(recordKey);
-    sessionRecordedKeysRef.current.delete(recordKey);
-
-    if (recordId) {
-      deletePresensiFromFirestore(recordId);
+    deletedTombstonesRef.current[`${sid}__${normDate}`] = nowTs;
+    if (siswa.nis && siswa.nis.trim().length >= 4) {
+      deletedTombstonesRef.current[`${siswa.nis.trim()}__${normDate}`] = nowTs;
     }
+    persistDeletedTombstones(deletedTombstonesRef.current);
+
+    const filtered = latestPresensiRef.current.filter((p) => {
+      if (recordId && p.id === recordId) return false;
+      const pDate = normalizeDateKey(p.tanggal);
+      if (pDate !== normDate) return true;
+      if (p.siswaId && siswa.id && p.siswaId === siswa.id) return false;
+      const hasDistinctIds = Boolean(p.siswaId && siswa.id && p.siswaId !== siswa.id);
+      if (!hasDistinctIds && p.nis && siswa.nis && p.nis.trim().length >= 4 && p.nis.trim() === siswa.nis.trim()) {
+        return false;
+      }
+      if (!hasDistinctIds && p.nama === siswa.nama && p.kelas === siswa.kelas) return false;
+      return true;
+    });
+
+    const updatedList = mergePresensiLists(
+      [],
+      filtered,
+      latestSiswaRef.current,
+      deletedTombstonesRef.current
+    );
+    latestPresensiRef.current = updatedList;
+    persistPresensiToStorage(updatedList);
+    setPresensiList(updatedList);
+
+    const operatorName = currentUser?.namaLengkap || 'Wali Kelas';
+    const tombstones = toTombstoneArray(deletedTombstonesRef.current);
+    deletePresensiFromFirestore(recordId, siswa.id, normDate).catch(() => {});
     deleteSinglePresensiFromCloud(
       { recordId, siswaId: siswa.id, tanggal: normDate },
-      currentUser?.namaLengkap || 'Wali Kelas'
-    );
-
-    setPresensiList((prev) => {
-      const updated = prev.filter((p) => {
-        if (recordId && p.id === recordId) return false;
-        const pDate = normalizeDateKey(p.tanggal);
-        if (pDate !== normDate) return true;
-        if (p.siswaId && siswa.id && p.siswaId === siswa.id) return false;
-        const hasDistinctIds = Boolean(p.siswaId && siswa.id && p.siswaId !== siswa.id);
-        if (!hasDistinctIds && p.nis && siswa.nis && p.nis.trim().length >= 4 && p.nis.trim() === siswa.nis.trim()) {
-          return false;
-        }
-        if (!hasDistinctIds && p.nama === siswa.nama && p.kelas === siswa.kelas) return false;
-        return true;
-      });
-      safeSetItem('karapres3_presensi_v5', JSON.stringify(updated.slice(-300)));
-      syncMasterPresensiToCloud(updated, currentUser?.namaLengkap || 'Wali Kelas').catch(() => {});
-      return updated;
-    });
+      operatorName
+    ).catch(() => {});
+    syncMasterPresensiToCloud(updatedList, operatorName, tombstones).catch(() => {});
 
     addActivityLog('Reset Presensi Siswa', `Mengembalikan status presensi ${siswa.nama} (${siswa.kelas}) tanggal ${normDate} menjadi Belum Absen.`);
     triggerNotice(`Status presensi ${siswa.nama} dikembalikan menjadi Belum Absen.`, 'info');
@@ -1146,7 +1261,7 @@ export default function App() {
                   )}
 
                   {currentUser.role === 'kepsek' && (
-                    <KepsekPanel siswaList={siswaList} presensiList={presensiList} />
+                    <KepsekPanel siswaList={siswaList} presensiList={presensiList} settings={settings} />
                   )}
 
                   {currentUser.role === 'guru' && (

@@ -12,11 +12,13 @@ import {
   Award,
   School
 } from 'lucide-react';
-import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, SystemSettings, DAFTAR_KELAS } from '../types';
 import AttendanceBarChart from './AttendanceBarChart';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import {
   getLocalDateString,
+  safeAddDays,
+  normalizeDateKey,
   calculateClassAttendanceStats,
   calculateSchoolAttendanceStats,
   calculateAllRombelSummaryList,
@@ -27,11 +29,12 @@ import {
 interface KepsekPanelProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
+  settings?: SystemSettings;
 }
 
 type LaporanFilterType = 'hari' | 'minggu' | 'bulan';
 
-function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
+function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
   const [filterType, setFilterType] = useState<LaporanFilterType>('hari');
   const [selectedKelas, setSelectedKelas] = useState<string>('Semua Kelas');
   const [exportError, setExportError] = useState('');
@@ -48,20 +51,33 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
       base = base.filter((p) => isSameClass(p.kelas, selectedKelas));
     }
 
-    // Filter by time horizon
+    // Filter by time horizon (timezone-safe string comparison)
     if (filterType === 'hari') {
       base = base.filter((p) => isPresensiDateMatch(p.tanggal, todayStr));
     } else if (filterType === 'minggu') {
-      // Last 7 days
-      const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - 7);
-      base = base.filter((p) => new Date(p.tanggal) >= limitDate);
+      const startStr = safeAddDays(todayStr, -6);
+      base = base.filter((p) => {
+        const d = normalizeDateKey(p.tanggal);
+        return d >= startStr && d <= todayStr;
+      });
     } else if (filterType === 'bulan') {
-      // Last 30 days
-      const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - 30);
-      base = base.filter((p) => new Date(p.tanggal) >= limitDate);
+      const startStr = safeAddDays(todayStr, -29);
+      base = base.filter((p) => {
+        const d = normalizeDateKey(p.tanggal);
+        return d >= startStr && d <= todayStr;
+      });
     }
+
+    // Sort newest date and latest time/updatedAt first so today's live scans appear at top
+    base.sort((a, b) => {
+      const dA = normalizeDateKey(a.tanggal);
+      const dB = normalizeDateKey(b.tanggal);
+      if (dA !== dB) return dB.localeCompare(dA);
+      const tA = (a.waktu || '').slice(0, 8);
+      const tB = (b.waktu || '').slice(0, 8);
+      if (tA !== tB) return tB.localeCompare(tA);
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
 
     return base;
   }, [presensiList, selectedKelas, filterType, todayStr]);
@@ -78,22 +94,29 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
 
   const totalSiswaSesuaiFilter = schoolTodayStats.totalSiswa;
 
-  // When filtering today, use exact unique pupil counts. When filtering range (minggu/bulan), use log totals
+  // When filtering today, use exact unique pupil counts. When filtering range (minggu/bulan), use active days * students
+  const activeRangeDays = useMemo(() => {
+    if (filterType === 'hari') return 1;
+    const distinctDates = new Set(filteredLogs.map((p) => normalizeDateKey(p.tanggal)).filter(Boolean));
+    return Math.max(1, distinctDates.size);
+  }, [filterType, filteredLogs]);
+
   const jmlHadir = filterType === 'hari' ? schoolTodayStats.hadir : filteredLogs.filter(p => p.status === 'Hadir').length;
   const jmlTerlambat = filterType === 'hari' ? schoolTodayStats.terlambat : filteredLogs.filter(p => p.status === 'Terlambat').length;
   const jmlSakit = filterType === 'hari' ? schoolTodayStats.sakit : filteredLogs.filter(p => p.status === 'Sakit').length;
   const jmlIzin = filterType === 'hari' ? schoolTodayStats.izin : filteredLogs.filter(p => p.status === 'Izin').length;
   const jmlAlfa = filterType === 'hari' ? schoolTodayStats.alfa : filteredLogs.filter(p => p.status === 'Alfa').length;
-  const tIdakHadir = filterType === 'hari' ? schoolTodayStats.belumAbsen : Math.max(0, totalSiswaSesuaiFilter - (jmlHadir + jmlTerlambat + jmlSakit + jmlIzin));
+  const totalSlotsInRange = totalSiswaSesuaiFilter * activeRangeDays;
+  const tIdakHadir = filterType === 'hari' ? schoolTodayStats.belumAbsen : Math.max(0, totalSlotsInRange - (jmlHadir + jmlTerlambat + jmlSakit + jmlIzin + jmlAlfa));
 
   const persentaseHadir = filterType === 'hari'
     ? schoolTodayStats.persentaseKeaktifan
-    : (totalSiswaSesuaiFilter > 0 ? Math.min(100, Math.round(((jmlHadir + jmlTerlambat) / totalSiswaSesuaiFilter) * 100)) : 0);
+    : (totalSlotsInRange > 0 ? Math.min(100, Math.round(((jmlHadir + jmlTerlambat) / totalSlotsInRange) * 100)) : 0);
 
   // Rombel summary list for all 12 classes
   const allRombelSummary = useMemo(() => {
-    return calculateAllRombelSummaryList(siswaList, presensiList, todayStr);
-  }, [siswaList, presensiList, todayStr]);
+    return calculateAllRombelSummaryList(siswaList, presensiList, todayStr, settings);
+  }, [siswaList, presensiList, todayStr, settings]);
 
   const grandTotalSchool = useMemo(() => {
     let totalSiswa = 0;
@@ -118,7 +141,7 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
       totalHadir += r.totalHadir;
     });
 
-    const persentase = totalSiswa > 0 ? Math.round((totalHadir / totalSiswa) * 100) : 0;
+    const persentase = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
 
     return {
       totalSiswa,
@@ -325,6 +348,7 @@ function KepsekPanel({ siswaList, presensiList }: KepsekPanelProps) {
       <AttendanceBarChart
         siswaList={siswaList}
         presensiList={presensiList}
+        settings={settings}
         selectedDate={todayStr}
         selectedKelas={selectedKelas}
         onSelectKelas={(kelas) => setSelectedKelas(kelas)}

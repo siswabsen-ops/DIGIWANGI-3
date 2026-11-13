@@ -1,4 +1,4 @@
-import { Siswa, Presensi, StatusKehadiran, DAFTAR_KELAS, normalizeKelasCode } from '../types';
+import { Siswa, Presensi, StatusKehadiran, SystemSettings, DAFTAR_KELAS, normalizeKelasCode, getApplicableJadwal } from '../types';
 import { getWaliKelasByKelas } from './waliKelasData';
 
 /**
@@ -168,21 +168,232 @@ export interface AttendanceIndex {
   byNameOnly: Map<string, Presensi>;
 }
 
-const isRecordNewer = (candidate: Presensi, existing?: Presensi): boolean => {
+const ARCHIVE_CUTOFF_DATE = '2026-10-30';
+
+/**
+ * Mengidentifikasi apakah sebuah catatan presensi berasal dari generator sintetis historis
+ * (bukan hasil scan QR Code langsung atau tap manual guru/operator).
+ */
+export const isSyntheticDemoPresensi = (p?: Presensi | null): boolean => {
+  if (!p || !p.id || !p.tanggal) return false;
+  if (typeof p.updatedAt === 'number') return false;
+  const dateKey = normalizeDateKey(p.tanggal);
+  if (!p.id.startsWith(`pr-${dateKey}-`)) return false;
+
+  const op = (p.operator || '').trim();
+  const isGeneratorOperator =
+    op === 'Panji Teguh Amarta S, S.Pd.I (Piket)' ||
+    op === 'Cecep Maulana (Piket)' ||
+    op === 'Usman Fauzan Alan, S.Pd.Gr.';
+  if (!isGeneratorOperator) return false;
+
+  const msg = p.pesanTerkirim || '';
+  if (!msg) {
+    return dateKey <= ARCHIVE_CUTOFF_DATE;
+  }
+
+  return (
+    msg.includes('terkonfirmasi oleh Wali Murid') ||
+    msg.includes('Tercatat pada Jurnal Kelas') ||
+    msg.includes('Notifikasi live gateway otomatis terkirim ke No HP Orang Tua') ||
+    msg.includes('via QR Code Scanner ➔ Terkirim otomatis via WA Gateway') ||
+    msg.includes('via QR Code Scanner Gate Utama (WIB)') ||
+    msg.includes('Tercatat Terlambat masuk sekolah pukul') ||
+    msg.includes('Keterangan Sakit diterima dari Orang Tua via WA') ||
+    msg.includes('Izin keperluan keluarga terkonfirmasi oleh Wali Kelas') ||
+    msg === 'Tidak hadir tanpa keterangan (Alfa)'
+  );
+};
+
+const normalizeTimeKey = (waktu?: string): string => {
+  if (!waktu) return '00:00:00';
+  const clean = waktu.trim();
+  if (clean.length >= 8) return clean.slice(0, 8);
+  if (clean.length === 5) return `${clean}:00`;
+  return clean.padEnd(8, '0');
+};
+
+/**
+ * Pembanding deterministik dan bebas urutan array (strict total order pada catatan berbeda)
+ * untuk menentukan catatan presensi mana yang paling mutakhir & otoritatif.
+ */
+export const isRecordNewer = (candidate: Presensi, existing?: Presensi): boolean => {
   if (!existing) return true;
+  if (candidate === existing) return false;
+
+  // 1. Catatan riil pengguna selalu mengalahkan generator sintetis
+  const candSynthetic = isSyntheticDemoPresensi(candidate);
+  const existSynthetic = isSyntheticDemoPresensi(existing);
+  if (!candSynthetic && existSynthetic) return true;
+  if (candSynthetic && !existSynthetic) return false;
+
+  // 2. Bandingkan epoch updatedAt jika tersedia
+  const candTs = typeof candidate.updatedAt === 'number' && !isNaN(candidate.updatedAt) ? candidate.updatedAt : null;
+  const existTs = typeof existing.updatedAt === 'number' && !isNaN(existing.updatedAt) ? existing.updatedAt : null;
+  if (candTs !== null && existTs !== null && candTs !== existTs) {
+    return candTs > existTs;
+  }
+  if (candTs !== null && existTs === null && normalizeDateKey(candidate.tanggal) > ARCHIVE_CUTOFF_DATE) {
+    return true;
+  }
+  if (candTs === null && existTs !== null && normalizeDateKey(existing.tanggal) > ARCHIVE_CUTOFF_DATE) {
+    return false;
+  }
+
+  // 3. Bandingkan waktu scan/tap HH:mm:ss
+  const timeA = normalizeTimeKey(candidate.waktu);
+  const timeB = normalizeTimeKey(existing.waktu);
+  if (timeA !== timeB) {
+    return timeA > timeB;
+  }
+
+  // 4. Prioritaskan catatan dengan metode eksplisit (QR_SCAN / MANUAL_TAP)
   const isCandidateExplicit = Boolean(
     candidate.metode ||
+    candidate.metodeLabel ||
     (candidate.pesanTerkirim && (candidate.pesanTerkirim.includes('via QR Code') || candidate.pesanTerkirim.includes('WA Gateway')))
   );
   const isExistingExplicit = Boolean(
     existing.metode ||
+    existing.metodeLabel ||
     (existing.pesanTerkirim && (existing.pesanTerkirim.includes('via QR Code') || existing.pesanTerkirim.includes('WA Gateway')))
   );
-  if (isCandidateExplicit && !isExistingExplicit) return true;
-  if (!isCandidateExplicit && isExistingExplicit) return false;
-  const timeA = candidate.waktu || '00:00:00';
-  const timeB = existing.waktu || '00:00:00';
-  return timeA >= timeB;
+  if (isCandidateExplicit !== isExistingExplicit) {
+    return isCandidateExplicit;
+  }
+
+  // 5. Tie-breaker deterministik berbasis ID (strict '>', bukan '>=', agar 100% simetris)
+  const idA = candidate.id || '';
+  const idB = existing.id || '';
+  if (idA !== idB) return idA > idB;
+
+  return (candidate.status || '') > (existing.status || '');
+};
+
+/**
+ * Menggabungkan dua daftar presensi secara deterministik tanpa duplikasi atau pergeseran data.
+ */
+export const mergePresensiLists = (
+  baseList: Presensi[],
+  incomingList: Presensi[],
+  siswaList?: Siswa[],
+  deletedTombstones?: Map<string, number> | Record<string, number> | Set<string>
+): Presensi[] => {
+  const bySiswaId = new Map<string, Siswa>();
+  const byNis = new Map<string, Siswa>();
+  const byNisNoZero = new Map<string, Siswa>();
+  const byNik = new Map<string, Siswa>();
+  const byNameClass = new Map<string, Siswa>();
+
+  if (siswaList && siswaList.length > 0) {
+    for (let i = 0; i < siswaList.length; i++) {
+      const s = siswaList[i];
+      if (s.id) bySiswaId.set(s.id, s);
+      if (s.nis && s.nis.trim().length >= 4) {
+        const clean = s.nis.trim();
+        byNis.set(clean, s);
+        const nz = clean.replace(/^0+/, '');
+        if (nz.length >= 4) byNisNoZero.set(nz, s);
+      }
+      if (s.nik && s.nik.trim().length >= 8) {
+        byNik.set(s.nik.trim(), s);
+      }
+      if (s.nama && s.kelas) {
+        byNameClass.set(`${normalizeStudentName(s.nama)}__${normalizeKelasCode(s.kelas)}`, s);
+      }
+    }
+  }
+
+  const getDeletedTimestamp = (key: string): number | null => {
+    if (!deletedTombstones) return null;
+    if (deletedTombstones instanceof Set) {
+      return deletedTombstones.has(key) ? Infinity : null;
+    }
+    if (deletedTombstones instanceof Map) {
+      const v = deletedTombstones.get(key);
+      return typeof v === 'number' ? v : null;
+    }
+    const v = deletedTombstones[key];
+    return typeof v === 'number' ? v : null;
+  };
+
+  const bestByKey = new Map<string, Presensi>();
+
+  const processRecord = (raw?: Presensi) => {
+    if (!raw || !raw.tanggal) return;
+    const normDate = normalizeDateKey(raw.tanggal);
+    if (!normDate) return;
+
+    // Pastikan catatan sintetis tidak pernah mengisi hari berjalan (> 2026-10-30)
+    if (normDate > ARCHIVE_CUTOFF_DATE && isSyntheticDemoPresensi(raw)) {
+      return;
+    }
+
+    let matchedSiswa = raw.siswaId ? bySiswaId.get(raw.siswaId) : undefined;
+    if (!matchedSiswa && raw.nis && raw.nis.trim().length >= 4) {
+      const clean = raw.nis.trim();
+      matchedSiswa = byNis.get(clean) || byNisNoZero.get(clean.replace(/^0+/, ''));
+    }
+    if (!matchedSiswa && raw.nik && raw.nik.trim().length >= 8) {
+      matchedSiswa = byNik.get(raw.nik.trim());
+    }
+    if (!matchedSiswa && raw.nama && raw.kelas) {
+      matchedSiswa = byNameClass.get(`${normalizeStudentName(raw.nama)}__${normalizeKelasCode(raw.kelas)}`);
+    }
+
+    const canonicalSid = matchedSiswa
+      ? matchedSiswa.id
+      : (raw.siswaId || raw.nis || `${normalizeStudentName(raw.nama)}_${normalizeKelasCode(raw.kelas)}`);
+    if (!canonicalSid) return;
+
+    const comboKey = `${canonicalSid}__${normDate}`;
+    const rawSidKey = raw.siswaId && raw.siswaId !== canonicalSid ? `${raw.siswaId}__${normDate}` : '';
+    const delTs = getDeletedTimestamp(comboKey) ?? (rawSidKey ? getDeletedTimestamp(rawSidKey) : null);
+    if (delTs !== null) {
+      const recTs = typeof raw.updatedAt === 'number' ? raw.updatedAt : 0;
+      if (recTs <= delTs) {
+        return;
+      }
+    }
+
+    const normalized: Presensi = {
+      ...raw,
+      siswaId: canonicalSid,
+      nis: matchedSiswa?.nis || raw.nis || '',
+      nik: matchedSiswa?.nik || raw.nik,
+      nama: matchedSiswa?.nama || raw.nama,
+      kelas: matchedSiswa?.kelas || raw.kelas,
+      tanggal: normDate,
+    };
+
+    const existing = bestByKey.get(comboKey);
+    if (!existing || isRecordNewer(normalized, existing)) {
+      bestByKey.set(comboKey, normalized);
+    }
+  };
+
+  for (let i = 0; i < baseList.length; i++) {
+    processRecord(baseList[i]);
+  }
+  for (let i = 0; i < incomingList.length; i++) {
+    processRecord(incomingList[i]);
+  }
+
+  const merged = Array.from(bestByKey.values());
+  merged.sort((a, b) => {
+    if (a.tanggal !== b.tanggal) return a.tanggal < b.tanggal ? -1 : 1;
+    const clsA = a.kelas || '';
+    const clsB = b.kelas || '';
+    if (clsA !== clsB) return clsA < clsB ? -1 : 1;
+    const nameA = a.nama || '';
+    const nameB = b.nama || '';
+    if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+    const idA = a.id || '';
+    const idB = b.id || '';
+    return idA < idB ? -1 : idA > idB ? 1 : 0;
+  });
+
+  return merged;
 };
 
 /**
@@ -445,14 +656,23 @@ export interface ClassRombelSummary {
 export const getAttendanceShift = (
   record?: Presensi | null,
   kelasName?: string,
-  targetTime?: string
+  targetTime?: string,
+  settings?: SystemSettings
 ): 'Pagi' | 'Siang' => {
   if (record?.shift) return record.shift;
   const timeStr = record?.waktu || targetTime;
   if (timeStr && timeStr !== '-') {
     const hour = parseInt(timeStr.slice(0, 2), 10);
-    if (hour >= 11) return 'Siang';
-    if (hour > 0) return 'Pagi';
+    if (!isNaN(hour)) {
+      if (hour >= 11) return 'Siang';
+      if (hour > 0) return 'Pagi';
+    }
+  }
+  if (settings && kelasName) {
+    const jadwal = getApplicableJadwal(kelasName, settings, targetTime);
+    if (jadwal.tipe === 'Siang') return 'Siang';
+    const inHour = parseInt((jadwal.jamMasuk || '07:00').slice(0, 2), 10);
+    if (!isNaN(inHour) && inHour >= 11) return 'Siang';
   }
   return 'Pagi';
 };
@@ -464,9 +684,9 @@ export const safeDateParts = (dateStr: string): { year: number; month: number; d
   const norm = normalizeDateKey(dateStr) || getLocalDateString();
   const [y, m, d] = norm.split('-').map(Number);
   return {
-    year: y || new Date().getFullYear(),
-    month: m || (new Date().getMonth() + 1),
-    day: d || new Date().getDate()
+    year: y || 2026,
+    month: m || 1,
+    day: d || 1
   };
 };
 
@@ -477,25 +697,71 @@ export const safeFormatDate = (year: number, month: number, day: number): string
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
+const INDO_DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const INDO_MONTHS_LONG = [
+  '', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+const INDO_MONTHS_SHORT = [
+  '', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+];
+
 /**
- * Tambah hari secara aman tanpa pergeseran zona waktu UTC
+ * Format tanggal panjang bahasa Indonesia (contoh: "Jumat, 6 November 2026") bebas pergeseran UTC
  */
-export const safeAddDays = (dateStr: string, days: number): string => {
-  const { year, month, day } = safeDateParts(dateStr);
-  const d = new Date(year, month - 1, day + days);
-  return safeFormatDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+export const formatDateIndoLong = (dateStr: string): string => {
+  const norm = normalizeDateKey(dateStr);
+  if (!norm) return dateStr;
+  const { year, month, day } = safeDateParts(norm);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  const dayName = INDO_DAYS[utc.getUTCDay()] || '';
+  const monthName = INDO_MONTHS_LONG[month] || '';
+  return `${dayName}, ${day} ${monthName} ${year}`;
 };
 
 /**
- * Menemukan tanggal hari Senin dari tanggal input
+ * Format tanggal pendek bahasa Indonesia (contoh: "6 Nov 2026") bebas pergeseran UTC
+ */
+export const formatDateIndoShort = (dateStr: string): string => {
+  const norm = normalizeDateKey(dateStr);
+  if (!norm) return dateStr;
+  const { year, month, day } = safeDateParts(norm);
+  const monthName = INDO_MONTHS_SHORT[month] || '';
+  return `${day} ${monthName} ${year}`;
+};
+
+/**
+ * Format bulan & tahun bahasa Indonesia (contoh: "November 2026") bebas pergeseran UTC
+ */
+export const formatMonthIndo = (yearMonthStr: string): string => {
+  const ym = (yearMonthStr || '').trim().slice(0, 7);
+  const [yStr, mStr] = ym.split('-');
+  const year = parseInt(yStr, 10);
+  const month = parseInt(mStr, 10);
+  if (!year || !month || month < 1 || month > 12) return yearMonthStr;
+  return `${INDO_MONTHS_LONG[month]} ${year}`;
+};
+
+/**
+ * Tambah hari secara aman tanpa pergeseran zona waktu UTC maupun transisi DST
+ */
+export const safeAddDays = (dateStr: string, days: number): string => {
+  const { year, month, day } = safeDateParts(dateStr);
+  const d = new Date(Date.UTC(year, month - 1, day + days));
+  return safeFormatDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+};
+
+/**
+ * Menemukan tanggal hari Senin dari tanggal input secara aman tanpa pergeseran UTC/DST
  */
 export const getMondayOfWeek = (dateStr: string): string => {
   const { year, month, day } = safeDateParts(dateStr);
-  const d = new Date(year, month - 1, day);
-  const dayOfWeek = d.getDay(); // 0 = Minggu, 1 = Senin, ...
+  const d = new Date(Date.UTC(year, month - 1, day));
+  const dayOfWeek = d.getUTCDay(); // 0 = Minggu, 1 = Senin, ...
   const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(year, month - 1, day + diff);
-  return safeFormatDate(monday.getFullYear(), monday.getMonth() + 1, monday.getDate());
+  const monday = new Date(Date.UTC(year, month - 1, day + diff));
+  return safeFormatDate(monday.getUTCFullYear(), monday.getUTCMonth() + 1, monday.getUTCDate());
 };
 
 /**
@@ -504,7 +770,8 @@ export const getMondayOfWeek = (dateStr: string): string => {
 export const calculateAllRombelSummaryList = (
   siswaList: Siswa[],
   presensiList: Presensi[],
-  targetDateStr: string = getLocalDateString()
+  targetDateStr: string = getLocalDateString(),
+  settings?: SystemSettings
 ): ClassRombelSummary[] => {
   const index = buildDailyAttendanceIndex(presensiList, targetDateStr);
 
@@ -525,16 +792,17 @@ export const calculateAllRombelSummaryList = (
         } else {
           totalManualTap++;
         }
-        const s = getAttendanceShift(rec, namaKelas);
+        const s = getAttendanceShift(rec, namaKelas, rec.waktu, settings);
         if (s === 'Siang') totalSiang++;
         else totalPagi++;
       }
     });
 
+    const defaultClassShift = getAttendanceShift(null, namaKelas, undefined, settings);
     const shift: 'Pagi' | 'Siang' | 'Campuran' = 
       totalSiang > 0 && totalPagi === 0 ? 'Siang' :
       totalPagi > 0 && totalSiang === 0 ? 'Pagi' :
-      totalSiang > 0 && totalPagi > 0 ? 'Campuran' : 'Pagi';
+      totalSiang > 0 && totalPagi > 0 ? 'Campuran' : defaultClassShift;
 
     const shiftLabel = shift === 'Siang' ? 'Siang (12.30 WIB)' : (shift === 'Campuran' ? 'Pagi & Siang' : 'Pagi (07.00 WIB)');
 

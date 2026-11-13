@@ -2,7 +2,8 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { auditAndSynchronizePresensi, generateFullSemesterPresensi, CURRENT_SEMESTER_DATE, HISTORICAL_ARCHIVE_END_DATE } from "./src/lib/semesterPresensiGenerator";
+import { auditAndSynchronizePresensi, generateFullSemesterPresensi, HISTORICAL_ARCHIVE_END_DATE } from "./src/lib/semesterPresensiGenerator";
+import { isSyntheticDemoPresensi, isRecordNewer, mergePresensiLists, normalizeDateKey, getLocalDateString } from "./src/lib/attendanceUtils";
 
 const PORT = 3000;
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -15,6 +16,7 @@ if (!fs.existsSync(DATA_DIR)) {
 const STUDENTS_FILE = path.join(DATA_DIR, "students.json");
 const WALI_KELAS_FILE = path.join(DATA_DIR, "wali_kelas.json");
 const PRESENSI_FILE = path.join(DATA_DIR, "presensi.json");
+const DELETED_PRESENSI_FILE = path.join(DATA_DIR, "deleted_presensi.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
 const VERSION_FILE = path.join(DATA_DIR, "version.json");
@@ -104,6 +106,112 @@ function saveCachedPresensi(records: any[]): void {
   persistPresensiToDisk();
 }
 
+interface ServerDeletedTombstone {
+  key: string;
+  recordId?: string;
+  siswaId?: string;
+  nis?: string;
+  tanggal: string;
+  deletedAt: number;
+}
+
+let cachedDeletedTombstones: ServerDeletedTombstone[] | null = null;
+
+function getDeletedTombstonesList(): ServerDeletedTombstone[] {
+  if (cachedDeletedTombstones === null) {
+    const raw = readJsonFile<ServerDeletedTombstone[]>(DELETED_PRESENSI_FILE, []);
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    cachedDeletedTombstones = Array.isArray(raw)
+      ? raw.filter((t) => t && t.tanggal && (!t.deletedAt || t.deletedAt >= cutoff))
+      : [];
+  }
+  return cachedDeletedTombstones;
+}
+
+function getDeletedTombstoneMap(): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const t of getDeletedTombstonesList()) {
+    if (t.key) {
+      map.set(t.key, Math.max(map.get(t.key) || 0, t.deletedAt || 0));
+    }
+    if (t.siswaId && t.tanggal) {
+      const k = `${t.siswaId}__${t.tanggal}`;
+      map.set(k, Math.max(map.get(k) || 0, t.deletedAt || 0));
+    }
+    if (t.nis && t.nis.trim().length >= 4 && t.tanggal) {
+      const k = `${t.nis.trim()}__${t.tanggal}`;
+      map.set(k, Math.max(map.get(k) || 0, t.deletedAt || 0));
+    }
+  }
+  return map;
+}
+
+function getDeletedTombstonesRecord(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of getDeletedTombstoneMap().entries()) {
+    out[k] = v;
+  }
+  return out;
+}
+
+function saveDeletedTombstonesList(list: ServerDeletedTombstone[]): void {
+  const trimmed = list.slice(-500);
+  cachedDeletedTombstones = trimmed;
+  writeJsonFile(DELETED_PRESENSI_FILE, trimmed);
+}
+
+function recordDeletedTombstone(entry: Omit<ServerDeletedTombstone, 'deletedAt'> & { deletedAt?: number }): void {
+  const list = getDeletedTombstonesList();
+  const normDate = normalizeDateKey(entry.tanggal);
+  if (!normDate) return;
+  const sid = entry.siswaId || entry.nis || entry.recordId || entry.key;
+  const normKey = entry.key && entry.key.includes('__') ? entry.key : `${sid}__${normDate}`;
+  const deletedAt = entry.deletedAt || Date.now();
+  const filtered = list.filter((t) => t.key !== normKey && !(entry.recordId && t.recordId === entry.recordId));
+  filtered.push({ ...entry, key: normKey, tanggal: normDate, deletedAt });
+  saveDeletedTombstonesList(filtered);
+}
+
+function clearDeletedTombstoneForRecord(record: any): void {
+  const list = getDeletedTombstonesList();
+  if (list.length === 0) return;
+  const normDate = normalizeDateKey(record.tanggal);
+  const sid = record.siswaId || record.nis || record.nama;
+  const key = `${sid}__${normDate}`;
+  const filtered = list.filter((t) => {
+    if (t.tanggal !== normDate) return true;
+    if (t.key === key) return false;
+    if (record.id && t.recordId === record.id) return false;
+    if (record.siswaId && t.siswaId === record.siswaId) return false;
+    if (record.nis && t.nis && record.nis.trim().length >= 4 && record.nis.trim() === t.nis.trim()) return false;
+    return true;
+  });
+  if (filtered.length !== list.length) {
+    saveDeletedTombstonesList(filtered);
+  }
+}
+
+function arePresensiArraysEqual(a: any[], b: any[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.siswaId !== y.siswaId ||
+      x.tanggal !== y.tanggal ||
+      x.waktu !== y.waktu ||
+      x.status !== y.status ||
+      x.metode !== y.metode ||
+      x.keterangan !== y.keterangan ||
+      x.updatedAt !== y.updatedAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Load initial students if file not present
 if (!fs.existsSync(STUDENTS_FILE)) {
   try {
@@ -155,36 +263,31 @@ if (!fs.existsSync(PRESENSI_FILE)) {
     console.error("Failed to seed initial semester presensi:", err);
   }
 } else {
-  // Prime in-memory presensi cache, purge any legacy synthetic live-day records, and audit archive
+  // Prime in-memory presensi cache, purge only synthetic demo records, deduplicate, and audit archive
   try {
     const rawExisting = getCachedPresensi();
-    // Hapus rekaman sintetis otomatis (id berpola pr-YYYY-MM-DD-sis-...) setelah tanggal arsip 2026-10-30
-    // agar kelas yang belum scan barcode / belum di-tap wali kelas tidak otomatis terisi hadir.
-    const SYNTHETIC_BATCH_ID_RE = /^pr-\d{4}-\d{2}-\d{2}-sis-/;
-    const purgedExisting = rawExisting.filter((p: any) => {
-      const d = (p?.tanggal || '').slice(0, 10);
-      if (d > HISTORICAL_ARCHIVE_END_DATE && p?.id && SYNTHETIC_BATCH_ID_RE.test(p.id)) {
-        return false;
-      }
-      return true;
-    });
+    const purgedExisting = rawExisting.filter((p: any) => !isSyntheticDemoPresensi(p));
     const purgedCount = rawExisting.length - purgedExisting.length;
     if (purgedCount > 0) {
-      console.log(`[Cloud Presensi] Membersihkan ${purgedCount} rekaman otomatis tanggal > ${HISTORICAL_ARCHIVE_END_DATE} agar absensi berjalan sesuai scan barcode & tap guru.`);
+      console.log(`[Cloud Presensi] Membersihkan ${purgedCount} rekaman sintetis lama agar absensi berjalan sesuai scan barcode & tap guru.`);
     }
 
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+    const tombstoneMap = getDeletedTombstoneMap();
     if (students.length > 0) {
       const auditResult = auditAndSynchronizePresensi(purgedExisting, students);
-      if (purgedCount > 0 || auditResult.synchronizedRecords.length !== purgedExisting.length) {
-        cachedPresensi = auditResult.synchronizedRecords;
-        writeJsonFile(PRESENSI_FILE, auditResult.synchronizedRecords);
-        incrementSyncVersion(`Startup Audit & Clean Live Attendance (${auditResult.synchronizedRecords.length} records)`);
-        console.log(`[Cloud Presensi] Tersinkronisasi: ${auditResult.synchronizedRecords.length} rekaman arsip & live.`);
+      const dedupedRecords = mergePresensiLists(auditResult.synchronizedRecords, [], students, tombstoneMap);
+      if (purgedCount > 0 || !arePresensiArraysEqual(dedupedRecords, rawExisting)) {
+        cachedPresensi = dedupedRecords;
+        writeJsonFile(PRESENSI_FILE, dedupedRecords);
+        incrementSyncVersion(`Startup Audit & Deduplicate (${dedupedRecords.length} records)`);
+        console.log(`[Cloud Presensi] Tersinkronisasi: ${dedupedRecords.length} rekaman arsip & live.`);
       } else {
-        cachedPresensi = auditResult.synchronizedRecords;
+        cachedPresensi = dedupedRecords;
         console.log(`[Cloud Presensi] Data presensi aktif: ${cachedPresensi.length} catatan tersimpan aman in-memory.`);
       }
+    } else {
+      cachedPresensi = mergePresensiLists(purgedExisting, [], undefined, tombstoneMap);
     }
   } catch (err) {
     console.error("Gagal memeriksa arsip presensi pada startup:", err);
@@ -228,6 +331,7 @@ async function startServer() {
     const students = readJsonFile<any[]>(STUDENTS_FILE, []);
     const waliKelas = readJsonFile<any[]>(WALI_KELAS_FILE, DEFAULT_WALI_KELAS);
     const presensi = getCachedPresensi();
+    const deletedKeys = getDeletedTombstonesRecord();
     const settings = readJsonFile<any>(SETTINGS_FILE, null);
     const accounts = readJsonFile<any[]>(ACCOUNTS_FILE, []);
 
@@ -237,6 +341,7 @@ async function startServer() {
       students,
       waliKelas,
       presensi,
+      deletedKeys,
       settings,
       accounts
     });
@@ -266,54 +371,49 @@ async function startServer() {
     res.json({ success: true, version: syncVersion, total: data.length });
   });
 
-  // 5. Sync Attendance records (with archive & live record safeguarding)
+  // 5. Sync Attendance records (with deterministic order-independent merge & tombstone support)
   app.post("/api/sync/presensi", (req, res) => {
-    const { data, updatedBy } = req.body;
+    const { data, updatedBy, deletedKeys } = req.body;
     if (!Array.isArray(data)) {
       res.status(400).json({ error: "Invalid data format. Expected an array of attendance records." });
       return;
     }
 
-    const existing = getCachedPresensi();
-    let finalRecords: any[];
-
-    if (data.length < existing.length && existing.length > 500 && data.length <= 500) {
-      // Client sent a lightweight recent slice; merge updates into existing master archive
-      const existingMap = new Map<string, any>();
-      for (const item of existing) {
-        const d = (item.tanggal || '').slice(0, 10);
-        const sid = item.siswaId || item.nis || item.nama;
-        existingMap.set(`${sid}__${d}`, item);
-      }
-      for (const item of data) {
-        const d = (item.tanggal || '').slice(0, 10);
-        const sid = item.siswaId || item.nis || item.nama;
-        existingMap.set(`${sid}__${d}`, item);
-      }
-      finalRecords = Array.from(existingMap.values());
-    } else {
-      // Preserve any newer live scans/taps on server (> HISTORICAL_ARCHIVE_END_DATE) not present in incoming payload
-      const mergedMap = new Map<string, any>();
-      for (const item of data) {
-        const d = (item.tanggal || '').slice(0, 10);
-        const sid = item.siswaId || item.nis || item.nama;
-        mergedMap.set(`${sid}__${d}`, item);
-      }
-      for (const item of existing) {
-        const d = (item.tanggal || '').slice(0, 10);
-        if (d > HISTORICAL_ARCHIVE_END_DATE) {
-          const sid = item.siswaId || item.nis || item.nama;
-          const key = `${sid}__${d}`;
-          if (!mergedMap.has(key)) {
-            mergedMap.set(key, item);
-          }
+    if (Array.isArray(deletedKeys)) {
+      for (const dk of deletedKeys) {
+        if (dk && typeof dk.key === 'string' && dk.key.includes('__')) {
+          const [sid, dt] = dk.key.split('__');
+          recordDeletedTombstone({
+            key: dk.key,
+            siswaId: sid,
+            tanggal: dt,
+            deletedAt: typeof dk.ts === 'number' ? dk.ts : Date.now()
+          });
         }
       }
-      finalRecords = Array.from(mergedMap.values());
+    } else if (deletedKeys && typeof deletedKeys === 'object') {
+      for (const [k, ts] of Object.entries(deletedKeys)) {
+        if (k.includes('__')) {
+          const [sid, dt] = k.split('__');
+          recordDeletedTombstone({
+            key: k,
+            siswaId: sid,
+            tanggal: dt,
+            deletedAt: typeof ts === 'number' ? ts : Date.now()
+          });
+        }
+      }
     }
 
-    saveCachedPresensi(finalRecords);
-    incrementSyncVersion(`Update Presensi (${finalRecords.length} records by ${updatedBy || 'user'})`);
+    const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+    const existing = getCachedPresensi();
+    const tombstoneMap = getDeletedTombstoneMap();
+    const finalRecords = mergePresensiLists(existing, data, students, tombstoneMap);
+
+    if (!arePresensiArraysEqual(finalRecords, existing)) {
+      saveCachedPresensi(finalRecords);
+      incrementSyncVersion(`Update Presensi (${finalRecords.length} records by ${updatedBy || 'user'})`);
+    }
     res.json({ success: true, version: syncVersion, total: finalRecords.length });
   });
 
@@ -326,28 +426,28 @@ async function startServer() {
         return;
       }
 
+      const normDate = normalizeDateKey(record.tanggal);
+      const canonicalSid = record.siswaId || record.nis || record.nama;
+      const canonicalId = record.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(record.id)
+        ? record.id
+        : `pr-${canonicalSid}-${normDate}`;
+      const normalizedRecord = {
+        ...record,
+        id: canonicalId,
+        siswaId: canonicalSid,
+        tanggal: normDate,
+        updatedAt: typeof record.updatedAt === 'number' ? record.updatedAt : Date.now()
+      };
+
+      clearDeletedTombstoneForRecord(normalizedRecord);
+
+      const students = readJsonFile<any[]>(STUDENTS_FILE, []);
       const existingRecords = getCachedPresensi();
-      const normDate = (record.tanggal || '').slice(0, 10);
-      
-      const idx = existingRecords.findIndex((p: any) => 
-        p.id === record.id ||
-        (
-          ((p.siswaId && record.siswaId && p.siswaId === record.siswaId) ||
-           (p.nis && record.nis && p.nis === record.nis) ||
-           (p.nama === record.nama && p.kelas === record.kelas)) &&
-          (p.tanggal && p.tanggal.slice(0, 10) === normDate)
-        )
-      );
+      const updatedRecords = mergePresensiLists(existingRecords, [normalizedRecord], students, getDeletedTombstoneMap());
 
-      if (idx >= 0) {
-        existingRecords[idx] = { ...existingRecords[idx], ...record };
-      } else {
-        existingRecords.push(record);
-      }
-
-      saveCachedPresensi(existingRecords);
-      incrementSyncVersion(`Record Presensi: ${record.nama} (${record.kelas} - ${record.status}) by ${updatedBy || 'Scanner'}`);
-      res.json({ success: true, version: syncVersion, total: existingRecords.length, record });
+      saveCachedPresensi(updatedRecords);
+      incrementSyncVersion(`Record Presensi: ${normalizedRecord.nama} (${normalizedRecord.kelas} - ${normalizedRecord.status}) by ${updatedBy || 'Scanner'}`);
+      res.json({ success: true, version: syncVersion, total: updatedRecords.length, record: normalizedRecord });
     } catch (err: any) {
       console.error("[Server Presensi Record Error]:", err);
       res.status(500).json({ error: err.message || "Failed to record attendance" });
@@ -357,22 +457,46 @@ async function startServer() {
   // 5b. Atomic single attendance record delete/reset (for homeroom teachers resetting accidental taps)
   app.post("/api/presensi/delete", (req, res) => {
     try {
-      const { recordId, siswaId, tanggal, updatedBy } = req.body;
-      const normDate = (tanggal || '').slice(0, 10);
-      if (!normDate || (!recordId && !siswaId)) {
+      const { recordId, siswaId, nis, nama, kelas, tanggal, updatedBy } = req.body;
+      const normDate = normalizeDateKey(tanggal || '');
+      if (!normDate || (!recordId && !siswaId && !nis)) {
         res.status(400).json({ error: "Invalid delete payload. Provide tanggal and recordId or siswaId." });
         return;
       }
 
       const existingRecords = getCachedPresensi();
+      const matchedExisting = existingRecords.find((p: any) =>
+        (recordId && p.id === recordId) ||
+        (normalizeDateKey(p.tanggal) === normDate && ((siswaId && p.siswaId === siswaId) || (nis && p.nis === nis)))
+      );
+
+      const resolvedSiswaId = siswaId || matchedExisting?.siswaId;
+      const resolvedNis = nis || matchedExisting?.nis;
+      const primaryKey = `${resolvedSiswaId || resolvedNis || recordId}__${normDate}`;
+
+      recordDeletedTombstone({
+        key: primaryKey,
+        recordId,
+        siswaId: resolvedSiswaId,
+        nis: resolvedNis,
+        tanggal: normDate,
+        deletedAt: Date.now()
+      });
+
       const filtered = existingRecords.filter((p: any) => {
         if (recordId && p.id === recordId) return false;
-        if (siswaId && p.siswaId === siswaId && (p.tanggal || '').slice(0, 10) === normDate) return false;
+        const pDate = normalizeDateKey(p.tanggal);
+        if (pDate !== normDate) return true;
+        if (resolvedSiswaId && p.siswaId === resolvedSiswaId) return false;
+        if (resolvedNis && resolvedNis.trim().length >= 4 && p.nis && p.nis.trim() === resolvedNis.trim() && (!resolvedSiswaId || !p.siswaId)) {
+          return false;
+        }
+        if (!resolvedSiswaId && nama && kelas && p.nama === nama && p.kelas === kelas) return false;
         return true;
       });
 
       saveCachedPresensi(filtered);
-      incrementSyncVersion(`Reset Presensi (${siswaId || recordId} on ${normDate}) by ${updatedBy || 'Wali Kelas'}`);
+      incrementSyncVersion(`Reset Presensi (${resolvedSiswaId || recordId} on ${normDate}) by ${updatedBy || 'Wali Kelas'}`);
       res.json({ success: true, version: syncVersion, total: filtered.length });
     } catch (err: any) {
       console.error("[Server Presensi Delete Error]:", err);
@@ -677,7 +801,7 @@ async function startServer() {
       const newEntry = {
         id: errorRecord.id || `err-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         timestamp: errorRecord.timestamp || new Date().toLocaleTimeString('id-ID'),
-        date: errorRecord.date || new Date().toISOString().slice(0, 10),
+        date: normalizeDateKey(errorRecord.date || '') || getLocalDateString(new Date()),
         code: errorRecord.code,
         reason: errorRecord.reason || 'Kode ini bukan NIS, NISN, NIK atau ID resmi Siswa SDN 3 KARAMATWANGI.',
         operator: errorRecord.operator || 'Scanner Piket',
@@ -707,8 +831,72 @@ async function startServer() {
     });
   }
 
+  // Non-blocking startup Firestore REST hydration when local live records are missing
+  const fromFirestoreValue = (val: any): any => {
+    if (!val || typeof val !== "object") return val;
+    if ("stringValue" in val) return val.stringValue;
+    if ("integerValue" in val) return Number(val.integerValue);
+    if ("doubleValue" in val) return Number(val.doubleValue);
+    if ("booleanValue" in val) return Boolean(val.booleanValue);
+    if ("nullValue" in val) return null;
+    if ("timestampValue" in val) return val.timestampValue;
+    if ("arrayValue" in val) {
+      return Array.isArray(val.arrayValue?.values) ? val.arrayValue.values.map(fromFirestoreValue) : [];
+    }
+    if ("mapValue" in val) {
+      const out: Record<string, any> = {};
+      const fields = val.mapValue?.fields || {};
+      for (const k of Object.keys(fields)) {
+        out[k] = fromFirestoreValue(fields[k]);
+      }
+      return out;
+    }
+    return val;
+  };
+
+  const hydrateFromFirestoreOnce = async () => {
+    try {
+      const url = "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1/documents/sync/presensi";
+      const resp = await fetch(url, { signal: AbortSignal.timeout(7000) });
+      if (!resp.ok) return;
+      const docJson = await resp.json();
+      const fields = docJson?.fields;
+      if (!fields) return;
+
+      const incomingData = fields.data ? fromFirestoreValue(fields.data) : [];
+      const incomingDeleted = fields.deletedKeys ? fromFirestoreValue(fields.deletedKeys) : [];
+      if (Array.isArray(incomingDeleted)) {
+        for (const dk of incomingDeleted) {
+          if (dk && typeof dk.key === "string" && dk.key.includes("__")) {
+            const [sid, dt] = dk.key.split("__");
+            recordDeletedTombstone({
+              key: dk.key,
+              siswaId: sid,
+              tanggal: dt,
+              deletedAt: typeof dk.ts === "number" ? dk.ts : Date.now()
+            });
+          }
+        }
+      }
+
+      if (Array.isArray(incomingData) && incomingData.length > 0) {
+        const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+        const existing = getCachedPresensi();
+        const merged = mergePresensiLists(existing, incomingData, students, getDeletedTombstoneMap());
+        if (!arePresensiArraysEqual(merged, existing)) {
+          saveCachedPresensi(merged);
+          incrementSyncVersion(`Hydrate Cloud Sync Presensi (${merged.length} records)`);
+          console.log(`[Cloud Presensi] Terhidrasi dari Firestore sync/presensi (${merged.length} rekaman).`);
+        }
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  };
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`SDN 3 Karamatwangi Server running on http://0.0.0.0:${PORT}`);
+    hydrateFromFirestoreOnce().catch(() => {});
   });
 }
 

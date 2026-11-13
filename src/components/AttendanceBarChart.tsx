@@ -22,19 +22,21 @@ import {
   AlertTriangle,
   Users
 } from 'lucide-react';
-import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, SystemSettings } from '../types';
 import {
   calculateAllRombelSummaryList,
   calculateSchoolAttendanceStats,
-  normalizeDateKey,
   getLocalDateString,
-  isPresensiDateMatch,
-  isSameClass
+  safeAddDays,
+  safeDateParts,
+  formatDateIndoShort,
+  formatDateIndoLong
 } from '../lib/attendanceUtils';
 
 interface AttendanceBarChartProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
+  settings?: SystemSettings;
   selectedDate?: string;
   selectedKelas?: string;
   onSelectKelas?: (kelas: string) => void;
@@ -45,17 +47,17 @@ type ChartMode = 'rombel' | 'trend7days' | 'keaktifan';
 function AttendanceBarChart({
   siswaList,
   presensiList,
+  settings,
   selectedDate,
   selectedKelas = 'Semua Kelas',
   onSelectKelas
 }: AttendanceBarChartProps) {
   const activeDate = selectedDate || getLocalDateString();
   const [chartMode, setChartMode] = useState<ChartMode>('rombel');
-  const [showStacked, setShowStacked] = useState<boolean>(true);
 
   // 1. DATA: Rekapitulasi Per Rombel Kelas pada tanggal terpilih
   const rombelData = useMemo(() => {
-    const summaries = calculateAllRombelSummaryList(siswaList, presensiList, activeDate);
+    const summaries = calculateAllRombelSummaryList(siswaList, presensiList, activeDate, settings);
     return summaries.map(r => ({
       name: r.kelas.replace('Kelas ', ''),
       fullKelas: r.kelas,
@@ -71,7 +73,7 @@ function AttendanceBarChart({
       totalTidakHadir: r.totalTidakHadir,
       persentase: r.persentase,
     }));
-  }, [siswaList, presensiList, activeDate]);
+  }, [siswaList, presensiList, activeDate, settings]);
 
   // 2. DATA: Tren Harian 7 Hari Terakhir
   const trend7DaysData = useMemo(() => {
@@ -91,22 +93,18 @@ function AttendanceBarChart({
       persentase: number;
     }[] = [];
 
-    const baseDate = new Date(activeDate);
     const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const shortMonths = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-    // Generate last 7 days ending at activeDate
+    // Generate last 7 days ending at activeDate (timezone-safe)
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(baseDate);
-      d.setDate(baseDate.getDate() - i);
-      const tzOffset = d.getTimezoneOffset() * 60000;
-      const dateStr = new Date(d.getTime() - tzOffset).toISOString().slice(0, 10);
-      
-      const dayIndex = d.getDay();
+      const dateStr = safeAddDays(activeDate, -i);
+      const { year, month, day } = safeDateParts(dateStr);
+      const dayIndex = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
       const shortDay = dayNames[dayIndex].substring(0, 3);
-      const dayNum = d.getDate();
-      const monthShort = d.toLocaleDateString('id-ID', { month: 'short' });
-      const label = `${shortDay}, ${dayNum} ${monthShort}`;
-      const fullDateFormatted = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const monthShort = shortMonths[month] || '';
+      const label = `${shortDay}, ${day} ${monthShort}`;
+      const fullDateFormatted = formatDateIndoLong(dateStr);
 
       const stats = calculateSchoolAttendanceStats(siswaList, presensiList, dateStr, selectedKelas);
       const totalSiswa = stats.totalSiswa;
@@ -374,7 +372,7 @@ function AttendanceBarChart({
           <div className="truncate">
             <span className="text-[10px] text-indigo-800 font-bold uppercase block">Tanggal Pantau</span>
             <p className="text-xs font-black text-indigo-950 truncate">
-              {new Date(activeDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {formatDateIndoShort(activeDate)}
             </p>
           </div>
         </div>

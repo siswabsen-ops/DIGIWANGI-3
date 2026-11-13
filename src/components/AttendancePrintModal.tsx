@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Printer, 
   X, 
@@ -20,7 +20,14 @@ import {
   isPresensiMatchSiswa,
   calculateAllRombelSummaryList,
   calculateSemesterRombelSummaryList,
-  normalizeDateKey
+  normalizeDateKey,
+  getLocalDateString,
+  formatDateIndoLong,
+  formatMonthIndo,
+  getMondayOfWeek,
+  safeAddDays,
+  safeDateParts,
+  isRecordNewer
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
 
@@ -49,10 +56,19 @@ export default function AttendancePrintModal({
 }: AttendancePrintModalProps) {
   const [printType, setPrintType] = useState<'harian' | 'mingguan' | 'bulanan' | 'rombel' | 'semester'>(defaultType);
   const [selectedKelas, setSelectedKelas] = useState<string>(defaultKelas);
-  const [targetDate, setTargetDate] = useState<string>(defaultDate || new Date().toISOString().slice(0, 10));
-  const [targetMonth, setTargetMonth] = useState<string>(defaultMonth || new Date().toISOString().slice(0, 7));
+  const [targetDate, setTargetDate] = useState<string>(defaultDate || getLocalDateString());
+  const [targetMonth, setTargetMonth] = useState<string>(defaultMonth || getLocalDateString().slice(0, 7));
   const [targetSemesterType, setTargetSemesterType] = useState<'1' | '2'>('1');
   const [targetTahunAjaran, setTargetTahunAjaran] = useState<string>('2026/2027');
+
+  useEffect(() => {
+    if (isOpen) {
+      setPrintType(defaultType);
+      setSelectedKelas(defaultKelas);
+      if (defaultDate) setTargetDate(defaultDate);
+      if (defaultMonth) setTargetMonth(defaultMonth);
+    }
+  }, [isOpen, defaultType, defaultKelas, defaultDate, defaultMonth]);
 
   // Logo sources
   const appLogo = settings?.appLogoUrl || DEFAULT_DIGIWANGI_LOGO || DIGIWANGI_LOGO_BASE64;
@@ -75,35 +91,29 @@ export default function AttendancePrintModal({
 
   // Rombel summary list
   const rombelSummary = useMemo(() => {
-    return calculateAllRombelSummaryList(siswaList, presensiList, targetDate);
-  }, [siswaList, presensiList, targetDate]);
+    return calculateAllRombelSummaryList(siswaList, presensiList, targetDate, settings);
+  }, [siswaList, presensiList, targetDate, settings]);
 
   // Semester rombel summary list
   const semesterRombelSummary = useMemo(() => {
     return calculateSemesterRombelSummaryList(siswaList, presensiList, targetSemesterType, targetTahunAjaran);
   }, [siswaList, presensiList, targetSemesterType, targetTahunAjaran]);
 
-  // Weekly dates
+  // Weekly dates (timezone-safe UTC arithmetic)
   const weekDates = useMemo(() => {
-    const baseDate = new Date(targetDate);
-    const day = baseDate.getDay();
-    const diff = baseDate.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(baseDate.setDate(diff));
-
+    const monday = getMondayOfWeek(targetDate || getLocalDateString());
     const dates: { dateStr: string; label: string; shortDay: string }[] = [];
     const indonesianDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
+    const shortMonths = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
     for (let i = 0; i < 5; i++) {
-      const nextDate = new Date(monday);
-      nextDate.setDate(monday.getDate() + i);
-      const tzOffset = nextDate.getTimezoneOffset() * 60000;
-      const dateStr = (new Date(nextDate.getTime() - tzOffset)).toISOString().slice(0, 10);
-      const dayNum = nextDate.getDate();
-      const monthShort = nextDate.toLocaleDateString('id-ID', { month: 'short' });
+      const dateStr = safeAddDays(monday, i);
+      const { day, month } = safeDateParts(dateStr);
+      const monthShort = shortMonths[month] || '';
 
       dates.push({
         dateStr,
-        label: `${indonesianDays[i]}, ${dayNum} ${monthShort}`,
+        label: `${indonesianDays[i]}, ${day} ${monthShort}`,
         shortDay: indonesianDays[i]
       });
     }
@@ -148,22 +158,18 @@ export default function AttendancePrintModal({
   }, [presensiList, targetTahunAjaran, targetSemesterType]);
 
   const formattedDateIndo = useMemo(() => {
-    try {
-      const d = new Date(targetDate);
-      return d.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    } catch {
-      return targetDate;
-    }
+    return formatDateIndoLong(targetDate);
   }, [targetDate]);
 
   const formattedMonthIndo = useMemo(() => {
-    try {
-      const d = new Date(`${targetMonth}-02`);
-      return d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
-    } catch {
-      return targetMonth;
-    }
+    return formatMonthIndo(targetMonth);
   }, [targetMonth]);
+
+  const dynamicTahunPelajaran = useMemo(() => {
+    const refStr = printType === 'bulanan' ? `${targetMonth}-01` : targetDate;
+    const { year, month } = safeDateParts(refStr);
+    return month >= 7 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
+  }, [printType, targetMonth, targetDate]);
 
   const waliKelasName = selectedKelas !== 'Semua Kelas' ? getWaliKelasByKelas(selectedKelas) : 'Seluruh Dewan Guru & Wali Kelas';
 
@@ -396,7 +402,7 @@ export default function AttendancePrintModal({
               {printType === 'semester' && (
                 <span>Semester: <b>{targetSemesterType === '1' ? '1 (Ganjil / Juli-Desember)' : '2 (Genap / Januari-Juni)'}</b></span>
               )}
-              <span>Tahun Pelajaran: <b>{printType === 'semester' ? targetTahunAjaran : '2025/2026'}</b></span>
+              <span>Tahun Pelajaran: <b>{printType === 'semester' ? targetTahunAjaran : dynamicTahunPelajaran}</b></span>
             </div>
           </div>
 
@@ -657,7 +663,7 @@ export default function AttendancePrintModal({
                     studentRecords.forEach(r => {
                       const d = normalizeDateKey(r.tanggal);
                       const existing = dateMap.get(d);
-                      if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+                      if (isRecordNewer(r, existing)) {
                         dateMap.set(d, r);
                       }
                     });
@@ -819,7 +825,7 @@ export default function AttendancePrintModal({
                       studentRecords.forEach(r => {
                         const d = normalizeDateKey(r.tanggal);
                         const existing = dateMap.get(d);
-                        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+                        if (isRecordNewer(r, existing)) {
                           dateMap.set(d, r);
                         }
                       });
@@ -882,7 +888,7 @@ export default function AttendancePrintModal({
 
             <div className="text-center px-4">
               <p className="font-medium">
-                Karamatwangi, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                Karamatwangi, {formatDateIndoLong(getLocalDateString()).replace(/^[^,]+,\s*/, '')}
               </p>
               <p className="font-bold">
                 {selectedKelas !== 'Semua Kelas' ? `Wali Kelas ${selectedKelas}` : 'Petugas Rekapitulasi Presensi'}

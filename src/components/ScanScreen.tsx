@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, Search, UserCheck, AlertTriangle, AlertOctagon, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
 import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal, DAFTAR_KELAS, WaliKelas } from '../types';
-import { getLocalDateString, getLocalTimeString, isPresensiMatchSiswa, isPresensiDateMatch } from '../lib/attendanceUtils';
+import { getLocalDateString, getLocalTimeString, getLatestAttendanceForStudent, buildDailyAttendanceIndex, getAttendanceFromIndex, isPresensiDateMatch } from '../lib/attendanceUtils';
 import { getWaliKelasObject } from '../lib/waliKelasData';
 import QRCodeRenderer from './QRCodeRenderer';
 import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
@@ -46,27 +46,13 @@ function ScanScreen({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanTimeoutRef = useRef<any>(null);
+  const virtualScanTimeoutRef = useRef<any>(null);
   const handleScanIdentifyRef = useRef<any>(null);
   const inputTimingRef = useRef<{ lastTime: number; rapidCount: number }>({ lastTime: 0, rapidCount: 0 });
 
-  // Fast O(1) today attendance lookup map (namespaced by ID/NIS to prevent collisions)
-  const todayAttendanceMap = useMemo(() => {
-    const todayDate = getLocalDateString();
-    const map = new Map<string, Presensi>();
-    recentPresensi.forEach((p) => {
-      if (isPresensiDateMatch(p.tanggal, todayDate)) {
-        if (p.siswaId) map.set(`id:${p.siswaId}`, p);
-        if (p.nis && p.nis.trim().length >= 4) {
-          const cleanNis = p.nis.trim();
-          map.set(`nis:${cleanNis}`, p);
-          const noZero = cleanNis.replace(/^0+/, '');
-          if (noZero.length >= 4) {
-            map.set(`nis:${noZero}`, p);
-          }
-        }
-      }
-    });
-    return map;
+  // Fast deterministic O(1) today attendance lookup index
+  const todayAttendanceIndex = useMemo(() => {
+    return buildDailyAttendanceIndex(recentPresensi, getLocalDateString());
   }, [recentPresensi]);
 
   // Display only recent 30 scans of today to prevent rendering thousands of elements
@@ -91,7 +77,7 @@ function ScanScreen({
     });
   }, [siswaList, simSearch, selectedSimKelas]);
 
-  // Clean-up camera on unmount
+  // Clean-up camera & timers on unmount
   useEffect(() => {
     return () => {
       if (cameraStream) {
@@ -99,6 +85,9 @@ function ScanScreen({
       }
       if (scanTimeoutRef.current) {
         clearTimeout(scanTimeoutRef.current);
+      }
+      if (virtualScanTimeoutRef.current) {
+        clearTimeout(virtualScanTimeoutRef.current);
       }
     };
   }, [cameraStream]);
@@ -415,16 +404,14 @@ function ScanScreen({
 
     const todayDate = getLocalDateString(now);
 
-    // Check if pupil already scanned today to avoid duplicate records or overwriting earlier Hadir/Terlambat
-    const alreadyScanned = recentPresensi.find(
-      (p) => isPresensiMatchSiswa(p, matchedSiswa) && isPresensiDateMatch(p.tanggal, todayDate)
-    );
-
-    if (
+    // Check if pupil already scanned today using deterministic comparator
+    const alreadyScanned = getLatestAttendanceForStudent(matchedSiswa, recentPresensi, todayDate);
+    const wasAlreadyQrScanned =
       alreadyScanned &&
-      !customStatus &&
-      (alreadyScanned.status === 'Hadir' || alreadyScanned.status === 'Terlambat')
-    ) {
+      (!alreadyScanned.metode || alreadyScanned.metode === 'QR_SCAN') &&
+      (alreadyScanned.status === 'Hadir' || alreadyScanned.status === 'Terlambat');
+
+    if (wasAlreadyQrScanned && !customStatus && methodType === 'QR_SCAN') {
       playAudioFeedback('warning');
       setErrorMsg(
         `Peringatan: ${matchedSiswa.nama} (${matchedSiswa.kelas}) sudah tercatat ${alreadyScanned.status} hari ini pukul ${alreadyScanned.waktu.slice(0, 5)} WIB.`
@@ -446,8 +433,11 @@ function ScanScreen({
       playAudioFeedback('success');
     }
 
-    // Deterministic unique ID per student per day so Firestore & server update in-place cleanly
-    const newPresensiId = alreadyScanned ? alreadyScanned.id : `pr-${matchedSiswa.id}-${todayDate}`;
+    // Canonical deterministic ID per student per day so Firestore & server update in-place cleanly
+    const newPresensiId =
+      alreadyScanned && alreadyScanned.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(alreadyScanned.id)
+        ? alreadyScanned.id
+        : `pr-${matchedSiswa.id}-${todayDate}`;
     const parentPhone = matchedSiswa.waOrangTua || '081234567890';
     const resolvedMetodeLabel = methodType === 'QR_SCAN' 
       ? 'Scan QR Code Kartu' 
@@ -478,6 +468,7 @@ function ScanScreen({
       metode: methodType,
       metodeLabel: resolvedMetodeLabel,
       keterangan: resolvedKeterangan,
+      updatedAt: Date.now(),
     };
 
     // 1. Instantly record attendance into local, cloud, and server state (updates daily, weekly, monthly, and semester recaps)
@@ -510,9 +501,13 @@ function ScanScreen({
   const handleVirtualScan = (siswa: Siswa, forcedStatus?: StatusKehadiran) => {
     setScannerStatus('SCANNING');
     const qrIdentifier = getStudentQRIdentifier(siswa);
-    setTimeout(() => {
-      handleScanIdentify(qrIdentifier, forcedStatus, 'QR_SCAN');
-    }, 400); // Quick split-second visual laser delay
+    if (virtualScanTimeoutRef.current) {
+      clearTimeout(virtualScanTimeoutRef.current);
+    }
+    virtualScanTimeoutRef.current = setTimeout(() => {
+      virtualScanTimeoutRef.current = null;
+      handleScanIdentifyRef.current?.(qrIdentifier, forcedStatus, 'QR_SCAN');
+    }, 300); // Quick split-second visual laser delay
   };
 
   return (
@@ -899,12 +894,8 @@ function ScanScreen({
           {/* Interactive Virtual Students Card Matrix */}
           <div className="space-y-2 max-h-[304px] overflow-y-auto pr-1">
             {filteredSimSiswa.slice(0, simLimit).map((siswa) => {
-              // Fast O(1) check using namespaced todayAttendanceMap (zero cross-student collision)
-              const byId = todayAttendanceMap.get(`id:${siswa.id}`);
-              const byNis = siswa.nis && siswa.nis.trim().length >= 4
-                ? (todayAttendanceMap.get(`nis:${siswa.nis.trim()}`) || todayAttendanceMap.get(`nis:${siswa.nis.trim().replace(/^0+/, '')}`))
-                : undefined;
-              const presentToday = byId || (byNis && (!byNis.siswaId || byNis.siswaId === siswa.id) ? byNis : undefined);
+              // Fast O(1) deterministic lookup using todayAttendanceIndex
+              const presentToday = getAttendanceFromIndex(siswa, todayAttendanceIndex);
 
               return (
                 <div

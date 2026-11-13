@@ -49,7 +49,10 @@ import {
   getMondayOfWeek,
   safeAddDays,
   safeDateParts,
-  getAttendanceShift
+  getAttendanceShift,
+  formatDateIndoLong,
+  formatMonthIndo,
+  isRecordNewer
 } from '../lib/attendanceUtils';
 import { downloadSingleClassReport } from '../lib/attendanceReportExport';
 import { auditAndSyncSemesterPresensi } from '../lib/cloudSync';
@@ -64,7 +67,7 @@ interface ReportPanelProps {
 }
 
 type ActiveTab = 'harian' | 'mingguan' | 'bulanan' | 'semester';
-type StatusFilterType = 'semua' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
+type StatusFilterType = 'semua' | 'sudah_absen' | 'hadir_total' | 'hadir' | 'terlambat' | 'sakit' | 'izin' | 'alfa' | 'belum_absen';
 
 function ReportPanel({
   siswaList,
@@ -175,8 +178,8 @@ function ReportPanel({
   // Rekapitulasi Rombel Semua Kelas (1-A s/d 6-B) untuk tanggal terpilih
   const allRombelSummary = useMemo(() => {
     if (activeTab !== 'harian') return [];
-    return calculateAllRombelSummaryList(siswaList, presensiList, harianDate);
-  }, [siswaList, presensiList, harianDate, activeTab]);
+    return calculateAllRombelSummaryList(siswaList, presensiList, harianDate, settings);
+  }, [siswaList, presensiList, harianDate, activeTab, settings]);
 
   const rombelStatusStats = useMemo(() => {
     let tuntas = 0;
@@ -357,29 +360,49 @@ function ReportPanel({
     let list = harianReportDataRaw;
     if (sesiFilter !== 'semua') {
       list = list.filter(r => {
-        const s = r.record?.shift || getAttendanceShift(r.record, r.siswa.kelas);
+        const s = r.record?.shift || getAttendanceShift(r.record, r.siswa.kelas, r.record?.waktu, settings);
         return sesiFilter === 'siang' ? s === 'Siang' : s === 'Pagi';
       });
     }
-    if (statusFilter === 'semua') return list;
-    if (statusFilter === 'hadir_total') return list.filter(r => r.status === 'Hadir' || r.status === 'Terlambat');
-    if (statusFilter === 'hadir') return list.filter(r => r.status === 'Hadir');
-    if (statusFilter === 'terlambat') return list.filter(r => r.status === 'Terlambat');
-    if (statusFilter === 'sakit') return list.filter(r => r.status === 'Sakit');
-    if (statusFilter === 'izin') return list.filter(r => r.status === 'Izin');
-    if (statusFilter === 'alfa') return list.filter(r => r.status === 'Alfa');
-    if (statusFilter === 'belum_absen') return list.filter(r => r.status === 'Belum Absen');
+
+    if (statusFilter === 'sudah_absen') list = list.filter(r => r.hasPresensi);
+    else if (statusFilter === 'hadir_total') list = list.filter(r => r.status === 'Hadir' || r.status === 'Terlambat');
+    else if (statusFilter === 'hadir') list = list.filter(r => r.status === 'Hadir');
+    else if (statusFilter === 'terlambat') list = list.filter(r => r.status === 'Terlambat');
+    else if (statusFilter === 'sakit') list = list.filter(r => r.status === 'Sakit');
+    else if (statusFilter === 'izin') list = list.filter(r => r.status === 'Izin');
+    else if (statusFilter === 'alfa') list = list.filter(r => r.status === 'Alfa');
+    else if (statusFilter === 'belum_absen') list = list.filter(r => r.status === 'Belum Absen');
+
+    // Saat melihat Semua Kelas, tampilkan siswa yang SUDAH ABSEN dari seluruh kelas di urutan paling atas
+    if (selectedKelas === 'Semua Kelas' && statusFilter !== 'belum_absen') {
+      list = [...list].sort((a, b) => {
+        if (a.hasPresensi !== b.hasPresensi) return a.hasPresensi ? -1 : 1;
+        if (a.hasPresensi && b.hasPresensi && a.record && b.record) {
+          const updDiff = (b.record.updatedAt || 0) - (a.record.updatedAt || 0);
+          if (updDiff !== 0) return updDiff;
+          const timeA = (a.record.waktu || '').slice(0, 8);
+          const timeB = (b.record.waktu || '').slice(0, 8);
+          if (timeA !== timeB) return timeB.localeCompare(timeA);
+        }
+        if (a.siswa.kelas !== b.siswa.kelas) return a.siswa.kelas.localeCompare(b.siswa.kelas);
+        return a.siswa.nama.localeCompare(b.siswa.nama);
+      });
+    }
+
     return list;
-  }, [harianReportDataRaw, statusFilter, sesiFilter]);
+  }, [harianReportDataRaw, statusFilter, sesiFilter, settings, selectedKelas]);
+
+  const shouldPaginateHarian = selectedKelas === 'Semua Kelas' && !searchQuery.trim() && statusFilter === 'semua';
 
   const displayedHarianRows = useMemo(() => {
-    return harianReportData.slice(0, harianPageLimit);
-  }, [harianReportData, harianPageLimit]);
+    return shouldPaginateHarian ? harianReportData.slice(0, harianPageLimit) : harianReportData;
+  }, [harianReportData, harianPageLimit, shouldPaginateHarian]);
 
   // Harian Statistics Summary for the active selection
   const harianStats = useMemo(() => {
     const total = harianReportDataRaw.length;
-    if (total === 0) return { total: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alfa: 0, belumAbsen: 0, totalHadirSemua: 0, totalTidakHadir: 0, percentage: 0, totalPagi: 0, totalSiang: 0 };
+    if (total === 0) return { total: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alfa: 0, belumAbsen: 0, sudahAbsen: 0, totalHadirSemua: 0, totalTidakHadir: 0, percentage: 0, totalPagi: 0, totalSiang: 0 };
     
     let hadir = 0;
     let terlambat = 0;
@@ -391,7 +414,7 @@ function ReportPanel({
     let totalSiang = 0;
 
     harianReportDataRaw.forEach(row => {
-      const s = row.record?.shift || getAttendanceShift(row.record, row.siswa.kelas);
+      const s = row.record?.shift || getAttendanceShift(row.record, row.siswa.kelas, row.record?.waktu, settings);
       if (s === 'Siang') totalSiang++;
       else totalPagi++;
 
@@ -405,12 +428,13 @@ function ReportPanel({
       }
     });
 
+    const sudahAbsen = Math.max(0, total - belumAbsen);
     const totalHadirSemua = hadir + terlambat;
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
     const percentage = total > 0 ? Math.min(100, Math.round((totalHadirSemua / total) * 100)) : 0;
 
-    return { total, hadir, terlambat, sakit, izin, alfa, belumAbsen, totalHadirSemua, totalTidakHadir, percentage };
-  }, [harianReportDataRaw]);
+    return { total, hadir, terlambat, sakit, izin, alfa, belumAbsen, sudahAbsen, totalHadirSemua, totalTidakHadir, percentage, totalPagi, totalSiang };
+  }, [harianReportDataRaw, settings]);
 
   // MINGGUAN: Calculate student matrix for Monday - Friday (Instant indexed execution)
   const mingguanReportData = useMemo(() => {
@@ -485,7 +509,7 @@ function ReportPanel({
       studentMonthRecords.forEach(r => {
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
-        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+        if (isRecordNewer(r, existing)) {
           dateMap.set(dKey, r);
         }
       });
@@ -599,7 +623,7 @@ function ReportPanel({
       studentSemesterRecords.forEach(r => {
         const dKey = normalizeDateKey(r.tanggal);
         const existing = dateMap.get(dKey);
-        if (!existing || (r.waktu && existing.waktu && r.waktu >= existing.waktu)) {
+        if (isRecordNewer(r, existing)) {
           dateMap.set(dKey, r);
         }
       });
@@ -665,26 +689,26 @@ function ReportPanel({
   // -- DOWNLOAD TRIGGERS (Centralized CSV & ZIP Generators) --
 
   const handleDownloadHarian = () => {
-    downloadSingleClassReport('harian', selectedKelas, harianDate, siswaList, presensiList);
+    downloadSingleClassReport('harian', selectedKelas, harianDate, siswaList, presensiList, undefined, settings);
   };
 
   const handleDownloadRekapRombel = () => {
-    downloadSingleClassReport('harian', 'Semua Kelas', harianDate, siswaList, presensiList);
+    downloadSingleClassReport('harian', 'Semua Kelas', harianDate, siswaList, presensiList, undefined, settings);
   };
 
   const handleDownloadMingguan = () => {
-    downloadSingleClassReport('mingguan', selectedKelas, mingguanDate, siswaList, presensiList);
+    downloadSingleClassReport('mingguan', selectedKelas, mingguanDate, siswaList, presensiList, undefined, settings);
   };
 
   const handleDownloadBulanan = () => {
-    downloadSingleClassReport('bulanan', selectedKelas, bulananMonth, siswaList, presensiList);
+    downloadSingleClassReport('bulanan', selectedKelas, bulananMonth, siswaList, presensiList, undefined, settings);
   };
 
   const handleDownloadSemester = () => {
     downloadSingleClassReport('semester', selectedKelas, `SEM_${semesterType}_${semesterTahunAjaran.replace('/', '_')}`, siswaList, presensiList, {
       semesterType,
       tahunAjaran: semesterTahunAjaran
-    });
+    }, settings);
   };
 
   const handleOpenPrintModal = (
@@ -1030,7 +1054,7 @@ function ReportPanel({
                 <div>
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-500" />
-                    <span>Status Pelaksanaan Presensi Per Rombel Kelas ({new Date(harianDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })})</span>
+                    <span>Status Pelaksanaan Presensi Per Rombel Kelas ({formatDateIndoLong(harianDate)})</span>
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Monitoring riil: kelas mana yang sudah melakukan absen (tuntas), sedang berjalan, belum absen, serta riwayat QR Code ditolak/error.
@@ -1193,6 +1217,7 @@ function ReportPanel({
             <AttendanceBarChart
               siswaList={siswaList}
               presensiList={presensiList}
+              settings={settings}
               selectedDate={harianDate}
               selectedKelas={selectedKelas}
               onSelectKelas={(kelas) => setSelectedKelas(kelas)}
@@ -1210,7 +1235,7 @@ function ReportPanel({
                       Tabel Rekapitulasi Presensi Per Rombel Kelas (1-A s/d 6-B)
                     </h3>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      Tanggal: <b>{new Date(harianDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</b> • Klik nama kelas untuk melihat rincian murid
+                      Tanggal: <b>{formatDateIndoLong(harianDate)}</b> • Klik nama kelas untuk melihat rincian murid
                     </p>
                   </div>
                 </div>
@@ -1456,7 +1481,7 @@ function ReportPanel({
                                 title={`Download CSV Kelas ${rombel.kelas}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  downloadSingleClassReport('harian', rombel.kelas, harianDate, siswaList, presensiList);
+                                  downloadSingleClassReport('harian', rombel.kelas, harianDate, siswaList, presensiList, undefined, settings);
                                 }}
                                 className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-100/70 hover:bg-emerald-100 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                               >
@@ -1538,6 +1563,9 @@ function ReportPanel({
                   </span>
                   <span className="text-[11px] text-slate-500">
                     Menampilkan <b>{harianReportData.length}</b> dari {harianReportDataRaw.length} murid
+                    {selectedKelas === 'Semua Kelas' && harianStats.sudahAbsen > 0 && statusFilter === 'semua' && (
+                      <> • <b className="text-emerald-700">{harianStats.sudahAbsen} Sudah Absen</b> tampil di urutan atas</>
+                    )}
                   </span>
                 </div>
 
@@ -1551,6 +1579,14 @@ function ReportPanel({
                       }`}
                     >
                       Semua ({harianReportDataRaw.length})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter('sudah_absen')}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        statusFilter === 'sudah_absen' ? 'bg-teal-700 text-white shadow-xs' : 'text-teal-800 bg-teal-50 hover:bg-teal-100'
+                      }`}
+                    >
+                      Sudah Absen ({harianStats.sudahAbsen})
                     </button>
                     <button
                       onClick={() => setStatusFilter('hadir_total')}
@@ -1634,6 +1670,48 @@ function ReportPanel({
                 </div>
               </div>
 
+              {/* BANNER DAFTAR HADIR YANG SUDAH ABSEN SEMUA KELAS */}
+              {grandTotalSchool.totalSiswa - grandTotalSchool.belumAbsen > 0 && (
+                <div className="px-5 py-3 bg-emerald-50/70 border-b border-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-black text-emerald-900 flex items-center gap-1 mr-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Rekap Yang Sudah Absen Semua Kelas ({grandTotalSchool.totalSiswa - grandTotalSchool.belumAbsen} Siswa):</span>
+                    </span>
+                    {allRombelSummary
+                      .filter((r) => (r.totalSiswa - r.belumAbsen) > 0)
+                      .map((r) => {
+                        const recorded = r.totalSiswa - r.belumAbsen;
+                        return (
+                          <button
+                            key={`chip-${r.kelas}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedKelas(r.kelas);
+                              setStatusFilter('sudah_absen');
+                            }}
+                            className="text-[10px] font-bold bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-lg cursor-pointer transition"
+                          >
+                            {r.kelas}: {recorded} siswa
+                          </button>
+                        );
+                      })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedKelas('Semua Kelas');
+                      setStatusFilter(statusFilter === 'sudah_absen' ? 'semua' : 'sudah_absen');
+                    }}
+                    className="text-[10px] font-black bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded-lg cursor-pointer shrink-0 transition"
+                  >
+                    {statusFilter === 'sudah_absen' && selectedKelas === 'Semua Kelas'
+                      ? 'Tampilkan Semua (428 Siswa)'
+                      : `Fokus Daftar Hadir (${grandTotalSchool.totalSiswa - grandTotalSchool.belumAbsen})`}
+                  </button>
+                </div>
+              )}
+
               {harianReportData.length === 0 ? (
                 <div className="py-12 text-center text-gray-400 space-y-2">
                   <Info className="w-8 h-8 text-slate-300 mx-auto" />
@@ -1698,10 +1776,10 @@ function ReportPanel({
                           }
                         }
 
-                        const studentShift = row.record?.shift || getAttendanceShift(row.record, row.siswa.kelas);
+                        const studentShift = row.record?.shift || getAttendanceShift(row.record, row.siswa.kelas, row.record?.waktu, settings);
 
                         return (
-                          <tr key={row.siswa.id} className="hover:bg-slate-50 transition-colors">
+                          <tr key={row.siswa.id} className={`transition-colors ${row.hasPresensi ? 'bg-emerald-50/35 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}`}>
                             <td className="py-2.5 px-4 text-center text-slate-400 font-bold">{idx + 1}</td>
                             <td className="py-2.5 px-4 font-mono font-bold text-slate-600">{row.siswa.nis}</td>
                             <td className="py-2.5 px-4 font-extrabold text-slate-800 capitalize">{row.siswa.nama.toLowerCase()}</td>
@@ -1775,7 +1853,7 @@ function ReportPanel({
                       })}
                     </tbody>
                   </table>
-                  {harianReportData.length > harianPageLimit && (
+                  {shouldPaginateHarian && harianReportData.length > harianPageLimit && (
                     <div className="p-3 text-center bg-slate-50 border-t border-slate-100">
                       <button
                         onClick={() => setHarianPageLimit(prev => prev + 50)}
@@ -1818,6 +1896,17 @@ function ReportPanel({
                     />
                     <button
                       type="button"
+                      onClick={() => setMingguanDate(getMondayOfWeek(getLocalDateString()))}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+                        mingguanDate === getMondayOfWeek(getLocalDateString())
+                          ? 'bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Minggu Ini
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setMingguanDate(getMondayOfWeek('2026-10-26'))}
                       className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
                         mingguanDate === '2026-10-26'
@@ -1825,7 +1914,7 @@ function ReportPanel({
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      Minggu Ini (26–30 Okt)
+                      26–30 Okt
                     </button>
                     <button
                       type="button"
@@ -2070,7 +2159,7 @@ function ReportPanel({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => downloadSingleClassReport('mingguan', item.kelas, mingguanDate, siswaList, presensiList)}
+                                onClick={() => downloadSingleClassReport('mingguan', item.kelas, mingguanDate, siswaList, presensiList, undefined, settings)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
                                 title="Unduh CSV Mingguan Kelas"
                               >
@@ -2349,7 +2438,7 @@ function ReportPanel({
                       Tabel Rekapitulasi Bulanan Per Rombel Kelas (1-A s/d 6-B)
                     </h3>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      Bulan: <b>{new Date(`${bulananMonth}-02`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</b> • Klik rombel untuk filter akumulasi murid
+                      Bulan: <b>{formatMonthIndo(bulananMonth)}</b> • Klik rombel untuk filter akumulasi murid
                     </p>
                   </div>
                 </div>
@@ -2426,7 +2515,7 @@ function ReportPanel({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => downloadSingleClassReport('bulanan', item.kelas, bulananMonth, siswaList, presensiList)}
+                                onClick={() => downloadSingleClassReport('bulanan', item.kelas, bulananMonth, siswaList, presensiList, undefined, settings)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
                                 title="Unduh CSV Bulanan Kelas"
                               >
@@ -2446,7 +2535,7 @@ function ReportPanel({
             <div className="bg-white border border-slate-150 rounded-3xl shadow-sm overflow-hidden text-left font-sans">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                 <span className="text-xs font-extrabold text-slate-750 tracking-wide uppercase">
-                  Log Akumulasi Bulanan: {selectedKelas} • Bulan {new Date(`${bulananMonth}-02`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                  Log Akumulasi Bulanan: {selectedKelas} • Bulan {formatMonthIndo(bulananMonth)}
                 </span>
                 <span className="text-[10px] text-gray-400 font-bold font-mono">Daftar Aktif</span>
               </div>
@@ -2706,7 +2795,7 @@ function ReportPanel({
                                 onClick={() => downloadSingleClassReport('semester', item.kelas, `SEM_${semesterType}_${semesterTahunAjaran.replace('/', '_')}`, siswaList, presensiList, {
                                   semesterType,
                                   tahunAjaran: semesterTahunAjaran
-                                })}
+                                }, settings)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
                                 title="Unduh CSV Semester Kelas"
                               >
@@ -2758,11 +2847,11 @@ function ReportPanel({
                     <tbody className="divide-y divide-slate-100">
                       {semesterReportData.map((row, idx) => {
                         let qualificationBadge = 'bg-red-100 text-red-700 border-red-200';
-                        if (row.metrics.predikat === 'Sangat Baik') {
+                        if (row.metrics.predikat.startsWith('Sangat Baik')) {
                           qualificationBadge = 'bg-green-100 text-green-800 border-green-200';
-                        } else if (row.metrics.predikat === 'Baik') {
+                        } else if (row.metrics.predikat.startsWith('Baik')) {
                           qualificationBadge = 'bg-emerald-50 text-emerald-800 border-emerald-100';
-                        } else if (row.metrics.predikat === 'Cukup') {
+                        } else if (row.metrics.predikat.startsWith('Cukup')) {
                           qualificationBadge = 'bg-amber-50 text-amber-800 border-amber-100';
                         }
 
@@ -2823,6 +2912,7 @@ function ReportPanel({
         onClose={() => setIsDownloadModalOpen(false)}
         siswaList={siswaList}
         presensiList={presensiList}
+        settings={settings}
         initialType={downloadModalType}
         initialDate={activeTab === 'mingguan' ? mingguanDate : harianDate}
         initialMonth={bulananMonth}
@@ -2844,7 +2934,7 @@ function ReportPanel({
                     Log Pemindaian QR Code Ditolak / Error
                   </h3>
                   <p className="text-xs text-slate-600 font-medium mt-0.5">
-                    Tanggal: <span className="font-bold text-slate-800">{new Date(harianDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span> • {dailyQrErrors.length} Kasus Ditolak
+                    Tanggal: <span className="font-bold text-slate-800">{formatDateIndoLong(harianDate)}</span> • {dailyQrErrors.length} Kasus Ditolak
                   </p>
                 </div>
               </div>
@@ -2893,7 +2983,7 @@ function ReportPanel({
                         <tr key={err.id || idx} className="hover:bg-rose-50/30">
                           <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
                           <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
-                            {err.timestamp ? new Date(err.timestamp).toLocaleTimeString('id-ID') : '-'}
+                            {err.timestamp ? (isNaN(Date.parse(err.timestamp)) ? err.timestamp : new Date(err.timestamp).toLocaleTimeString('id-ID')) : '-'}
                           </td>
                           <td className="py-2.5 px-3 font-mono">
                             <span className="bg-slate-150 px-2 py-0.5 rounded text-[11px] font-bold text-slate-800 border border-slate-200 block truncate max-w-[180px]">

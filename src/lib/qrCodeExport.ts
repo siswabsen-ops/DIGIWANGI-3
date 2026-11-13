@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
 import { Siswa, getStudentQRIdentifier } from '../types';
+import { getLocalDateString, formatDateIndoLong } from './attendanceUtils';
 
 /**
  * Helper to trigger browser download for a Blob
@@ -236,7 +237,7 @@ KARTU QR CODE ABSENSI SISWA SDN 3 KARAMATWANGI
 ==================================================
 Target: ${targetKelas}
 Total Siswa: ${studentsToExport.length} Siswa
-Tanggal Dibuat: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+Tanggal Dibuat: ${formatDateIndoLong(getLocalDateString())}
 
 PETUNJUK PENGGUNAAN:
 1. Gambar QR Code berformat PNG dengan resolusi tinggi (600x820px).

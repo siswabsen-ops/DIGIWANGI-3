@@ -5,7 +5,8 @@ import {
   syncMasterAccountsToCloud as syncToFirestoreAccounts,
   syncMasterWaliKelasToCloud as syncToFirestoreWaliKelas,
   saveSettingsToFirestore,
-  subscribeToCloudSync as subscribeToFirestoreSync
+  subscribeToCloudSync as subscribeToFirestoreSync,
+  DeletedTombstone
 } from './firebase';
 
 export interface CloudMasterPayload {
@@ -14,6 +15,7 @@ export interface CloudMasterPayload {
   students?: Siswa[];
   waliKelas?: WaliKelas[];
   presensi?: Presensi[];
+  deletedKeys?: Record<string, number> | DeletedTombstone[];
   settings?: SystemSettings;
   accounts?: { user: User; pin: string }[];
 }
@@ -21,7 +23,7 @@ export interface CloudMasterPayload {
 export interface SyncCallbacks {
   onStudentsChange?: (students: Siswa[]) => void;
   onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
-  onPresensiChange?: (presensi: Presensi[], updatedAt?: number) => void;
+  onPresensiChange?: (presensi: Presensi[], updatedAt?: number, deletedKeys?: Record<string, number> | DeletedTombstone[]) => void;
   onSettingsChange?: (settings: SystemSettings) => void;
   onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
 }
@@ -106,14 +108,18 @@ export async function syncWaliKelasToCloud(waliKelas: WaliKelas[], updatedBy: st
 }
 
 /**
- * Menyinkronkan presensi ke server
+ * Menyinkronkan presensi ke server & Firestore
  */
-export async function syncPresensiToCloud(presensi: Presensi[], updatedBy: string = 'Presensi'): Promise<boolean> {
+export async function syncPresensiToCloud(
+  presensi: Presensi[],
+  updatedBy: string = 'Presensi',
+  deletedKeys?: DeletedTombstone[]
+): Promise<boolean> {
   try {
     const res = await fetch('/api/sync/presensi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: presensi, updatedBy })
+      body: JSON.stringify({ data: presensi, updatedBy, deletedKeys })
     });
     if (res.ok) {
       const respJson = await res.json();
@@ -124,7 +130,7 @@ export async function syncPresensiToCloud(presensi: Presensi[], updatedBy: strin
   }
 
   try {
-    syncToFirestorePresensi(presensi, updatedBy).catch(() => {});
+    syncToFirestorePresensi(presensi, updatedBy, deletedKeys).catch(() => {});
   } catch {}
 
   return true;
@@ -328,7 +334,7 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
               callbacks.onWaliKelasChange(fullData.waliKelas);
             }
             if (fullData.presensi && callbacks.onPresensiChange) {
-              callbacks.onPresensiChange(fullData.presensi);
+              callbacks.onPresensiChange(fullData.presensi, undefined, fullData.deletedKeys);
             }
             if (fullData.settings && callbacks.onSettingsChange) {
               callbacks.onSettingsChange(fullData.settings);
@@ -358,33 +364,13 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
     window.addEventListener('focus', handleWindowFocus);
   }
 
-  // Parallel Firestore listener (for Firestore live stream if active)
+  // Parallel Firestore listener (for Firestore live stream on sync/presensi)
   let unsubFirestore: (() => void) | undefined;
   try {
     unsubFirestore = subscribeToFirestoreSync({
-      onStudentsChange: (stu) => {
-        if (isSubscribed && stu && stu.length > 0 && callbacks.onStudentsChange) {
-          callbacks.onStudentsChange(stu);
-        }
-      },
-      onWaliKelasChange: (wk) => {
-        if (isSubscribed && wk && wk.length > 0 && callbacks.onWaliKelasChange) {
-          callbacks.onWaliKelasChange(wk);
-        }
-      },
-      onPresensiChange: (pre, updatedAt) => {
+      onPresensiChange: (pre, updatedAt, deletedKeys) => {
         if (isSubscribed && pre && callbacks.onPresensiChange) {
-          callbacks.onPresensiChange(pre, updatedAt);
-        }
-      },
-      onSettingsChange: (set) => {
-        if (isSubscribed && set && callbacks.onSettingsChange) {
-          callbacks.onSettingsChange(set);
-        }
-      },
-      onAccountsChange: (acc) => {
-        if (isSubscribed && acc && callbacks.onAccountsChange) {
-          callbacks.onAccountsChange(acc);
+          callbacks.onPresensiChange(pre, updatedAt, deletedKeys);
         }
       }
     });
@@ -418,7 +404,7 @@ export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
         callbacks.onWaliKelasChange(fullData.waliKelas);
       }
       if (fullData.presensi && callbacks.onPresensiChange) {
-        callbacks.onPresensiChange(fullData.presensi);
+        callbacks.onPresensiChange(fullData.presensi, undefined, fullData.deletedKeys);
       }
       if (fullData.settings && callbacks.onSettingsChange) {
         callbacks.onSettingsChange(fullData.settings);

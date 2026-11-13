@@ -80,6 +80,7 @@ export interface Presensi {
   metodeLabel?: string; // "Scan QR Code Kartu" | "Manual Tap Wali Kelas" | "Manual Operator"
   keterangan?: string; // Catatan tambahan (misal: "Hadir via Scan Barcode", "Sakit flu", "Manual Tap Wali Kelas")
   scanError?: string; // Pesan error bila barcode sempat ditolak / peringatan kartu
+  updatedAt?: number; // Epoch ms saat catatan terakhir dibuat / diperbarui
 }
 
 export interface QRErrorRecord {

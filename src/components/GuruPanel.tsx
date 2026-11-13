@@ -32,7 +32,8 @@ import {
   isSameClass,
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
-  getAttendanceShift
+  getAttendanceShift,
+  normalizeDateKey
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
@@ -143,16 +144,20 @@ function GuruPanel({
   // Single Manual Trigger specifically for this teacher class-room (Sakit, Izin, Alfa, atau penyesuaian kelas)
   const handleTeacherSetStatus = (siswa: Siswa, targetStatus: StatusKehadiran) => {
     const waktuSekarang = getLocalTimeString();
+    const normTargetDate = normalizeDateKey(targetDate);
 
-    // Look for previous same record to overwrite
-    const existingRecord = getLatestAttendanceForStudent(siswa, presensiList, targetDate);
-    const overwriteRecordId = existingRecord ? existingRecord.id : `pr-${siswa.id}-${targetDate}`;
+    // Look for previous same record to overwrite with canonical ID
+    const existingRecord = getLatestAttendanceForStudent(siswa, presensiList, normTargetDate);
+    const overwriteRecordId =
+      existingRecord && existingRecord.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(existingRecord.id)
+        ? existingRecord.id
+        : `pr-${siswa.id}-${normTargetDate}`;
 
     const applicableJadwal = settings ? getApplicableJadwal(siswa.kelas, settings, waktuSekarang) : undefined;
     const resolvedShift: 'Pagi' | 'Siang' =
       applicableJadwal?.tipe === 'Siang' || parseInt(waktuSekarang.slice(0, 2), 10) >= 11
         ? 'Siang'
-        : getAttendanceShift(null, siswa.kelas);
+        : getAttendanceShift(null, siswa.kelas, waktuSekarang, settings);
 
     const customNote = tapKeterangan.trim();
     const defaultNote =
@@ -171,7 +176,7 @@ function GuruPanel({
       nik: siswa.nik,
       nama: siswa.nama,
       kelas: siswa.kelas,
-      tanggal: targetDate,
+      tanggal: normTargetDate,
       waktu: waktuSekarang,
       status: targetStatus,
       shift: resolvedShift,
@@ -180,7 +185,8 @@ function GuruPanel({
       operator: currentUser.namaLengkap || waliKelasName,
       metode: 'MANUAL_TAP',
       metodeLabel: 'Manual Tap Wali Kelas',
-      keterangan: customNote ? `${targetStatus} (${customNote}) ➔ Di-tap oleh Wali Kelas` : defaultNote
+      keterangan: customNote ? `${targetStatus} (${customNote}) ➔ Di-tap oleh Wali Kelas` : defaultNote,
+      updatedAt: Date.now()
     };
 
     onAddPresensi(newRecord);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Download, 
   X, 
@@ -14,7 +14,7 @@ import {
   Filter,
   CheckCircle2
 } from 'lucide-react';
-import { Siswa, Presensi, DAFTAR_KELAS } from '../types';
+import { Siswa, Presensi, SystemSettings, DAFTAR_KELAS } from '../types';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import { downloadSingleClassReport, downloadAllClassesZip } from '../lib/attendanceReportExport';
 import { isSameClass, getLocalDateString } from '../lib/attendanceUtils';
@@ -24,6 +24,7 @@ interface ClassReportDownloadModalProps {
   onClose: () => void;
   siswaList: Siswa[];
   presensiList: Presensi[];
+  settings?: SystemSettings;
   initialType?: 'harian' | 'mingguan' | 'bulanan' | 'semester';
   initialDate?: string;
   initialMonth?: string;
@@ -35,6 +36,7 @@ export default function ClassReportDownloadModal({
   onClose,
   siswaList,
   presensiList,
+  settings,
   initialType = 'harian',
   initialDate = '',
   initialMonth = '',
@@ -42,10 +44,18 @@ export default function ClassReportDownloadModal({
 }: ClassReportDownloadModalProps) {
   const [reportType, setReportType] = useState<'harian' | 'mingguan' | 'bulanan' | 'semester'>(initialType);
   const [targetDate, setTargetDate] = useState<string>(initialDate || getLocalDateString());
-  const [targetMonth, setTargetMonth] = useState<string>(initialMonth || new Date().toISOString().slice(0, 7));
+  const [targetMonth, setTargetMonth] = useState<string>(initialMonth || getLocalDateString().slice(0, 7));
   const [targetSemesterType, setTargetSemesterType] = useState<'1' | '2'>('1');
   const [targetTahunAjaran, setTargetTahunAjaran] = useState<string>('2026/2027');
   const [searchClass, setSearchClass] = useState<string>('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setReportType(initialType);
+      setTargetDate(initialDate || getLocalDateString());
+      setTargetMonth(initialMonth || getLocalDateString().slice(0, 7));
+    }
+  }, [isOpen, initialType, initialDate, initialMonth]);
 
   // Bulk ZIP loading state
   const [isZipping, setIsZipping] = useState<boolean>(false);
@@ -91,7 +101,8 @@ export default function ClassReportDownloadModal({
         activePeriod, 
         siswaList, 
         presensiList,
-        reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined
+        reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined,
+        settings
       );
       setDownloadSuccess(`Rekap ${reportType} kelas ${kelas} berhasil diunduh!`);
       setTimeout(() => setDownloadSuccess(''), 3500);
@@ -115,7 +126,8 @@ export default function ClassReportDownloadModal({
         (current, total, className) => {
           setZipProgress({ current, total, className });
         },
-        reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined
+        reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined,
+        settings
       );
 
       setDownloadSuccess(`Paket ZIP Rekap ${reportType} untuk seluruh kelas berhasil diunduh!`);

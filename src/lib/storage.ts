@@ -38,19 +38,6 @@ export function safeSetItem(key: string, value: string): boolean {
       } catch {}
     }
 
-    // Optimization: prevent storing multi-megabyte datasets in localStorage.
-    // The master store is the high-speed server & cloud; localStorage only needs a lightweight recent window.
-    if (key === 'karapres3_presensi_v5' && value.length > 200000) {
-      try {
-        const parsed = JSON.parse(value);
-        if (Array.isArray(parsed) && parsed.length > 300) {
-          const compactSlice = parsed.slice(-300);
-          localStorage.setItem(key, JSON.stringify(compactSlice));
-          return true;
-        }
-      } catch {}
-    }
-
     localStorage.setItem(key, value);
     return true;
   } catch (error: any) {
@@ -76,14 +63,21 @@ export function safeSetItem(key: string, value: string): boolean {
       }
     } catch {}
 
-    // Retry saving compact version
+    // Retry saving: on QuotaExceededError for presensi, ALWAYS preserve all live records (> 2026-10-30)
     try {
       if (key === 'karapres3_presensi_v5') {
         const parsed = JSON.parse(value);
         if (Array.isArray(parsed)) {
-          const windowSlice = parsed.slice(-200);
-          localStorage.setItem(key, JSON.stringify(windowSlice));
-          return true;
+          const liveRecords = parsed.filter((p: any) => p && typeof p.tanggal === 'string' && p.tanggal.slice(0, 10) > '2026-10-30');
+          const archiveRecords = parsed.filter((p: any) => !p || typeof p.tanggal !== 'string' || p.tanggal.slice(0, 10) <= '2026-10-30');
+          for (const archiveCap of [1200, 600, 200, 0]) {
+            try {
+              const subset = archiveCap > 0 ? [...archiveRecords.slice(-archiveCap), ...liveRecords] : liveRecords;
+              localStorage.setItem(key, JSON.stringify(subset));
+              return true;
+            } catch {}
+          }
+          return false;
         }
       }
       localStorage.setItem(key, value);
