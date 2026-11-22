@@ -2,6 +2,7 @@ import QRCode from 'qrcode';
 import JSZip from 'jszip';
 import { Siswa, getStudentQRIdentifier } from '../types';
 import { getLocalDateString, formatDateIndoLong } from './attendanceUtils';
+import { createConfiguredWorkbook, buildStyledWorksheet, workbookToXlsxBuffer } from './excelExportEngine';
 
 /**
  * Helper to trigger browser download for a Blob
@@ -194,8 +195,7 @@ export async function downloadClassQRZip(
   
   const rootFolder = zip.folder(folderName) || zip;
 
-  // Build CSV metadata summary inside ZIP
-  let csvContent = 'No,Nama Siswa,Kelas,Jenis Kelamin,Status Dapodik,NIS,NIK,NISN,Kode QR (Payload),No WA Wali\n';
+  const excelRows: (string | number)[][] = [];
 
   for (let i = 0; i < studentsToExport.length; i++) {
     const student = studentsToExport[i];
@@ -206,8 +206,18 @@ export async function downloadClassQRZip(
       onProgress(i + 1, studentsToExport.length, student.nama);
     }
 
-    // Add to CSV
-    csvContent += `"${i + 1}","${student.nama}","${student.kelas}","${student.jenisKelamin}","${student.statusDapodik || 'Sudah Dapodik'}","'${student.nis}'","'${student.nik || ''}'","'${student.nisn || ''}'","'${qrPayload}'","'${student.waOrangTua}'"\n`;
+    excelRows.push([
+      i + 1,
+      student.nama,
+      student.kelas,
+      student.jenisKelamin,
+      student.statusDapodik || 'Sudah Dapodik',
+      student.nis || '-',
+      student.nik || '-',
+      student.nisn || '-',
+      qrPayload,
+      student.waOrangTua || '-'
+    ]);
 
     // Render Canvas
     const canvas = await generateStudentQRCardCanvas(student);
@@ -228,8 +238,38 @@ export async function downloadClassQRZip(
     }
   }
 
-  // Add CSV and Readme file to ZIP
-  rootFolder.file('DAFTAR_DATA_SISWA_QR.csv', csvContent);
+  // Generate styled Excel roster inside ZIP
+  const wb = createConfiguredWorkbook();
+  buildStyledWorksheet({
+    workbook: wb,
+    sheetName: 'Daftar Kartu QR Siswa',
+    tabColor: 'FF0F766E',
+    title: `DAFTAR INDUK KARTU QR CODE SISWA • ${targetKelas.toUpperCase()}`,
+    metaInfo: `SDN 3 Karamatwangi  |  Total Kartu: ${studentsToExport.length} Siswa  |  Tanggal: ${formatDateIndoLong(getLocalDateString())}`,
+    headers: ['No', 'Nama Lengkap Siswa', 'Kelas', 'L/P', 'Status Dapodik', 'NIS', 'NIK', 'NISN', 'Kode QR Payload', 'No. WA Wali'],
+    rows: excelRows,
+    columnMeta: [
+      { width: 5, align: 'center', isNumeric: true },
+      { minWidth: 26, maxWidth: 34, align: 'left' },
+      { width: 12, align: 'center' },
+      { width: 6, align: 'center' },
+      { width: 17, align: 'center' },
+      { minWidth: 11, maxWidth: 15, align: 'center', isTextId: true },
+      { minWidth: 16, maxWidth: 20, align: 'center', isTextId: true },
+      { minWidth: 12, maxWidth: 15, align: 'center', isTextId: true },
+      { minWidth: 16, maxWidth: 20, align: 'center', isTextId: true },
+      { width: 16, align: 'center', isTextId: true }
+    ],
+    cellStyler: (_rIdx, cIdx, val) => {
+      if (cIdx === 4) {
+        const s = String(val || '');
+        if (s.includes('Sudah')) return { fillHex: 'FFDCFCE7', fontHex: 'FF166534', bold: true, align: 'center' };
+        return { fillHex: 'FFFEF3C7', fontHex: 'FF92400E', bold: true, align: 'center' };
+      }
+      return undefined;
+    }
+  });
+  rootFolder.file('DAFTAR_DATA_SISWA_QR.xlsx', await workbookToXlsxBuffer(wb));
   rootFolder.file(
     'PETUNJUK_PENGGUNAAN_QR.txt',
     `==================================================

@@ -25,6 +25,7 @@ import {
   isPresensiDateMatch,
   isSameClass,
 } from '../lib/attendanceUtils';
+import { downloadKepsekRekapExcel } from '../lib/attendanceReportExport';
 
 interface KepsekPanelProps {
   siswaList: Siswa[];
@@ -157,41 +158,19 @@ function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
     };
   }, [allRombelSummary]);
 
-  // CSV Exporter download
-  const handleExportCSV = () => {
-    if (filteredLogs.length === 0) {
+  // Modern Excel (.xlsx) Exporter download
+  const handleExportExcel = async () => {
+    if (filteredLogs.length === 0 && allRombelSummary.length === 0) {
       setExportError('Tidak ada data presensi yang sesuai untuk diekspor saat ini.');
       setTimeout(() => setExportError(''), 3500);
       return;
     }
-
-    // CSV header
-    let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'Tanggal,Waktu,NIS,Nama,Kelas,Status,Operator,Nomor WA Orang Tua\n';
-
-    // CSV rows
-    filteredLogs.forEach((p) => {
-      const siswa = siswaList.find((s) => s.id === p.siswaId);
-      const row = [
-        p.tanggal,
-        p.waktu,
-        p.nis,
-        `"${p.nama}"`,
-        `"${p.kelas}"`,
-        p.status,
-        `"${p.operator}"`,
-        siswa ? siswa.waOrangTua : '-'
-      ].join(',');
-      csvContent += row + '\n';
-    });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `REKAP_PRESENSI_SDN3_${selectedKelas.toUpperCase()}_${filterType.toUpperCase()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      await downloadKepsekRekapExcel(selectedKelas, filterType, filteredLogs, siswaList, presensiList, settings);
+    } catch (err: any) {
+      setExportError(`Gagal mengekspor Excel: ${err?.message || 'Kesalahan'}`);
+      setTimeout(() => setExportError(''), 3500);
+    }
   };
 
   // Printing trigger
@@ -231,13 +210,13 @@ function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleExportCSV}
+              onClick={handleExportExcel}
               type="button"
               id="btn-kepsek-export-csv"
-              className="bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl py-2 px-3.5 text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 px-3.5 text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
             >
               <Download className="w-4 h-4" />
-              Ekspor CSV (Excel)
+              Unduh Excel (.xlsx)
             </button>
             <button
               onClick={handlePrintReport}

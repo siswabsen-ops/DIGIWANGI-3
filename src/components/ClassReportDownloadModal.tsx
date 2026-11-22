@@ -59,8 +59,10 @@ export default function ClassReportDownloadModal({
 
   // Bulk ZIP loading state
   const [isZipping, setIsZipping] = useState<boolean>(false);
+  const [isDownloadingSingle, setIsDownloadingSingle] = useState<string | null>(null);
   const [zipProgress, setZipProgress] = useState<{ current: number; total: number; className: string } | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState<string>('');
+  const [downloadError, setDownloadError] = useState<string>('');
 
   // Class list with count and wali kelas
   const classesInfo = useMemo(() => {
@@ -92,10 +94,13 @@ export default function ClassReportDownloadModal({
     ? `SEM_${targetSemesterType}_${targetTahunAjaran.replace('/', '_')}`
     : targetDate;
 
-  // Handle single class download
-  const handleDownloadClass = (kelas: string) => {
+  // Handle single class download (.xlsx)
+  const handleDownloadClass = async (kelas: string) => {
+    if (isDownloadingSingle) return;
+    setDownloadError('');
+    setIsDownloadingSingle(kelas);
     try {
-      downloadSingleClassReport(
+      await downloadSingleClassReport(
         reportType, 
         kelas, 
         activePeriod, 
@@ -104,19 +109,23 @@ export default function ClassReportDownloadModal({
         reportType === 'semester' ? { semesterType: targetSemesterType, tahunAjaran: targetTahunAjaran } : undefined,
         settings
       );
-      setDownloadSuccess(`Rekap ${reportType} kelas ${kelas} berhasil diunduh!`);
+      setDownloadSuccess(`File Excel (.xlsx) rekap ${reportType} ${kelas} berhasil diunduh!`);
       setTimeout(() => setDownloadSuccess(''), 3500);
     } catch (err: any) {
-      alert(`Gagal mengunduh: ${err.message || 'Kesalahan'}`);
+      setDownloadError(`Gagal mengunduh Excel: ${err?.message || 'Kesalahan'}`);
+      setTimeout(() => setDownloadError(''), 4000);
+    } finally {
+      setIsDownloadingSingle(null);
     }
   };
 
   // Handle bulk ZIP download
   const handleDownloadAllZip = async () => {
     if (isZipping) return;
+    setDownloadError('');
     try {
       setIsZipping(true);
-      setZipProgress({ current: 0, total: DAFTAR_KELAS.length + 1, className: 'Mempersiapkan berkas...' });
+      setZipProgress({ current: 0, total: DAFTAR_KELAS.length + 2, className: 'Mempersiapkan berkas Excel...' });
 
       await downloadAllClassesZip(
         reportType, 
@@ -130,11 +139,12 @@ export default function ClassReportDownloadModal({
         settings
       );
 
-      setDownloadSuccess(`Paket ZIP Rekap ${reportType} untuk seluruh kelas berhasil diunduh!`);
+      setDownloadSuccess(`Paket ZIP Excel (.xlsx) rekap ${reportType} seluruh kelas berhasil diunduh!`);
       setTimeout(() => setDownloadSuccess(''), 4000);
     } catch (err: any) {
       console.error('Gagal unduh paket ZIP:', err);
-      alert(`Gagal mengunduh paket ZIP: ${err.message || 'Kesalahan'}`);
+      setDownloadError(`Gagal mengunduh paket ZIP: ${err?.message || 'Kesalahan'}`);
+      setTimeout(() => setDownloadError(''), 4000);
     } finally {
       setIsZipping(false);
       setZipProgress(null);
@@ -153,10 +163,10 @@ export default function ClassReportDownloadModal({
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight">
-                Pusat Unduh Rekap Absensi Per Kelas
+                Pusat Unduh Rekap Absensi Excel (.xlsx)
               </h2>
               <p className="text-xs text-emerald-100 opacity-90">
-                Pilih format periode (Harian / Mingguan / Bulanan / Semester) dan unduh per rombel atau seluruh kelas sekaligus (.CSV / .ZIP)
+                Unduh laporan Excel (.xlsx) rapih &amp; modern per rombel, workbook 12 kelas, atau paket arsip lengkap (.ZIP)
               </p>
             </div>
           </div>
@@ -169,11 +179,17 @@ export default function ClassReportDownloadModal({
           </button>
         </div>
 
-        {/* FEEDBACK SUCCESS NOTICE */}
+        {/* FEEDBACK SUCCESS / ERROR NOTICE */}
         {downloadSuccess && (
           <div className="mx-5 mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-2 text-xs font-bold shadow-xs animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{downloadSuccess}</span>
+          </div>
+        )}
+        {downloadError && (
+          <div className="mx-5 mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-center gap-2 text-xs font-bold shadow-xs animate-in fade-in">
+            <X className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{downloadError}</span>
           </div>
         )}
 
@@ -383,11 +399,12 @@ export default function ClassReportDownloadModal({
                 <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">
                   <button
                     type="button"
+                    disabled={isDownloadingSingle !== null}
                     onClick={() => handleDownloadClass(cls.kelas)}
-                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-60 text-emerald-800 border border-emerald-200 py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Download CSV</span>
+                    <span>{isDownloadingSingle === cls.kelas ? 'Menyusun...' : 'Unduh Excel (.xlsx)'}</span>
                   </button>
 
                   {onOpenPrintModal && (
@@ -419,18 +436,19 @@ export default function ClassReportDownloadModal({
                 Rekapitulasi Gabungan Semua Rombel (1-A s/d 6-B)
               </h4>
               <p className="text-[11px] text-slate-600 mt-0.5">
-                Unduh rekapitulasi data presensi seluruh murid ({siswaList.length} siswa) dalam format ringkasan rombel sekolah.
+                Unduh workbook Excel (.xlsx) multi-sheet lengkap (Ringkasan Rombel + Detail {siswaList.length} siswa).
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                disabled={isDownloadingSingle !== null}
                 onClick={() => handleDownloadClass('Semua Kelas')}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-2 px-3.5 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold text-xs py-2 px-3.5 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-blue-100" />
-                <span>Download Semua Siswa .CSV</span>
+                <span>{isDownloadingSingle === 'Semua Kelas' ? 'Menyusun...' : 'Unduh Excel Semua Kelas (.xlsx)'}</span>
               </button>
             </div>
           </div>
@@ -439,7 +457,7 @@ export default function ClassReportDownloadModal({
         {/* MODAL FOOTER */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
           <span className="text-slate-500 font-medium">
-            💡 Berkas .CSV kompatibel langsung dengan Microsoft Excel, Google Sheets, dan LibreOffice Calc.
+            💡 File Excel (.xlsx) modern berwarna, rapi dengan Kop Resmi SDN 3 Karamatwangi, siap dibuka di Excel, Google Sheets &amp; HP Android.
           </span>
           <button
             onClick={onClose}

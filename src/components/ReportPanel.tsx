@@ -685,26 +685,26 @@ function ReportPanel({
     return { avgPersen, totalApresiasi, totalSakit, totalIzin, totalAlfa, totalHadir, totalTerlambat, totalMasuk, totalBelumAbsen };
   }, [semesterReportData]);
 
-  // -- DOWNLOAD TRIGGERS (Centralized CSV & ZIP Generators) --
+  // -- DOWNLOAD TRIGGERS (Centralized Styled Excel .xlsx & ZIP Generators) --
 
-  const handleDownloadHarian = () => {
-    downloadSingleClassReport('harian', selectedKelas, harianDate, siswaList, presensiList, undefined, settings);
+  const handleDownloadHarian = async () => {
+    await downloadSingleClassReport('harian', selectedKelas, harianDate, siswaList, presensiList, undefined, settings);
   };
 
-  const handleDownloadRekapRombel = () => {
-    downloadSingleClassReport('harian', 'Semua Kelas', harianDate, siswaList, presensiList, undefined, settings);
+  const handleDownloadRekapRombel = async () => {
+    await downloadSingleClassReport('harian', 'Semua Kelas', harianDate, siswaList, presensiList, undefined, settings);
   };
 
-  const handleDownloadMingguan = () => {
-    downloadSingleClassReport('mingguan', selectedKelas, mingguanDate, siswaList, presensiList, undefined, settings);
+  const handleDownloadMingguan = async () => {
+    await downloadSingleClassReport('mingguan', selectedKelas, mingguanDate, siswaList, presensiList, undefined, settings);
   };
 
-  const handleDownloadBulanan = () => {
-    downloadSingleClassReport('bulanan', selectedKelas, bulananMonth, siswaList, presensiList, undefined, settings);
+  const handleDownloadBulanan = async () => {
+    await downloadSingleClassReport('bulanan', selectedKelas, bulananMonth, siswaList, presensiList, undefined, settings);
   };
 
-  const handleDownloadSemester = () => {
-    downloadSingleClassReport('semester', selectedKelas, `SEM_${semesterType}_${semesterTahunAjaran.replace('/', '_')}`, siswaList, presensiList, {
+  const handleDownloadSemester = async () => {
+    await downloadSingleClassReport('semester', selectedKelas, `SEM_${semesterType}_${semesterTahunAjaran.replace('/', '_')}`, siswaList, presensiList, {
       semesterType,
       tahunAjaran: semesterTahunAjaran
     }, settings);
@@ -769,7 +769,7 @@ function ReportPanel({
             <span>Pusat Laporan & Rekap Absensi Siswa</span>
           </h2>
           <p className="text-gray-500 text-xs mt-1.5">
-            Hasil rekapitulasi data presensi siswa SDN 3 Karamatwangi secara harian per rombel, mingguan, bulanan, dan semester. Diperbarui secara riil dan sinkron 100% antarperiode, siap diekspor ke format .CSV per kelas atau dicetak langsung dengan format resmi.
+            Hasil rekapitulasi data presensi siswa SDN 3 Karamatwangi secara harian per rombel, mingguan, bulanan, dan semester. Diperbarui secara riil dan sinkron 100% antarperiode, siap diekspor ke format Excel (.xlsx) rapi &amp; modern atau dicetak langsung dengan format resmi.
           </p>
         </div>
 
@@ -1244,7 +1244,7 @@ function ReportPanel({
                     type="button"
                     onClick={() => handleOpenDownloadModal('harian')}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500"
-                    title="Pusat unduh rekap per kelas (CSV / ZIP)"
+                    title="Pusat unduh rekap per kelas (Excel .xlsx / ZIP)"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
                     <span>Unduh Rekap Per Kelas</span>
@@ -1256,7 +1256,7 @@ function ReportPanel({
                     className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 border border-teal-500"
                   >
                     <Download className="w-3.5 h-3.5 text-teal-100" />
-                    <span>Download Rekap Rombel .CSV</span>
+                    <span>Unduh Excel Rombel (.xlsx)</span>
                   </button>
 
                   <button
@@ -1477,7 +1477,7 @@ function ReportPanel({
                             <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
-                                title={`Download CSV Kelas ${rombel.kelas}`}
+                                title={`Unduh Excel (.xlsx) Kelas ${rombel.kelas}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   downloadSingleClassReport('harian', rombel.kelas, harianDate, siswaList, presensiList, undefined, settings);
@@ -1485,7 +1485,7 @@ function ReportPanel({
                                 className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-100/70 hover:bg-emerald-100 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                               >
                                 <Download className="w-3 h-3" />
-                                <span>CSV</span>
+                                <span>Excel</span>
                               </button>
 
                               <button
@@ -1645,7 +1645,7 @@ function ReportPanel({
                     </button>
                   </div>
 
-                  {/* Action buttons: Cetak & Download CSV */}
+                  {/* Action buttons: Cetak & Unduh Excel */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
@@ -1663,7 +1663,7 @@ function ReportPanel({
                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-1.5 px-3 shadow-xs transition-all cursor-pointer flex items-center gap-1 border border-emerald-500"
                     >
                       <Download className="w-3.5 h-3.5 text-emerald-100" />
-                      <span>Download .CSV</span>
+                      <span>Unduh Excel (.xlsx)</span>
                     </button>
                   </div>
                 </div>
@@ -1966,7 +1966,7 @@ function ReportPanel({
                   type="button"
                   onClick={() => handleOpenDownloadModal('mingguan')}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500"
-                  title="Unduh rekap mingguan per kelas (ZIP / CSV)"
+                  title="Unduh rekap mingguan per kelas (Excel .xlsx / ZIP)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
                   <span>Unduh Rekap Per Kelas</span>
@@ -1988,7 +1988,7 @@ function ReportPanel({
                   className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-teal-500"
                 >
                   <Download className="w-3.5 h-3.5 text-teal-100" />
-                  <span>Download .CSV</span>
+                  <span>Unduh Excel (.xlsx)</span>
                 </button>
               </div>
             </div>
@@ -2160,7 +2160,7 @@ function ReportPanel({
                                 type="button"
                                 onClick={() => downloadSingleClassReport('mingguan', item.kelas, mingguanDate, siswaList, presensiList, undefined, settings)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
-                                title="Unduh CSV Mingguan Kelas"
+                                title="Unduh Excel (.xlsx) Mingguan Kelas"
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>
@@ -2398,7 +2398,7 @@ function ReportPanel({
                   type="button"
                   onClick={() => handleOpenDownloadModal('bulanan')}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500"
-                  title="Unduh rekap bulanan per kelas (ZIP / CSV)"
+                  title="Unduh rekap bulanan per kelas (Excel .xlsx / ZIP)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
                   <span>Unduh Rekap Per Kelas</span>
@@ -2420,7 +2420,7 @@ function ReportPanel({
                   className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-teal-500"
                 >
                   <Download className="w-3.5 h-3.5 text-teal-100 text-left" />
-                  <span>Download .CSV</span>
+                  <span>Unduh Excel (.xlsx)</span>
                 </button>
               </div>
             </div>
@@ -2516,7 +2516,7 @@ function ReportPanel({
                                 type="button"
                                 onClick={() => downloadSingleClassReport('bulanan', item.kelas, bulananMonth, siswaList, presensiList, undefined, settings)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
-                                title="Unduh CSV Bulanan Kelas"
+                                title="Unduh Excel (.xlsx) Bulanan Kelas"
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>
@@ -2675,7 +2675,7 @@ function ReportPanel({
                   type="button"
                   onClick={() => handleOpenDownloadModal('semester')}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500"
-                  title="Unduh rekap semester per kelas (ZIP / CSV)"
+                  title="Unduh rekap semester per kelas (Excel .xlsx / ZIP)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
                   <span>Unduh Rekap Per Kelas</span>
@@ -2697,7 +2697,7 @@ function ReportPanel({
                   className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs rounded-xl py-2.5 px-3.5 shadow transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-teal-500"
                 >
                   <Download className="w-3.5 h-3.5 text-teal-100 text-left" />
-                  <span>Download .CSV</span>
+                  <span>Unduh Excel (.xlsx)</span>
                 </button>
               </div>
             </div>
@@ -2796,7 +2796,7 @@ function ReportPanel({
                                   tahunAjaran: semesterTahunAjaran
                                 }, settings)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
-                                title="Unduh CSV Semester Kelas"
+                                title="Unduh Excel (.xlsx) Semester Kelas"
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>

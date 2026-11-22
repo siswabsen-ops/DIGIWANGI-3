@@ -33,6 +33,7 @@ import {
 } from '../types';
 import { getLocalDateString, isSameClass } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
+import { downloadAkhlakRekapExcel } from '../lib/attendanceReportExport';
 
 interface AkhlakPanelProps {
   siswaList: Siswa[];
@@ -193,55 +194,9 @@ export default function AkhlakPanel({
     setIsModalOpen(false);
   };
 
-  // Download CSV
-  const handleExportCSV = () => {
-    const headers = [
-      'No',
-      'Kunci Siswa (NISN/NIK)',
-      'Nama Siswa',
-      'Kelas',
-      'Tanggal',
-      'Dimensi Profil',
-      'Sub-Bidang Akhlak',
-      'Skala Nilai',
-      'Keterangan Skala',
-      'Catatan Pengamatan',
-      'Tahun Ajaran',
-      'Semester',
-      'Penilai'
-    ];
-
-    const rows = filteredList.map((item, idx) => {
-      const student = siswaList.find(s => isRecordMatchStudent(item.kunci_siswa, s));
-      const dim = DAFTAR_DIMENSI_PROFIL.find(d => d.id === item.dimensi_profil);
-      const skalaInfo = SKALA_PENILAIAN_MAP[item.nilai_skala];
-
-      return [
-        idx + 1,
-        `'${item.kunci_siswa}`,
-        student ? student.nama : 'Tidak Ditemukan',
-        student ? student.kelas : '-',
-        item.tanggal,
-        dim ? dim.nama : `Dimensi ${item.dimensi_profil}`,
-        item.sub_bidang_akhlak || '-',
-        item.nilai_skala,
-        skalaInfo ? skalaInfo.label : '-',
-        item.catatan_singkat,
-        item.tahun_ajaran,
-        item.semester,
-        item.penilai || '-'
-      ];
-    });
-
-    const csvContent = "\uFEFF" + [headers.map(h => `"${h}"`).join(','), ...rows.map(r => r.map(v => `"${(v + '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `REKAP_PENILAIAN_AKHLAK_${selectedKelas.replace(/\s+/g, '_')}_${getLocalDateString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Download Excel (.xlsx)
+  const handleExportExcel = async () => {
+    await downloadAkhlakRekapExcel(selectedKelas, filteredList, siswaList);
   };
 
   return (
@@ -274,11 +229,11 @@ export default function AkhlakPanel({
         <div className="flex items-center gap-2 w-full md:w-auto shrink-0 justify-end">
           <button
             type="button"
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
             className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs py-2.5 px-4 rounded-xl border border-white/20 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
           >
             <Download className="w-4 h-4" />
-            <span>Ekspor .CSV</span>
+            <span>Ekspor Excel (.xlsx)</span>
           </button>
 
           <button
