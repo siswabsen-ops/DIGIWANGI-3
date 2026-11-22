@@ -8,7 +8,8 @@ import {
   PenilaianAkhlak,
   DAFTAR_DIMENSI_PROFIL,
   SKALA_PENILAIAN_MAP,
-  isRecordMatchStudent
+  isRecordMatchStudent,
+  getApplicableJadwal
 } from '../types';
 import {
   isSameClass,
@@ -18,26 +19,33 @@ import {
   calculateAllRombelSummaryList,
   calculateWeeklyRombelSummaryList,
   calculateMonthlyRombelSummaryList,
+  calculateSemesterRombelSummaryList,
   normalizeDateKey,
   getAttendanceShift,
   getMondayOfWeek,
   safeAddDays,
   safeDateParts,
   formatDateIndoLong,
+  formatDateIndoShort,
   formatMonthIndo,
   isRecordNewer,
   getLocalDateString
 } from './attendanceUtils';
 import { getWaliKelasByKelas } from './demoData';
-import { triggerFileDownload } from './qrCodeExport';
 import {
+  DIGI_COLORS,
+  THIN_GRID_BORDER,
+  HEADER_GRID_BORDER,
+  TOTAL_TOP_BORDER,
+  TOTAL_BOTTOM_BORDER,
   createConfiguredWorkbook,
   buildStyledWorksheet,
   downloadWorkbookXlsx,
   workbookToXlsxBuffer,
-  styleAttendanceStatusCell,
+  triggerExcelBlobDownload,
+  getUniqueSheetName,
+  styleStatusCodeCell,
   styleMetodeCell,
-  styleShiftCell,
   styleQualificationOrRateCell,
   ExcelLegendItem
 } from './excelExportEngine';
@@ -49,12 +57,11 @@ export interface ClassReportOption {
 }
 
 const ATTENDANCE_LEGEND: ExcelLegendItem[] = [
-  { code: 'H / ✔', label: 'Hadir Tepat Waktu', fillHex: 'FFDCFCE7', fontHex: 'FF166534' },
+  { code: 'H', label: 'Hadir Tepat Waktu', fillHex: 'FFECFDF5', fontHex: 'FF0D6E51' },
   { code: 'T', label: 'Terlambat', fillHex: 'FFFEF3C7', fontHex: 'FF92400E' },
   { code: 'S', label: 'Sakit', fillHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-  { code: 'I', label: 'Izin', fillHex: 'FFE0F2FE', fontHex: 'FF075985' },
-  { code: 'A', label: 'Alfa', fillHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-  { code: '-', label: 'Belum Absen', fillHex: 'FFF1F5F9', fontHex: 'FF64748B' }
+  { code: 'I', label: 'Izin', fillHex: 'FFE0F2FE', fontHex: 'FF0369A1' },
+  { code: 'A', label: 'Alfa', fillHex: 'FFFEE2E2', fontHex: 'FF991B1B' }
 ];
 
 function sortStudentsByClassAndName(list: Siswa[]): Siswa[] {
@@ -64,8 +71,20 @@ function sortStudentsByClassAndName(list: Siswa[]): Siswa[] {
   });
 }
 
+function formatShortKelasLabel(kelas: string): string {
+  return (kelas || '').replace(/^Kelas\s*/i, '').trim() || '-';
+}
+
+function getTahunAjaran(settings?: SystemSettings, explicit?: string): string {
+  return explicit || settings?.tahunAjaran || '2026–2027';
+}
+
+function getKepsekName(settings?: SystemSettings): string {
+  return settings?.namaKepsek || 'Cucu Maspika, S.Pd.I., M.Pd., MCE.';
+}
+
 function getEffectiveSemesterDays(tahunAjaran: string, semesterType: '1' | '2', presensiList: Presensi[]) {
-  const parts = tahunAjaran.split('/');
+  const parts = tahunAjaran.replace('–', '/').replace('-', '/').split('/');
   const startYear = parseInt(parts[0]) || 2026;
   const endYear = parseInt(parts[1]) || startYear + 1;
 
@@ -89,913 +108,783 @@ function getEffectiveSemesterDays(tahunAjaran: string, semesterType: '1' | '2', 
   };
 }
 
-/**
- * 1. TAMBAH SHEET HARIAN PER KELAS / SEMUA SISWA
- */
-export function addDailyClassSheetToWorkbook(
-  wb: ExcelJS.Workbook,
-  sheetName: string,
-  kelas: string,
-  dateStr: string,
-  siswaList: Siswa[],
-  presensiList: Presensi[],
-  settings?: SystemSettings
-) {
-  const isAll = kelas === 'Semua Kelas' || !kelas;
-  const filteredStudents = sortStudentsByClassAndName(
-    isAll ? siswaList : siswaList.filter((s) => isSameClass(s.kelas, kelas))
-  );
-  const dailyIndex = buildDailyAttendanceIndex(presensiList, dateStr);
+function resolveStatusCode(status: string): 'H' | 'T' | 'S' | 'I' | 'A' | '' {
+  if (status === 'Hadir') return 'H';
+  if (status === 'Terlambat') return 'T';
+  if (status === 'Sakit') return 'S';
+  if (status === 'Izin') return 'I';
+  if (status === 'Alfa') return 'A';
+  return '';
+}
 
-  let hadir = 0;
-  let terlambat = 0;
-  let sakit = 0;
-  let izin = 0;
-  let alfa = 0;
-  let belum = 0;
-  let qrCount = 0;
-  let tapCount = 0;
-
-  const rows: (string | number)[][] = filteredStudents.map((siswa, idx) => {
-    const record = getAttendanceFromIndex(siswa, dailyIndex);
-    const status = record ? record.status : 'Belum Absen';
-    const waktu = record ? record.waktu : '-';
-    const waStatus = record ? record.waStatus || 'TERKIRIM' : '-';
-    const operator = record ? record.operator || '-' : '-';
-    const shiftVal = record?.shift || getAttendanceShift(record, siswa.kelas, record?.waktu, settings);
-    const shiftLabel = shiftVal === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
-    const metodeLabel = record
-      ? record.metodeLabel || (record.metode === 'QR_SCAN' ? 'Scan QR Code' : 'Manual Tap Wali')
-      : '-';
-    const keterangan = record
-      ? record.keterangan || (status === 'Hadir' ? 'Tercatat Hadir via Scan Kartu' : `Keterangan ${status}`)
-      : 'Belum Melakukan Presensi';
-
-    if (status === 'Hadir') hadir++;
-    else if (status === 'Terlambat') terlambat++;
-    else if (status === 'Sakit') sakit++;
-    else if (status === 'Izin') izin++;
-    else if (status === 'Alfa') alfa++;
-    else belum++;
-
-    if (record) {
-      if (record.metode === 'MANUAL_TAP' || record.metode === 'MANUAL_OPERATOR') tapCount++;
-      else qrCount++;
+function resolveMetodeDisplay(p: Presensi): string {
+  if (p.metode === 'QR_SCAN') return 'Scan QR Code';
+  if (p.metode === 'MANUAL_TAP' || p.metode === 'MANUAL_OPERATOR') return 'Manual Tap Wali';
+  if (p.metodeLabel) {
+    if (p.metodeLabel.toLowerCase().includes('qr') || p.metodeLabel.toLowerCase().includes('scan')) {
+      return 'Scan QR Code';
     }
+    return p.metodeLabel;
+  }
+  if (p.status === 'Hadir' || p.status === 'Terlambat') return 'Scan QR Code';
+  return 'Manual Tap Wali';
+}
+
+function resolveWaDisplay(p: Presensi): string {
+  if (!p.waStatus || p.waStatus === 'Terkirim') return 'Terkirim ke Wali';
+  if (p.waStatus === 'Gagal') return 'Gagal Terkirim';
+  return 'Menunggu / Pending';
+}
+
+/**
+ * ============================================================================
+ * TEMPLATE 1: LOG PRESENSI HARIAN (QR & MANUAL) — SDN 3 KARAMATWANGI
+ * Sesuai layout PDF resmi: DIGIWANGI_log_presensi_harian
+ * ============================================================================
+ */
+export function addLogPresensiHarianSheet(
+  wb: ExcelJS.Workbook,
+  options: {
+    sheetName?: string;
+    periodeLabel: string;
+    kelasFilter: string;
+    records: Presensi[];
+    siswaList: Siswa[];
+    settings?: SystemSettings;
+  }
+) {
+  const {
+    sheetName = 'Log Presensi Harian',
+    periodeLabel,
+    kelasFilter,
+    records,
+    siswaList,
+    settings
+  } = options;
+
+  const isAll = !kelasFilter || kelasFilter === 'Semua Kelas' || kelasFilter === 'SEMUA KELAS';
+  const siswaMapById = new Map<string, Siswa>();
+  const siswaMapByNis = new Map<string, Siswa>();
+  siswaList.forEach((s) => {
+    if (s.id) siswaMapById.set(s.id, s);
+    if (s.nis) siswaMapByNis.set(s.nis.trim(), s);
+  });
+
+  // Deduplikasi per siswa + tanggal agar sinkron real-time dengan rekap
+  const dedupedMap = new Map<string, Presensi>();
+  records.forEach((rec) => {
+    if (!rec || !rec.tanggal) return;
+    if (!isAll && !isSameClass(rec.kelas, kelasFilter)) return;
+    const normDate = normalizeDateKey(rec.tanggal);
+    const key = `${rec.siswaId || rec.nis || rec.nama}__${normDate}`;
+    const existing = dedupedMap.get(key);
+    if (!existing || isRecordNewer(rec, existing)) {
+      dedupedMap.set(key, { ...rec, tanggal: normDate });
+    }
+  });
+
+  const sortedLogs = Array.from(dedupedMap.values()).sort((a, b) => {
+    if (a.tanggal !== b.tanggal) return a.tanggal < b.tanggal ? -1 : 1;
+    const wA = (a.waktu || '00:00:00').slice(0, 8);
+    const wB = (b.waktu || '00:00:00').slice(0, 8);
+    if (wA !== wB) return wA < wB ? -1 : 1;
+    if (a.kelas !== b.kelas) return a.kelas.localeCompare(b.kelas);
+    return (a.nama || '').localeCompare(b.nama || '');
+  });
+
+  const rows: (string | number)[][] = sortedLogs.map((rec, idx) => {
+    const siswa =
+      (rec.siswaId ? siswaMapById.get(rec.siswaId) : undefined) ||
+      (rec.nis ? siswaMapByNis.get(rec.nis.trim()) : undefined) ||
+      siswaList.find((s) => isPresensiMatchSiswa(rec, s));
+
+    const nisVal = siswa?.nis || rec.nis || '-';
+    const nisnVal = siswa?.nisn || siswa?.nik || '-';
+    const namaVal = siswa?.nama || rec.nama || '-';
+    const kelasVal = formatShortKelasLabel(siswa?.kelas || rec.kelas || '-');
 
     return [
       idx + 1,
-      siswa.nis || '-',
-      siswa.nisn || siswa.nik || '-',
-      siswa.nama,
-      siswa.jenisKelamin || 'L',
-      siswa.kelas,
-      shiftLabel,
-      dateStr,
-      waktu,
-      status,
-      metodeLabel,
-      keterangan,
-      operator,
-      waStatus
+      rec.tanggal,
+      rec.waktu || '-',
+      nisVal,
+      nisnVal,
+      namaVal,
+      kelasVal,
+      rec.status,
+      resolveMetodeDisplay(rec),
+      resolveWaDisplay(rec)
     ];
   });
 
-  const totalMasuk = hadir + terlambat;
-  const pct = filteredStudents.length > 0 ? Math.round((totalMasuk / filteredStudents.length) * 100) : 0;
-  const waliName = isAll ? 'Panji Teguh Amarta S, S.Pd.I' : getWaliKelasByKelas(kelas);
+  const waliName = isAll
+    ? settings?.waliKelasList?.[0]?.nama
+      ? 'Panji Teguh Amarta Surya, S.Pd.I., Gr.'
+      : 'Panji Teguh Amarta Surya, S.Pd.I., Gr.'
+    : getWaliKelasByKelas(kelasFilter);
 
   buildStyledWorksheet({
     workbook: wb,
     sheetName,
-    tabColor: 'FF0F766E',
-    title: `REKAPITULASI PRESENSI HARIAN SISWA • ${kelas.toUpperCase()}`,
-    metaInfo: `Tanggal: ${formatDateIndoLong(dateStr)}  |  ${isAll ? 'Petugas Piket' : 'Wali Kelas'}: ${waliName}  |  Total Murid: ${filteredStudents.length} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: filteredStudents.length, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hadir Tepat', value: hadir, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: terlambat, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: sakit, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: izin, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: alfa, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Belum Absen', value: belum, bgHex: 'FFF8FAFC', fontHex: 'FF475569' },
-      { label: 'Scan QR / Tap', value: `${qrCount} / ${tapCount}`, bgHex: 'FFECFDF5', fontHex: 'FF065F46' },
-      { label: 'Keaktifan', value: `${pct}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
+    tabColor: DIGI_COLORS.EMERALD_HEADER,
+    title: 'LOG PRESENSI HARIAN (QR & MANUAL) — SDN 3 KARAMATWANGI',
+    metaInfo: `Periode: ${periodeLabel} · Kelas: ${isAll ? 'Semua Kelas' : kelasFilter} · Total: ${sortedLogs.length} catatan`,
     headers: [
-      'No',
+      'NO',
+      'TANGGAL',
+      'JAM (WIB)',
       'NIS',
-      'NISN / NIK',
-      'Nama Lengkap Siswa',
-      'L/P',
-      'Kelas',
-      'Sesi Shift',
-      'Tanggal',
-      'Waktu',
-      'Status Kehadiran',
-      'Metode Absensi',
-      'Keterangan Kehadiran',
-      'Operator / Wali',
-      'Status WA'
+      'NISN',
+      'NAMA SISWA',
+      'KELAS',
+      'STATUS',
+      'METODE',
+      'NOTIFIKASI WA WALI'
     ],
     rows,
-    totalRow: [
-      '',
-      '',
-      '',
-      `RINGKASAN HARIAN (${filteredStudents.length} SISWA)`,
-      '',
-      kelas,
-      '',
-      dateStr,
-      '',
-      `Masuk: ${totalMasuk}`,
-      `QR:${qrCount} Tap:${tapCount}`,
-      `S:${sakit}  I:${izin}  A:${alfa}  Belum:${belum}`,
-      '',
-      pct / 100
-    ],
     columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { minWidth: 11, maxWidth: 15, align: 'center', isTextId: true },
-      { minWidth: 14, maxWidth: 19, align: 'center', isTextId: true },
-      { minWidth: 26, maxWidth: 36, align: 'left' },
-      { width: 6, align: 'center' },
+      { width: 6, align: 'center', isNumeric: true },
+      { width: 13, align: 'center' },
       { width: 12, align: 'center' },
-      { width: 14, align: 'center' },
-      { width: 12, align: 'center' },
+      { width: 13, align: 'center', isTextId: true },
+      { width: 15, align: 'center', isTextId: true },
+      { minWidth: 28, maxWidth: 38, align: 'left' },
       { width: 10, align: 'center' },
-      { width: 16, align: 'center' },
+      { width: 13, align: 'center' },
       { width: 18, align: 'center' },
-      { minWidth: 24, maxWidth: 34, align: 'left', wrapText: true },
-      { minWidth: 18, maxWidth: 26, align: 'left' },
-      { width: 13, align: 'center', isPercent: true }
+      { width: 20, align: 'center' }
     ],
     cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 6) return styleShiftCell(val);
-      if (cIdx === 9) return styleAttendanceStatusCell(val);
-      if (cIdx === 10) return styleMetodeCell(val);
-      if (cIdx === 13) {
-        const s = String(val || '').toUpperCase();
-        if (s.includes('TERKIRIM')) return { fillHex: 'FFDCFCE7', fontHex: 'FF166534', bold: true, align: 'center' };
-        if (s.includes('GAGAL')) return { fillHex: 'FFFEE2E2', fontHex: 'FF991B1B', bold: true, align: 'center' };
-        return { align: 'center', fontHex: 'FF64748B' };
+      if (cIdx === 6) return { align: 'center', bold: true };
+      if (cIdx === 7) return styleStatusCodeCell(val);
+      if (cIdx === 8) return styleMetodeCell(val);
+      if (cIdx === 9) {
+        const s = String(val || '').toLowerCase();
+        if (s.includes('terkirim')) return { fillHex: 'FFECFDF5', fontHex: 'FF0D6E51', bold: true, align: 'center' };
+        if (s.includes('gagal')) return { fillHex: 'FFFEE2E2', fontHex: 'FF991B1B', bold: true, align: 'center' };
+        return { fontHex: DIGI_COLORS.TEXT_MUTED, align: 'center' };
       }
       return undefined;
     },
+    signatureLeftLabel: 'Mengetahui,\nKepala Sekolah',
+    signatureLeftName: getKepsekName(settings),
     signatureRightLabel: isAll
-      ? 'Cisurupan, Garut • Petugas Piket Harian'
-      : `Cisurupan, Garut • Wali ${kelas}`,
-    signatureRightName: waliName
+      ? `Cisurupan, Garut, ${periodeLabel}\nPetugas Piket / Operator`
+      : `Cisurupan, Garut, ${periodeLabel}\nGuru / Wali ${kelasFilter}`,
+    signatureRightName: waliName,
+    orientation: 'landscape'
   });
 }
 
 /**
- * 2. TAMBAH SHEET RINGKASAN HARIAN SELURUH ROMBEL (1-A s/d 6-B)
+ * ============================================================================
+ * TEMPLATE 2: DAFTAR HADIR SISWA KELAS (MATRIKS 2-ROW HEADER) — SDN 3 KARAMATWANGI
+ * Sesuai layout PDF resmi: DIGIWANGI_Rekap_kelas
+ * Mendukung mode Bulanan/Harian (Tanggal 1..30/31) maupun Mingguan (5 Hari Kerja)
+ * ============================================================================
  */
-export function addDailyRombelSummarySheetToWorkbook(
+export function addDaftarHadirKelasSheet(
   wb: ExcelJS.Workbook,
-  dateStr: string,
-  siswaList: Siswa[],
-  presensiList: Presensi[],
-  settings?: SystemSettings
+  options: {
+    sheetName?: string;
+    kelas: string;
+    mode: 'bulanan' | 'mingguan';
+    monthOrMondayStr: string;
+    highlightDateStr?: string;
+    siswaList: Siswa[];
+    presensiList: Presensi[];
+    settings?: SystemSettings;
+    tahunAjaran?: string;
+  }
 ) {
-  const allRombel = calculateAllRombelSummaryList(siswaList, presensiList, dateStr, settings);
+  const {
+    sheetName,
+    kelas,
+    mode,
+    monthOrMondayStr,
+    highlightDateStr,
+    siswaList,
+    presensiList,
+    settings,
+    tahunAjaran
+  } = options;
 
-  let totalSiswa = 0,
-    hadir = 0,
-    terlambat = 0,
-    sakit = 0,
-    izin = 0,
-    alfa = 0,
-    belumAbsen = 0,
-    totalHadir = 0,
-    totalTidakHadir = 0,
-    totalScanQR = 0,
-    totalManualTap = 0;
-
-  allRombel.forEach((r) => {
-    totalSiswa += r.totalSiswa;
-    hadir += r.hadir;
-    terlambat += r.terlambat;
-    sakit += r.sakit;
-    izin += r.izin;
-    alfa += r.alfa;
-    belumAbsen += r.belumAbsen;
-    totalHadir += r.totalHadir;
-    totalTidakHadir += r.totalTidakHadir;
-    totalScanQR += r.totalScanQR || 0;
-    totalManualTap += r.totalManualTap || 0;
-  });
-
-  const grandPersen = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
-  const grandStatus =
-    belumAbsen === 0 && totalSiswa > 0
-      ? 'Tuntas'
-      : totalSiswa - belumAbsen > 0
-      ? 'Sedang Berjalan'
-      : 'Belum Mulai';
-
-  const rows: (string | number)[][] = allRombel.map((r, idx) => [
-    idx + 1,
-    r.kelas,
-    r.waliKelas,
-    r.shiftLabel || 'Pagi (07.00)',
-    r.totalSiswa,
-    r.hadir,
-    r.terlambat,
-    r.sakit,
-    r.izin,
-    r.alfa,
-    r.belumAbsen,
-    r.totalHadir,
-    r.totalScanQR || 0,
-    r.totalManualTap || 0,
-    r.totalTidakHadir,
-    r.persentase / 100,
-    r.statusAbsen
-  ]);
-
-  buildStyledWorksheet({
-    workbook: wb,
-    sheetName: 'Ringkasan Semua Rombel',
-    tabColor: 'FF1E3A8A',
-    title: 'REKAPITULASI PRESENSI HARIAN SELURUH ROMBEL (KELAS 1-A s/d 6-B)',
-    metaInfo: `Tanggal: ${formatDateIndoLong(dateStr)}  |  Total Rombel: ${allRombel.length} Kelas  |  Total Murid: ${totalSiswa} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: totalSiswa, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hadir Tepat', value: hadir, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: terlambat, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit + Izin', value: sakit + izin, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: alfa, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Belum Absen', value: belumAbsen, bgHex: 'FFF8FAFC', fontHex: 'FF475569' },
-      { label: 'Scan QR / Tap', value: `${totalScanQR} / ${totalManualTap}`, bgHex: 'FFECFDF5', fontHex: 'FF065F46' },
-      { label: 'Keaktifan Sekolah', value: `${grandPersen}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
-    headers: [
-      'No',
-      'Rombel Kelas',
-      'Wali Kelas',
-      'Sesi Shift',
-      'Siswa',
-      'Hadir',
-      'Telat',
-      'Sakit',
-      'Izin',
-      'Alfa',
-      'Belum',
-      'Masuk (H+T)',
-      'Scan QR',
-      'Tap Wali',
-      'Tidak Masuk',
-      'Keaktifan',
-      'Status Rombel'
-    ],
-    rows,
-    totalRow: [
-      '',
-      'TOTAL SEKOLAH',
-      '12 Rombel Kelas',
-      'Semua Sesi',
-      totalSiswa,
-      hadir,
-      terlambat,
-      sakit,
-      izin,
-      alfa,
-      belumAbsen,
-      totalHadir,
-      totalScanQR,
-      totalManualTap,
-      totalTidakHadir,
-      grandPersen / 100,
-      grandStatus
-    ],
-    columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { width: 13, align: 'center' },
-      { minWidth: 24, maxWidth: 32, align: 'left' },
-      { width: 15, align: 'center' },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isNumeric: true },
-      { width: 10, align: 'center', isNumeric: true },
-      { width: 10, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isPercent: true },
-      { width: 16, align: 'center' }
-    ],
-    cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 1) return { bold: true, align: 'center', fontHex: 'FF0F172A' };
-      if (cIdx === 3) return styleShiftCell(val);
-      if (cIdx === 15 || cIdx === 16) return styleQualificationOrRateCell(val);
-      return undefined;
-    },
-    signatureRightLabel: 'Cisurupan, Garut • Petugas Piket Harian',
-    signatureRightName: 'Panji Teguh Amarta S, S.Pd.I'
-  });
-}
-
-/**
- * 3. TAMBAH SHEET MINGGUAN (MATRIKS SENIN - JUMAT)
- */
-export function addWeeklyClassSheetToWorkbook(
-  wb: ExcelJS.Workbook,
-  sheetName: string,
-  kelas: string,
-  mondayDateStr: string,
-  siswaList: Siswa[],
-  presensiList: Presensi[],
-  settings?: SystemSettings
-) {
-  const isAll = kelas === 'Semua Kelas' || !kelas;
+  const isAll = !kelas || kelas === 'Semua Kelas' || kelas === 'SEMUA KELAS';
   const filteredStudents = sortStudentsByClassAndName(
     isAll ? siswaList : siswaList.filter((s) => isSameClass(s.kelas, kelas))
   );
 
-  const monday = getMondayOfWeek(mondayDateStr);
-  const indonesianDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
-  const shortMonths = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  const weekDates: { dateStr: string; label: string }[] = [];
+  const shortKelas = isAll ? 'SEMUA KELAS' : formatShortKelasLabel(kelas);
+  const resolvedSheetName = getUniqueSheetName(wb, sheetName || (isAll ? 'Daftar Hadir Semua' : `Kelas ${shortKelas}`));
 
-  for (let i = 0; i < 5; i++) {
-    const dateStr = safeAddDays(monday, i);
-    const { day, month } = safeDateParts(dateStr);
-    weekDates.push({ dateStr, label: `${indonesianDays[i]}\n(${day} ${shortMonths[month] || ''})` });
+  // Tentukan daftar kolom tanggal
+  interface DayColDef {
+    dateStr: string;
+    headerLabel: string;
+  }
+  const dayCols: DayColDef[] = [];
+  let periodeLabel = '';
+  let groupHeaderLabel = '';
+  let tanggalBarLabel = '';
+
+  if (mode === 'bulanan') {
+    const ym = monthOrMondayStr.slice(0, 7);
+    const [yrStr, moStr] = ym.split('-');
+    const year = parseInt(yrStr, 10) || 2026;
+    const month = parseInt(moStr, 10) || 11;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthName = formatMonthIndo(ym);
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      dayCols.push({
+        dateStr: `${ym}-${String(d).padStart(2, '0')}`,
+        headerLabel: String(d)
+      });
+    }
+    periodeLabel = monthName;
+    groupHeaderLabel = `TANGGAL (${monthName.toUpperCase()})`;
+    tanggalBarLabel = highlightDateStr ? formatDateIndoLong(highlightDateStr) : monthName;
+  } else {
+    const monday = getMondayOfWeek(monthOrMondayStr);
+    const dayShortNames = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+    for (let i = 0; i < 5; i++) {
+      const ds = safeAddDays(monday, i);
+      const { day, month } = safeDateParts(ds);
+      dayCols.push({
+        dateStr: ds,
+        headerLabel: `${dayShortNames[i]}\n${day}/${String(month).padStart(2, '0')}`
+      });
+    }
+    const friday = dayCols[dayCols.length - 1].dateStr;
+    periodeLabel = `${formatDateIndoShort(monday)} – ${formatDateIndoShort(friday)}`;
+    groupHeaderLabel = `HARI & TANGGAL (${periodeLabel.toUpperCase()})`;
+    tanggalBarLabel = periodeLabel;
   }
 
-  const dailyIndexes = weekDates.map((w) => buildDailyAttendanceIndex(presensiList, w.dateStr));
-  const activeDaysCount = Math.max(1, weekDates.filter((_, idx) => dailyIndexes[idx].bySiswaId.size > 0).length);
+  // Indeks presensi harian untuk setiap kolom tanggal (O(N))
+  const dayIndexes = dayCols.map((dc) => buildDailyAttendanceIndex(presensiList, dc.dateStr));
 
-  let totalHadirAll = 0,
-    totalTelatAll = 0,
-    totalSakitAll = 0,
-    totalIzinAll = 0,
-    totalAlfaAll = 0,
-    totalBelumAll = 0,
-    totalMasukAll = 0;
+  // Hitung tanggal aktif di mana kelas (atau kelompok siswa) ini memiliki setidaknya 1 catatan
+  const activeDateFlags = dayCols.map((_, dayIdx) => {
+    const idxMap = dayIndexes[dayIdx];
+    return filteredStudents.some((s) => Boolean(getAttendanceFromIndex(s, idxMap)));
+  });
+  const activeDaysCount = Math.max(1, activeDateFlags.filter(Boolean).length);
 
-  const statusCode = (status: string) => {
-    if (status === 'Hadir') return '✔';
-    if (status === 'Terlambat') return 'T';
-    if (status === 'Sakit') return 'S';
-    if (status === 'Izin') return 'I';
-    if (status === 'Alfa') return 'A';
-    return '-';
-  };
+  // Kumpulkan baris siswa + statistik harian & total
+  let sumH = 0;
+  let sumT = 0;
+  let sumS = 0;
+  let sumI = 0;
+  let sumA = 0;
+  const dailyHadirTelatCounts: number[] = dayCols.map(() => 0);
 
-  const rows: (string | number)[][] = filteredStudents.map((siswa, idx) => {
-    let hadirCount = 0,
-      telatCount = 0,
-      sakitCount = 0,
-      izinCount = 0,
-      alfaCount = 0,
-      belumCount = 0;
+  interface PreparedStudentRow {
+    no: number;
+    nis: string;
+    nisn: string;
+    kelasShort: string;
+    nama: string;
+    dayCodes: string[];
+    h: number;
+    t: number;
+    s: number;
+    i: number;
+    a: number;
+    rateFraction: number;
+  }
 
-    const dayCells = weekDates.map((_w, dayIdx) => {
-      const record = getAttendanceFromIndex(siswa, dailyIndexes[dayIdx]);
-      if (!record) {
-        belumCount++;
-        return '-';
+  const studentRows: PreparedStudentRow[] = filteredStudents.map((siswa, idx) => {
+    let h = 0;
+    let t = 0;
+    let s = 0;
+    let i = 0;
+    let a = 0;
+
+    const dayCodes = dayCols.map((_, dayIdx) => {
+      const rec = getAttendanceFromIndex(siswa, dayIndexes[dayIdx]);
+      if (!rec) return '';
+      const code = resolveStatusCode(rec.status);
+      if (code === 'H') {
+        h++;
+        dailyHadirTelatCounts[dayIdx]++;
+      } else if (code === 'T') {
+        t++;
+        dailyHadirTelatCounts[dayIdx]++;
+      } else if (code === 'S') {
+        s++;
+      } else if (code === 'I') {
+        i++;
+      } else if (code === 'A') {
+        a++;
       }
-      if (record.status === 'Hadir') hadirCount++;
-      else if (record.status === 'Terlambat') telatCount++;
-      else if (record.status === 'Sakit') sakitCount++;
-      else if (record.status === 'Izin') izinCount++;
-      else if (record.status === 'Alfa') alfaCount++;
-      return statusCode(record.status);
+      return code;
     });
 
-    const totalMasuk = hadirCount + telatCount;
-    const persen = Math.min(100, Math.round((totalMasuk / activeDaysCount) * 100));
-    const shiftLabel =
-      getAttendanceShift(null, siswa.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
+    sumH += h;
+    sumT += t;
+    sumS += s;
+    sumI += i;
+    sumA += a;
 
-    totalHadirAll += hadirCount;
-    totalTelatAll += telatCount;
-    totalSakitAll += sakitCount;
-    totalIzinAll += izinCount;
-    totalAlfaAll += alfaCount;
-    totalBelumAll += belumCount;
-    totalMasukAll += totalMasuk;
+    const totalMasuk = h + t;
+    const rateFraction = Math.min(1, totalMasuk / activeDaysCount);
 
-    return [
-      idx + 1,
-      siswa.nis || '-',
-      siswa.nama,
-      siswa.kelas,
-      shiftLabel,
-      ...dayCells,
-      hadirCount,
-      telatCount,
-      sakitCount,
-      izinCount,
-      alfaCount,
-      belumCount,
-      totalMasuk,
-      persen / 100
+    return {
+      no: idx + 1,
+      nis: siswa.nis || '-',
+      nisn: siswa.nisn || siswa.nik || '-',
+      kelasShort: formatShortKelasLabel(siswa.kelas),
+      nama: siswa.nama,
+      dayCodes,
+      h,
+      t,
+      s,
+      i,
+      a,
+      rateFraction
+    };
+  });
+
+  const totalLogs = sumH + sumT + sumS + sumI + sumA;
+  const totalSlots = Math.max(1, filteredStudents.length * activeDaysCount);
+  const overallFraction = filteredStudents.length > 0 ? Math.min(1, (sumH + sumT) / totalSlots) : 0;
+  const overallPct = Math.round(overallFraction * 100);
+
+  // Jam Shift & Wali Kelas
+  const waliName = isAll ? 'Panji Teguh Amarta Surya, S.Pd.I., Gr.' : getWaliKelasByKelas(kelas);
+  const shiftVal = getAttendanceShift(null, isAll ? 'Kelas 1-A' : kelas, undefined, settings);
+  const jadwalKelas = settings ? getApplicableJadwal(isAll ? 'Kelas 1-A' : kelas, settings) : undefined;
+  const jamMasukStr = jadwalKelas?.jamMasuk || (shiftVal === 'Siang' ? '12:30' : '07:00');
+  const jamDisplay = `${jamMasukStr} WIB (${shiftVal})`;
+  const thnAjar = getTahunAjaran(settings, tahunAjaran);
+
+  // Total kolom tabel: 5 (NO..NAMA) + dayCols.length + 6 (H,T,S,I,A,% HADIR)
+  const dateStartCol = 6;
+  const dateEndCol = 5 + dayCols.length;
+  const summaryStartCol = dateEndCol + 1;
+  const totalCols = summaryStartCol + 5; // +6 cols (summaryStartCol .. summaryStartCol+5)
+
+  const ws = wb.addWorksheet(resolvedSheetName, {
+    properties: { tabColor: { argb: DIGI_COLORS.EMERALD_HEADER } },
+    views: [{ showGridLines: true }],
+    pageSetup: {
+      paperSize: 9, // A4
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: { left: 0.28, right: 0.28, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 }
+    }
+  });
+
+  // Row 1: Top Spacer
+  ws.addRow([]).height = 8;
+
+  // Row 2: Title
+  const titleText = isAll
+    ? 'DAFTAR HADIR SISWA SEMUA KELAS — SDN 3 KARAMATWANGI'
+    : `DAFTAR HADIR SISWA KELAS ${shortKelas.toUpperCase()} — SDN 3 KARAMATWANGI`;
+  const r2 = ws.addRow([titleText]);
+  ws.mergeCells(2, 1, 2, totalCols);
+  r2.height = 24;
+  r2.getCell(1).font = { name: 'Calibri', size: 13, bold: true, color: { argb: DIGI_COLORS.EMERALD_TITLE } };
+  r2.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+  // Row 3: Subtitle
+  const r3 = ws.addRow([`Cisurupan, Garut | Tahun Pelajaran ${thnAjar} | Periode: ${periodeLabel}`]);
+  ws.mergeCells(3, 1, 3, totalCols);
+  r3.height = 17;
+  r3.getCell(1).font = { name: 'Calibri', size: 9.5, italic: true, color: { argb: DIGI_COLORS.TEXT_MUTED } };
+  r3.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+  // Row 4: Mint Summary Box
+  const summaryText =
+    `Ringkasan: Total Siswa ${filteredStudents.length} · Tercatat ${totalLogs} log · ` +
+    `Hadir (H): ${sumH} · Terlambat (T): ${sumT} · Sakit (S): ${sumS} · Izin (I): ${sumI} · Alfa (A): ${sumA} · ` +
+    `Persentase Kehadiran: ${overallPct}%`;
+  const r4 = ws.addRow([summaryText]);
+  ws.mergeCells(4, 1, 4, totalCols);
+  r4.height = 22;
+  for (let c = 1; c <= totalCols; c++) {
+    const cell = r4.getCell(c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DIGI_COLORS.MINT_SUMMARY_BG } };
+    cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: DIGI_COLORS.MINT_TOTAL_TEXT } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = {
+      top: { style: 'thin', color: { argb: DIGI_COLORS.MINT_SUMMARY_BORDER } },
+      bottom: { style: 'thin', color: { argb: DIGI_COLORS.MINT_SUMMARY_BORDER } },
+      left: c === 1 ? { style: 'thin', color: { argb: DIGI_COLORS.MINT_SUMMARY_BORDER } } : undefined,
+      right: c === totalCols ? { style: 'thin', color: { argb: DIGI_COLORS.MINT_SUMMARY_BORDER } } : undefined
+    };
+  }
+
+  // Row 5: JAM / TANGGAL / WALI KELAS Info Bar
+  const r5 = ws.addRow([`JAM : ${jamDisplay}        TANGGAL : ${tanggalBarLabel}        WALI KELAS : ${waliName}`]);
+  ws.mergeCells(5, 1, 5, totalCols);
+  r5.height = 20;
+  r5.getCell(1).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: DIGI_COLORS.TEXT_DARK } };
+  r5.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+  // Row 6: Spacer
+  ws.addRow([]).height = 6;
+
+  // Row 7 & 8: 2-Row Grouped Header
+  const headerTop = ws.addRow([]); // Row 7
+  const headerBot = ws.addRow([]); // Row 8
+  headerTop.height = 20;
+  headerBot.height = mode === 'mingguan' ? 28 : 20;
+
+  const fixedHeaders = ['NO', 'NIS', 'NISN', 'KELAS', 'NAMA SISWA'];
+  fixedHeaders.forEach((lbl, idx) => {
+    const c = idx + 1;
+    headerTop.getCell(c).value = lbl;
+    ws.mergeCells(7, c, 8, c);
+  });
+
+  headerTop.getCell(dateStartCol).value = groupHeaderLabel;
+  if (dayCols.length > 1) {
+    ws.mergeCells(7, dateStartCol, 7, dateEndCol);
+  }
+  dayCols.forEach((dc, idx) => {
+    headerBot.getCell(dateStartCol + idx).value = mode === 'bulanan' ? Number(dc.headerLabel) : dc.headerLabel;
+  });
+
+  headerTop.getCell(summaryStartCol).value = 'JUMLAH';
+  ws.mergeCells(7, summaryStartCol, 7, totalCols);
+  ['H', 'T', 'S', 'I', 'A', '% HADIR'].forEach((lbl, idx) => {
+    headerBot.getCell(summaryStartCol + idx).value = lbl;
+  });
+
+  // Terapkan style Emerald ke seluruh sel header 2 baris
+  for (let rIdx = 7; rIdx <= 8; rIdx++) {
+    const r = ws.getRow(rIdx);
+    for (let c = 1; c <= totalCols; c++) {
+      const cell = r.getCell(c);
+      cell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DIGI_COLORS.EMERALD_HEADER } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: HEADER_GRID_BORDER,
+        bottom: HEADER_GRID_BORDER,
+        left: HEADER_GRID_BORDER,
+        right: HEADER_GRID_BORDER
+      };
+    }
+  }
+
+  ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 8, showGridLines: true }];
+
+  // Student Data Rows
+  studentRows.forEach((sr) => {
+    const rowValues: (string | number)[] = [
+      sr.no,
+      sr.nis,
+      sr.nisn,
+      sr.kelasShort,
+      sr.nama,
+      ...sr.dayCodes,
+      sr.h,
+      sr.t,
+      sr.s,
+      sr.i,
+      sr.a,
+      sr.rateFraction
     ];
+
+    const row = ws.addRow(rowValues);
+    row.height = 19;
+
+    for (let c = 1; c <= totalCols; c++) {
+      const cell = row.getCell(c);
+      const val = rowValues[c - 1];
+
+      let bgHex = 'FFFFFFFF';
+      let fontHex = DIGI_COLORS.TEXT_DARK;
+      let bold = false;
+      let horiz: 'left' | 'center' | 'right' = 'center';
+
+      if (c === 1) {
+        horiz = 'center';
+        cell.numFmt = '#,##0';
+      } else if (c === 2 || c === 3) {
+        horiz = 'center';
+        cell.numFmt = '@';
+      } else if (c === 4) {
+        horiz = 'center';
+      } else if (c === 5) {
+        horiz = 'left';
+      } else if (c >= dateStartCol && c <= dateEndCol) {
+        const override = styleStatusCodeCell(val as string);
+        if (override?.fillHex) bgHex = override.fillHex;
+        if (override?.fontHex) fontHex = override.fontHex;
+        if (override?.bold) bold = true;
+        horiz = 'center';
+      } else if (c >= summaryStartCol && c <= summaryStartCol + 4) {
+        horiz = 'center';
+        cell.numFmt = '#,##0';
+        bold = Number(val) > 0;
+        if (c === summaryStartCol && Number(val) > 0) fontHex = DIGI_COLORS.EMERALD_TITLE;
+      } else if (c === totalCols) {
+        horiz = 'center';
+        cell.numFmt = '0%';
+        bold = true;
+        fontHex =
+          sr.rateFraction >= 0.8 ? DIGI_COLORS.EMERALD_TITLE : sr.rateFraction > 0 ? 'FF92400E' : DIGI_COLORS.TEXT_MUTED;
+      }
+
+      cell.font = { name: 'Calibri', size: 9, bold, color: { argb: fontHex } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgHex } };
+      cell.alignment = { vertical: 'middle', horizontal: horiz };
+      cell.border = {
+        top: THIN_GRID_BORDER,
+        bottom: THIN_GRID_BORDER,
+        left: THIN_GRID_BORDER,
+        right: THIN_GRID_BORDER
+      };
+    }
   });
 
-  const totalSlots = filteredStudents.length * activeDaysCount;
-  const avgPersen = totalSlots > 0 ? Math.min(100, Math.round((totalMasukAll / totalSlots) * 100)) : 0;
-  const waliName = isAll ? 'Panji Teguh Amarta S, S.Pd.I' : getWaliKelasByKelas(kelas);
+  // Total Row (Mint Green)
+  const totalValues: (string | number)[] = [
+    `TOTAL KESELURUHAN (${filteredStudents.length} SISWA)`,
+    '',
+    '',
+    '',
+    '',
+    ...dailyHadirTelatCounts.map((cnt) => (cnt > 0 ? cnt : '')),
+    sumH,
+    sumT,
+    sumS,
+    sumI,
+    sumA,
+    overallFraction
+  ];
 
-  buildStyledWorksheet({
-    workbook: wb,
-    sheetName,
-    tabColor: 'FF4F46E5',
-    title: `JURNAL MATRIKS PRESENSI MINGGUAN • ${kelas.toUpperCase()}`,
-    metaInfo: `Periode: ${formatDateIndoLong(weekDates[0].dateStr)} s/d ${formatDateIndoLong(weekDates[4].dateStr)}  |  Wali: ${waliName}  |  Total: ${filteredStudents.length} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: filteredStudents.length, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hari Aktif', value: `${activeDaysCount} Hari`, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Total Hadir', value: totalHadirAll, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: totalTelatAll, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: totalSakitAll, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: totalIzinAll, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: totalAlfaAll, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Rata-Rata Hadir', value: `${avgPersen}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
-    headers: [
-      'No',
-      'NIS',
-      'Nama Lengkap Siswa',
-      'Kelas',
-      'Shift',
-      ...weekDates.map((w) => w.label),
-      'H',
-      'T',
-      'S',
-      'I',
-      'A',
-      'B',
-      'Masuk',
-      'Keaktifan'
-    ],
-    rows,
-    totalRow: [
-      '',
-      '',
-      `TOTAL REKAP MINGGUAN (${filteredStudents.length} SISWA)`,
-      kelas,
-      '',
-      ...weekDates.map(() => ''),
-      totalHadirAll,
-      totalTelatAll,
-      totalSakitAll,
-      totalIzinAll,
-      totalAlfaAll,
-      totalBelumAll,
-      totalMasukAll,
-      avgPersen / 100
-    ],
-    columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { minWidth: 11, maxWidth: 15, align: 'center', isTextId: true },
-      { minWidth: 26, maxWidth: 34, align: 'left' },
-      { width: 11, align: 'center' },
-      { width: 13, align: 'center' },
-      ...weekDates.map(() => ({ width: 11, align: 'center' as const })),
-      { width: 6, align: 'center', isNumeric: true },
-      { width: 6, align: 'center', isNumeric: true },
-      { width: 6, align: 'center', isNumeric: true },
-      { width: 6, align: 'center', isNumeric: true },
-      { width: 6, align: 'center', isNumeric: true },
-      { width: 6, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isPercent: true }
-    ],
-    cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 4) return styleShiftCell(val);
-      if (cIdx >= 5 && cIdx <= 9) return styleAttendanceStatusCell(val);
-      if (cIdx === 17) return styleQualificationOrRateCell(val);
-      return undefined;
-    },
-    legendItems: ATTENDANCE_LEGEND,
-    signatureRightLabel: isAll
-      ? 'Cisurupan, Garut • Petugas Piket Harian'
-      : `Cisurupan, Garut • Wali ${kelas}`,
-    signatureRightName: waliName
-  });
+  const totalRow = ws.addRow(totalValues);
+  totalRow.height = 22;
+  ws.mergeCells(totalRow.number, 1, totalRow.number, 5);
+
+  for (let c = 1; c <= totalCols; c++) {
+    const cell = totalRow.getCell(c);
+    cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: DIGI_COLORS.MINT_TOTAL_TEXT } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DIGI_COLORS.MINT_TOTAL_BG } };
+    cell.alignment = { vertical: 'middle', horizontal: c <= 5 ? 'left' : 'center' };
+    if (c === totalCols) {
+      cell.numFmt = '0%';
+    } else if (c >= dateStartCol && typeof totalValues[c - 1] === 'number') {
+      cell.numFmt = '#,##0';
+    }
+    cell.border = {
+      top: TOTAL_TOP_BORDER,
+      bottom: TOTAL_BOTTOM_BORDER,
+      left: THIN_GRID_BORDER,
+      right: THIN_GRID_BORDER
+    };
+  }
+
+  // Column widths
+  ws.getColumn(1).width = 4.8;
+  ws.getColumn(2).width = 11.5;
+  ws.getColumn(3).width = 13.5;
+  ws.getColumn(4).width = 7.5;
+  ws.getColumn(5).width = 28;
+  for (let c = dateStartCol; c <= dateEndCol; c++) {
+    ws.getColumn(c).width = mode === 'bulanan' ? 3.5 : 10;
+  }
+  for (let c = summaryStartCol; c <= summaryStartCol + 4; c++) {
+    ws.getColumn(c).width = 5;
+  }
+  ws.getColumn(totalCols).width = 8.8;
+
+  // Footer Legend
+  ws.addRow([]).height = 6;
+  const legendRow = ws.addRow([
+    'Keterangan Kode: H = Hadir Tepat Waktu | T = Terlambat | S = Sakit | I = Izin | A = Alfa | ' +
+      'Angka pada baris TOTAL kolom tanggal menunjukkan jumlah siswa Hadir/Terlambat.'
+  ]);
+  ws.mergeCells(legendRow.number, 1, legendRow.number, totalCols);
+  legendRow.height = 17;
+  legendRow.getCell(1).font = { name: 'Calibri', size: 8.5, italic: true, color: { argb: DIGI_COLORS.TEXT_MUTED } };
+  legendRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+
+  // Signature Block
+  ws.addRow([]).height = 10;
+  const rightCol = Math.max(dateStartCol + Math.floor(dayCols.length * 0.68), totalCols - 6);
+
+  const s1 = ws.addRow([]);
+  s1.height = 16;
+  s1.getCell(2).value = 'Mengetahui,';
+  s1.getCell(2).font = { name: 'Calibri', size: 9.5, color: { argb: DIGI_COLORS.TEXT_DARK } };
+  s1.getCell(rightCol).value = `Cisurupan, Garut, ${periodeLabel}`;
+  s1.getCell(rightCol).font = { name: 'Calibri', size: 9.5, color: { argb: DIGI_COLORS.TEXT_DARK } };
+
+  const s2 = ws.addRow([]);
+  s2.height = 16;
+  s2.getCell(2).value = 'Kepala Sekolah';
+  s2.getCell(2).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: DIGI_COLORS.TEXT_DARK } };
+  s2.getCell(rightCol).value = isAll ? 'Petugas Piket / Admin' : 'Guru / Wali Kelas';
+  s2.getCell(rightCol).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: DIGI_COLORS.TEXT_DARK } };
+
+  ws.addRow([]).height = 20;
+  ws.addRow([]).height = 18;
+
+  const sName = ws.addRow([]);
+  sName.height = 18;
+  sName.getCell(2).value = getKepsekName(settings);
+  sName.getCell(2).font = { name: 'Calibri', size: 9.5, bold: true, underline: true, color: { argb: DIGI_COLORS.TEXT_DARK } };
+  sName.getCell(rightCol).value = waliName;
+  sName.getCell(rightCol).font = { name: 'Calibri', size: 9.5, bold: true, underline: true, color: { argb: DIGI_COLORS.TEXT_DARK } };
 }
 
-export function addWeeklyRombelSummarySheetToWorkbook(
+/**
+ * ============================================================================
+ * TEMPLATE 3: RINGKASAN KEAKTIFAN PER KELAS — SDN 3 KARAMATWANGI
+ * Sesuai layout PDF resmi: DIGIWANGI_ringkasan_perkelas
+ * ============================================================================
+ */
+export function addRingkasanPerKelasSheet(
   wb: ExcelJS.Workbook,
-  mondayDateStr: string,
-  siswaList: Siswa[],
-  presensiList: Presensi[],
-  settings?: SystemSettings
+  options: {
+    sheetName?: string;
+    mode: 'harian' | 'mingguan' | 'bulanan' | 'semester';
+    dateOrPeriod: string;
+    siswaList: Siswa[];
+    presensiList: Presensi[];
+    semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string };
+    settings?: SystemSettings;
+  }
 ) {
-  const summary = calculateWeeklyRombelSummaryList(siswaList, presensiList, mondayDateStr);
-  let totalSiswa = 0,
-    hadir = 0,
-    terlambat = 0,
-    sakit = 0,
-    izin = 0,
-    alfa = 0,
-    totalHadir = 0;
+  const {
+    sheetName = 'Ringkasan Per Kelas',
+    mode,
+    dateOrPeriod,
+    siswaList,
+    presensiList,
+    semesterOptions,
+    settings
+  } = options;
 
-  const rows: (string | number)[][] = summary.map((r, idx) => {
-    totalSiswa += r.totalSiswa;
-    hadir += r.hadir;
-    terlambat += r.terlambat;
-    sakit += r.sakit;
-    izin += r.izin;
-    alfa += r.alfa;
-    totalHadir += r.totalHadir;
-    const shift = getAttendanceShift(null, r.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
+  const thnAjar = getTahunAjaran(settings, semesterOptions?.tahunAjaran);
+  let periodeLabel = '';
+  let summaryList = [];
+
+  if (mode === 'harian') {
+    periodeLabel = formatDateIndoLong(dateOrPeriod);
+    summaryList = calculateAllRombelSummaryList(siswaList, presensiList, dateOrPeriod, settings);
+  } else if (mode === 'mingguan') {
+    const monday = getMondayOfWeek(dateOrPeriod);
+    const friday = safeAddDays(monday, 4);
+    periodeLabel = `${formatDateIndoShort(monday)} – ${formatDateIndoShort(friday)}`;
+    summaryList = calculateWeeklyRombelSummaryList(siswaList, presensiList, monday);
+  } else if (mode === 'bulanan') {
+    periodeLabel = formatMonthIndo(dateOrPeriod);
+    summaryList = calculateMonthlyRombelSummaryList(siswaList, presensiList, dateOrPeriod);
+  } else {
+    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
+    periodeLabel = semType === '1' ? 'Semester 1 (Ganjil • Juli–Des)' : 'Semester 2 (Genap • Jan–Jun)';
+    summaryList = calculateSemesterRombelSummaryList(siswaList, presensiList, semType, thnAjar.replace('–', '/'));
+  }
+
+  let totalSiswaAll = 0;
+  let totalLogsAll = 0;
+  let totalHAll = 0;
+  let totalTAll = 0;
+  let totalSAll = 0;
+  let totalIAll = 0;
+  let totalAAll = 0;
+
+  const rows: (string | number)[][] = summaryList.map((r, idx) => {
+    const totalLogs = r.hadir + r.terlambat + r.sakit + r.izin + r.alfa;
+    totalSiswaAll += r.totalSiswa;
+    totalLogsAll += totalLogs;
+    totalHAll += r.hadir;
+    totalTAll += r.terlambat;
+    totalSAll += r.sakit;
+    totalIAll += r.izin;
+    totalAAll += r.alfa;
+
     return [
       idx + 1,
       r.kelas,
-      r.waliKelas,
-      shift,
       r.totalSiswa,
+      totalLogs,
       r.hadir,
       r.terlambat,
       r.sakit,
       r.izin,
       r.alfa,
-      r.totalHadir,
-      r.persentase / 100
+      (r.persentase || 0) / 100
     ];
   });
 
-  const avgPct =
-    summary.length > 0 ? Math.round(summary.reduce((a, b) => a + b.persentase, 0) / summary.length) : 0;
-
-  buildStyledWorksheet({
-    workbook: wb,
-    sheetName: 'Ringkasan Rombel Mingguan',
-    tabColor: 'FF1E3A8A',
-    title: 'REKAPITULASI MINGGUAN PER ROMBEL KELAS (1-A s/d 6-B)',
-    metaInfo: `Senin Mulai: ${formatDateIndoLong(mondayDateStr)}  |  Total Rombel: ${summary.length} Kelas  |  Total Murid: ${totalSiswa} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: totalSiswa, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hadir Tepat', value: hadir, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: terlambat, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: sakit, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: izin, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: alfa, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Keaktifan Sekolah', value: `${avgPct}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
-    headers: ['No', 'Rombel', 'Wali Kelas', 'Shift', 'Murid', 'Hadir', 'Telat', 'Sakit', 'Izin', 'Alfa', 'Total Masuk', 'Keaktifan'],
-    rows,
-    totalRow: ['', 'TOTAL SEKOLAH', '12 Rombel', 'Semua Sesi', totalSiswa, hadir, terlambat, sakit, izin, alfa, totalHadir, avgPct / 100],
-    columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { width: 12, align: 'center' },
-      { minWidth: 24, maxWidth: 32, align: 'left' },
-      { width: 14, align: 'center' },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isPercent: true }
-    ],
-    cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 3) return styleShiftCell(val);
-      if (cIdx === 11) return styleQualificationOrRateCell(val);
-      return undefined;
-    },
-    signatureRightLabel: 'Cisurupan, Garut • Petugas Piket Harian',
-    signatureRightName: 'Panji Teguh Amarta S, S.Pd.I'
-  });
-}
-
-/**
- * 4. TAMBAH SHEET BULANAN (REKAP + MATRIKS KALENDER TANGGAL 1..31)
- */
-export function addMonthlyClassSheetToWorkbook(
-  wb: ExcelJS.Workbook,
-  sheetName: string,
-  kelas: string,
-  monthStr: string,
-  siswaList: Siswa[],
-  presensiList: Presensi[],
-  settings?: SystemSettings,
-  includeCalendarMatrix: boolean = true
-) {
-  const isAll = kelas === 'Semua Kelas' || !kelas;
-  const filteredStudents = sortStudentsByClassAndName(
-    isAll ? siswaList : siswaList.filter((s) => isSameClass(s.kelas, kelas))
-  );
-
-  const rawDatesInMonth = new Set<string>();
-  presensiList.forEach((p) => {
-    const norm = normalizeDateKey(p.tanggal);
-    if (norm.startsWith(monthStr)) {
-      rawDatesInMonth.add(norm);
-    }
-  });
-  const effectiveDays = Math.max(1, rawDatesInMonth.size);
-
-  let sumH = 0,
-    sumT = 0,
-    sumS = 0,
-    sumI = 0,
-    sumA = 0,
-    sumMasuk = 0,
-    sumPct = 0;
-
-  const studentDateMaps = new Map<string, Map<string, Presensi>>();
-
-  const rows: (string | number)[][] = filteredStudents.map((siswa, idx) => {
-    const studentRecords = presensiList.filter(
-      (p) => isPresensiMatchSiswa(p, siswa) && normalizeDateKey(p.tanggal).startsWith(monthStr)
-    );
-
-    const dateMap = new Map<string, Presensi>();
-    studentRecords.forEach((r) => {
-      const d = normalizeDateKey(r.tanggal);
-      if (isRecordNewer(r, dateMap.get(d))) {
-        dateMap.set(d, r);
-      }
-    });
-    studentDateMaps.set(siswa.id, dateMap);
-
-    let hadir = 0,
-      terlambat = 0,
-      sakit = 0,
-      izin = 0,
-      alfa = 0;
-
-    dateMap.forEach((rec) => {
-      if (rec.status === 'Hadir') hadir++;
-      else if (rec.status === 'Terlambat') terlambat++;
-      else if (rec.status === 'Sakit') sakit++;
-      else if (rec.status === 'Izin') izin++;
-      else if (rec.status === 'Alfa') alfa++;
-    });
-
-    const totalMasuk = hadir + terlambat;
-    const persen = Math.min(100, Math.round((totalMasuk / effectiveDays) * 100));
-
-    let predikat = 'Rendah (Perlu Perhatian)';
-    if (persen >= 90) predikat = 'Sangat Baik / Rajin';
-    else if (persen >= 80) predikat = 'Baik';
-    else if (persen >= 60) predikat = 'Cukup';
-
-    const shiftLabel =
-      getAttendanceShift(null, siswa.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
-
-    sumH += hadir;
-    sumT += terlambat;
-    sumS += sakit;
-    sumI += izin;
-    sumA += alfa;
-    sumMasuk += totalMasuk;
-    sumPct += persen;
-
-    return [
-      idx + 1,
-      siswa.nis || '-',
-      siswa.nama,
-      siswa.kelas,
-      shiftLabel,
-      effectiveDays,
-      hadir,
-      terlambat,
-      sakit,
-      izin,
-      alfa,
-      totalMasuk,
-      persen / 100,
-      predikat
-    ];
-  });
-
-  const avgPersen = filteredStudents.length > 0 ? Math.round(sumPct / filteredStudents.length) : 0;
-  const monthName = formatMonthIndo(monthStr);
-  const waliName = isAll ? 'Panji Teguh Amarta S, S.Pd.I' : getWaliKelasByKelas(kelas);
+  const grandPct =
+    summaryList.length > 0
+      ? Math.round(summaryList.reduce((acc, item) => acc + item.persentase, 0) / summaryList.length)
+      : 0;
 
   buildStyledWorksheet({
     workbook: wb,
     sheetName,
-    tabColor: 'FF059669',
-    title: `BUKU REKAPITULASI PRESENSI BULANAN • ${kelas.toUpperCase()}`,
-    metaInfo: `Bulan: ${monthName} (${monthStr})  |  Hari Efektif: ${effectiveDays} Hari  |  Wali: ${waliName}  |  Total: ${filteredStudents.length} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: filteredStudents.length, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hari Efektif', value: `${effectiveDays} Hari`, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Total Hadir', value: sumH, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: sumT, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: sumS, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: sumI, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: sumA, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Rata-Rata Kelas', value: `${avgPersen}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
+    tabColor: DIGI_COLORS.EMERALD_HEADER,
+    title: 'RINGKASAN KEAKTIFAN PER KELAS — SDN 3 KARAMATWANGI',
+    metaInfo: `Periode: ${periodeLabel} · Tahun Pelajaran ${thnAjar}`,
     headers: [
-      'No',
-      'NIS',
-      'Nama Lengkap Siswa',
-      'Kelas',
-      'Shift',
-      'Hari Efektif',
-      'Hadir',
-      'Telat',
-      'Sakit',
-      'Izin',
-      'Alfa',
-      'Total Masuk',
-      'Keaktifan',
-      'Predikat Kualifikasi'
+      'NO',
+      'KELAS',
+      'JUMLAH SISWA',
+      'TOTAL LOG',
+      'HADIR (H)',
+      'TERLAMBAT (T)',
+      'SAKIT (S)',
+      'IZIN (I)',
+      'ALFA (A)',
+      '% KEAKTIFAN'
     ],
     rows,
     totalRow: [
-      '',
-      '',
-      `TOTAL AKUMULASI BULAN ${monthName.toUpperCase()}`,
-      kelas,
-      '',
-      effectiveDays,
-      sumH,
-      sumT,
-      sumS,
-      sumI,
-      sumA,
-      sumMasuk,
-      avgPersen / 100,
-      avgPersen >= 90 ? 'Sangat Baik' : avgPersen >= 80 ? 'Baik' : 'Cukup'
+      '-',
+      'TOTAL SEKOLAH',
+      totalSiswaAll,
+      totalLogsAll,
+      totalHAll,
+      totalTAll,
+      totalSAll,
+      totalIAll,
+      totalAAll,
+      grandPct / 100
     ],
     columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { minWidth: 11, maxWidth: 15, align: 'center', isTextId: true },
-      { minWidth: 26, maxWidth: 34, align: 'left' },
-      { width: 11, align: 'center' },
-      { width: 13, align: 'center' },
-      { width: 11, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 11, align: 'center', isNumeric: true },
-      { width: 11, align: 'center', isPercent: true },
-      { width: 22, align: 'center' }
-    ],
-    cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 4) return styleShiftCell(val);
-      if (cIdx === 12 || cIdx === 13) return styleQualificationOrRateCell(val);
-      return undefined;
-    },
-    signatureRightLabel: isAll
-      ? 'Cisurupan, Garut • Petugas Piket Harian'
-      : `Cisurupan, Garut • Wali ${kelas}`,
-    signatureRightName: waliName
-  });
-
-  // Bonus Sheet: Matriks Kalender Tanggal Harian untuk bulan tsb (untuk single-class)
-  if (includeCalendarMatrix && !isAll && filteredStudents.length > 0) {
-    const [yrStr, moStr] = monthStr.split('-');
-    const year = parseInt(yrStr) || 2026;
-    const month = parseInt(moStr) || 10;
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    const activeDates: { day: number; dateStr: string }[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const ds = `${monthStr}-${String(d).padStart(2, '0')}`;
-      const dow = new Date(`${ds}T00:00:00Z`).getUTCDay();
-      if (dow !== 0 || rawDatesInMonth.has(ds)) {
-        activeDates.push({ day: d, dateStr: ds });
-      }
-    }
-
-    const matrixRows: (string | number)[][] = filteredStudents.map((siswa, idx) => {
-      const dm = studentDateMaps.get(siswa.id) || new Map<string, Presensi>();
-      let masuk = 0;
-      const cells = activeDates.map(({ dateStr }) => {
-        const rec = dm.get(dateStr);
-        if (!rec) return '-';
-        if (rec.status === 'Hadir') {
-          masuk++;
-          return 'H';
-        }
-        if (rec.status === 'Terlambat') {
-          masuk++;
-          return 'T';
-        }
-        if (rec.status === 'Sakit') return 'S';
-        if (rec.status === 'Izin') return 'I';
-        if (rec.status === 'Alfa') return 'A';
-        return '-';
-      });
-      return [idx + 1, siswa.nis || '-', siswa.nama, ...cells, masuk];
-    });
-
-    buildStyledWorksheet({
-      workbook: wb,
-      sheetName: `Matriks ${monthName}`,
-      tabColor: 'FF0D9488',
-      title: `MATRIKS KALENDER PRESENSI HARIAN • ${kelas.toUpperCase()}`,
-      metaInfo: `Bulan: ${monthName} (${monthStr})  |  H = Hadir, T = Terlambat, S = Sakit, I = Izin, A = Alfa, - = Belum/Kosong`,
-      headers: ['No', 'NIS', 'Nama Lengkap Siswa', ...activeDates.map((d) => String(d.day).padStart(2, '0')), 'Masuk'],
-      rows: matrixRows,
-      columnMeta: [
-        { width: 5, align: 'center', isNumeric: true },
-        { width: 12, align: 'center', isTextId: true },
-        { minWidth: 24, maxWidth: 32, align: 'left' },
-        ...activeDates.map(() => ({ width: 4.5, align: 'center' as const })),
-        { width: 8, align: 'center', isNumeric: true }
-      ],
-      cellStyler: (_rIdx, cIdx, val) => {
-        if (cIdx >= 3 && cIdx < 3 + activeDates.length) {
-          const s = String(val);
-          return styleAttendanceStatusCell(s === 'H' ? 'Hadir' : s);
-        }
-        return undefined;
-      },
-      legendItems: ATTENDANCE_LEGEND,
-      signatureRightLabel: `Cisurupan, Garut • Wali ${kelas}`,
-      signatureRightName: waliName
-    });
-  }
-}
-
-export function addMonthlyRombelSummarySheetToWorkbook(
-  wb: ExcelJS.Workbook,
-  monthStr: string,
-  siswaList: Siswa[],
-  presensiList: Presensi[],
-  settings?: SystemSettings
-) {
-  const summary = calculateMonthlyRombelSummaryList(siswaList, presensiList, monthStr);
-  let totalSiswa = 0,
-    hadir = 0,
-    terlambat = 0,
-    sakit = 0,
-    izin = 0,
-    alfa = 0,
-    totalHadir = 0;
-
-  const rows: (string | number)[][] = summary.map((r, idx) => {
-    totalSiswa += r.totalSiswa;
-    hadir += r.hadir;
-    terlambat += r.terlambat;
-    sakit += r.sakit;
-    izin += r.izin;
-    alfa += r.alfa;
-    totalHadir += r.totalHadir;
-    const shift = getAttendanceShift(null, r.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
-    return [idx + 1, r.kelas, r.waliKelas, shift, r.totalSiswa, r.hadir, r.terlambat, r.sakit, r.izin, r.alfa, r.totalHadir, r.persentase / 100];
-  });
-
-  const avgPct =
-    summary.length > 0 ? Math.round(summary.reduce((a, b) => a + b.persentase, 0) / summary.length) : 0;
-  const monthName = formatMonthIndo(monthStr);
-
-  buildStyledWorksheet({
-    workbook: wb,
-    sheetName: 'Ringkasan Rombel Bulanan',
-    tabColor: 'FF1E3A8A',
-    title: `REKAPITULASI BULANAN PER ROMBEL KELAS (1-A s/d 6-B)`,
-    metaInfo: `Bulan: ${monthName} (${monthStr})  |  Total Rombel: ${summary.length} Kelas  |  Total Murid: ${totalSiswa} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: totalSiswa, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hadir Tepat', value: hadir, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: terlambat, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: sakit, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: izin, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: alfa, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Keaktifan Sekolah', value: `${avgPct}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
-    headers: ['No', 'Rombel', 'Wali Kelas', 'Shift', 'Murid', 'Hadir', 'Telat', 'Sakit', 'Izin', 'Alfa', 'Total Masuk', 'Keaktifan'],
-    rows,
-    totalRow: ['', 'TOTAL SEKOLAH', '12 Rombel', 'Semua Sesi', totalSiswa, hadir, terlambat, sakit, izin, alfa, totalHadir, avgPct / 100],
-    columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { width: 12, align: 'center' },
-      { minWidth: 24, maxWidth: 32, align: 'left' },
-      { width: 14, align: 'center' },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
+      { width: 6, align: 'center', isNumeric: true },
+      { width: 15, align: 'center' },
+      { width: 15, align: 'center', isNumeric: true },
+      { width: 13, align: 'center', isNumeric: true },
       { width: 12, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isPercent: true }
+      { width: 15, align: 'center', isNumeric: true },
+      { width: 12, align: 'center', isNumeric: true },
+      { width: 11, align: 'center', isNumeric: true },
+      { width: 11, align: 'center', isNumeric: true },
+      { width: 14, align: 'center', isPercent: true }
     ],
     cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 3) return styleShiftCell(val);
-      if (cIdx === 11) return styleQualificationOrRateCell(val);
+      if (cIdx === 1) return { bold: true, align: 'center', fontHex: DIGI_COLORS.TEXT_DARK };
+      if (cIdx === 4 && Number(val) > 0) return { fontHex: DIGI_COLORS.EMERALD_TITLE, bold: true, align: 'center' };
+      if (cIdx === 9) return styleQualificationOrRateCell(val);
       return undefined;
     },
-    signatureRightLabel: 'Cisurupan, Garut • Petugas Piket Harian',
-    signatureRightName: 'Panji Teguh Amarta S, S.Pd.I'
+    legendItems: ATTENDANCE_LEGEND,
+    signatureLeftLabel: 'Mengetahui,\nKepala Sekolah',
+    signatureLeftName: getKepsekName(settings),
+    signatureRightLabel: `Cisurupan, Garut, ${periodeLabel}\nPetugas Piket / Admin`,
+    signatureRightName: 'Panji Teguh Amarta Surya, S.Pd.I., Gr.',
+    orientation: 'landscape'
   });
 }
 
 /**
- * 5. TAMBAH SHEET SEMESTER PER KELAS & RINGKASAN ROMBEL SEMESTER
+ * ============================================================================
+ * HELPER: REKAP SEMESTER PER KELAS (Gaya Clean Emerald DIGIWANGI 3)
+ * ============================================================================
  */
 export function addSemesterClassSheetToWorkbook(
   wb: ExcelJS.Workbook,
@@ -1013,13 +902,13 @@ export function addSemesterClassSheetToWorkbook(
   );
   const { targetYearMonths, effectiveDays } = getEffectiveSemesterDays(tahunAjaran, semesterType, presensiList);
 
-  let sumH = 0,
-    sumT = 0,
-    sumS = 0,
-    sumI = 0,
-    sumA = 0,
-    sumMasuk = 0,
-    sumPct = 0;
+  let sumH = 0;
+  let sumT = 0;
+  let sumS = 0;
+  let sumI = 0;
+  let sumA = 0;
+  let sumMasuk = 0;
+  let sumPct = 0;
 
   const rows: (string | number)[][] = filteredStudents.map((siswa, idx) => {
     const studentRecords = presensiList.filter((p) => {
@@ -1034,11 +923,11 @@ export function addSemesterClassSheetToWorkbook(
       if (isRecordNewer(r, dateMap.get(d))) dateMap.set(d, r);
     });
 
-    let hadir = 0,
-      terlambat = 0,
-      sakit = 0,
-      izin = 0,
-      alfa = 0;
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
     dateMap.forEach((rec) => {
       if (rec.status === 'Hadir') hadir++;
       else if (rec.status === 'Terlambat') terlambat++;
@@ -1054,9 +943,6 @@ export function addSemesterClassSheetToWorkbook(
     else if (persen >= 80) predikat = 'Baik (B)';
     else if (persen >= 60) predikat = 'Cukup (C)';
 
-    const shiftLabel =
-      getAttendanceShift(null, siswa.kelas, undefined, settings) === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
-
     sumH += hadir;
     sumT += terlambat;
     sumS += sakit;
@@ -1065,178 +951,339 @@ export function addSemesterClassSheetToWorkbook(
     sumMasuk += totalMasuk;
     sumPct += persen;
 
-    return [idx + 1, siswa.nis || '-', siswa.nama, siswa.kelas, shiftLabel, effectiveDays, hadir, terlambat, sakit, izin, alfa, totalMasuk, persen / 100, predikat];
+    return [
+      idx + 1,
+      siswa.nis || '-',
+      siswa.nisn || siswa.nik || '-',
+      formatShortKelasLabel(siswa.kelas),
+      siswa.nama,
+      effectiveDays,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      totalMasuk,
+      persen / 100,
+      predikat
+    ];
   });
 
   const avgPersen = filteredStudents.length > 0 ? Math.round(sumPct / filteredStudents.length) : 0;
-  const semLabel = semesterType === '1' ? 'Semester 1 (Ganjil • Juli-Des)' : 'Semester 2 (Genap • Jan-Jun)';
-  const waliName = isAll ? 'Panji Teguh Amarta S, S.Pd.I' : getWaliKelasByKelas(kelas);
+  const semLabel = semesterType === '1' ? 'Semester 1 (Ganjil • Juli–Des)' : 'Semester 2 (Genap • Jan–Jun)';
+  const waliName = isAll ? 'Panji Teguh Amarta Surya, S.Pd.I., Gr.' : getWaliKelasByKelas(kelas);
 
   buildStyledWorksheet({
     workbook: wb,
     sheetName,
-    tabColor: 'FF1D4ED8',
-    title: `BUKU INDUK PRESENSI SEMESTER • ${kelas.toUpperCase()}`,
-    metaInfo: `Tahun Ajaran: ${tahunAjaran}  |  ${semLabel}  |  Hari Efektif: ${effectiveDays} Hari  |  Wali: ${waliName}`,
-    kpiCards: [
-      { label: 'Total Siswa', value: filteredStudents.length, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hari Efektif', value: `${effectiveDays} Hari`, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Total Hadir', value: sumH, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: sumT, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: sumS, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: sumI, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: sumA, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Keaktifan Semester', value: `${avgPersen}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
-    headers: ['No', 'NIS', 'Nama Lengkap Siswa', 'Kelas', 'Shift', 'Efektif', 'Hadir', 'Telat', 'Sakit', 'Izin', 'Alfa', 'Total Masuk', 'Keaktifan', 'Predikat Raport'],
+    tabColor: DIGI_COLORS.EMERALD_HEADER,
+    title: `REKAP PRESENSI SEMESTER ${isAll ? 'SEMUA KELAS' : kelas.toUpperCase()} — SDN 3 KARAMATWANGI`,
+    metaInfo: `Cisurupan, Garut | Tahun Pelajaran ${tahunAjaran} | ${semLabel} | Hari Efektif: ${effectiveDays} Hari`,
+    headers: ['NO', 'NIS', 'NISN', 'KELAS', 'NAMA SISWA', 'EFEKTIF', 'H', 'T', 'S', 'I', 'A', 'MASUK', '% HADIR', 'PREDIKAT'],
     rows,
-    totalRow: ['', '', `REKAPITULASI ${semLabel.toUpperCase()}`, kelas, '', effectiveDays, sumH, sumT, sumS, sumI, sumA, sumMasuk, avgPersen / 100, avgPersen >= 90 ? 'Sangat Baik (A)' : avgPersen >= 80 ? 'Baik (B)' : 'Cukup (C)'],
+    totalRow: [
+      '-',
+      '',
+      '',
+      isAll ? 'SEMUA' : formatShortKelasLabel(kelas),
+      `TOTAL (${filteredStudents.length} SISWA)`,
+      effectiveDays,
+      sumH,
+      sumT,
+      sumS,
+      sumI,
+      sumA,
+      sumMasuk,
+      avgPersen / 100,
+      avgPersen >= 90 ? 'Sangat Baik (A)' : avgPersen >= 80 ? 'Baik (B)' : 'Cukup (C)'
+    ],
     columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { minWidth: 11, maxWidth: 15, align: 'center', isTextId: true },
-      { minWidth: 26, maxWidth: 34, align: 'left' },
-      { width: 11, align: 'center' },
-      { width: 13, align: 'center' },
+      { width: 6, align: 'center', isNumeric: true },
+      { width: 13, align: 'center', isTextId: true },
+      { width: 15, align: 'center', isTextId: true },
+      { width: 9, align: 'center' },
+      { minWidth: 26, maxWidth: 36, align: 'left' },
       { width: 9, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 8, align: 'center', isNumeric: true },
-      { width: 11, align: 'center', isNumeric: true },
-      { width: 11, align: 'center', isPercent: true },
+      { width: 7, align: 'center', isNumeric: true },
+      { width: 7, align: 'center', isNumeric: true },
+      { width: 7, align: 'center', isNumeric: true },
+      { width: 7, align: 'center', isNumeric: true },
+      { width: 7, align: 'center', isNumeric: true },
+      { width: 9, align: 'center', isNumeric: true },
+      { width: 10, align: 'center', isPercent: true },
       { width: 18, align: 'center' }
     ],
     cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 4) return styleShiftCell(val);
       if (cIdx === 12 || cIdx === 13) return styleQualificationOrRateCell(val);
       return undefined;
     },
+    legendItems: ATTENDANCE_LEGEND,
+    signatureLeftLabel: 'Mengetahui,\nKepala Sekolah',
+    signatureLeftName: getKepsekName(settings),
     signatureRightLabel: isAll
-      ? 'Cisurupan, Garut • Petugas Piket Harian'
-      : `Cisurupan, Garut • Wali ${kelas}`,
-    signatureRightName: waliName
+      ? `Cisurupan, Garut\nPetugas Piket / Admin`
+      : `Cisurupan, Garut\nGuru / Wali ${kelas}`,
+    signatureRightName: waliName,
+    orientation: 'landscape'
   });
 }
 
-export function addSemesterRombelSummarySheetToWorkbook(
-  wb: ExcelJS.Workbook,
-  semesterType: '1' | '2',
-  tahunAjaran: string,
+function filterPresensiForPeriod(
+  presensiList: Presensi[],
+  mode: 'harian' | 'mingguan' | 'bulanan' | 'semester',
+  dateOrPeriod: string,
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string }
+): { filtered: Presensi[]; periodeLabel: string } {
+  if (mode === 'harian') {
+    const target = normalizeDateKey(dateOrPeriod);
+    return {
+      filtered: presensiList.filter((p) => normalizeDateKey(p.tanggal) === target),
+      periodeLabel: formatDateIndoLong(target)
+    };
+  }
+  if (mode === 'mingguan') {
+    const monday = getMondayOfWeek(dateOrPeriod);
+    const weekSet = new Set([0, 1, 2, 3, 4].map((i) => safeAddDays(monday, i)));
+    const friday = safeAddDays(monday, 4);
+    return {
+      filtered: presensiList.filter((p) => weekSet.has(normalizeDateKey(p.tanggal))),
+      periodeLabel: `${formatDateIndoShort(monday)} – ${formatDateIndoShort(friday)}`
+    };
+  }
+  if (mode === 'bulanan') {
+    const ym = dateOrPeriod.slice(0, 7);
+    return {
+      filtered: presensiList.filter((p) => normalizeDateKey(p.tanggal).startsWith(ym)),
+      periodeLabel: formatMonthIndo(ym)
+    };
+  }
+  const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
+  const thn = semesterOptions?.tahunAjaran || '2026/2027';
+  const { targetYearMonths } = getEffectiveSemesterDays(thn, semType, presensiList);
+  return {
+    filtered: presensiList.filter((p) => {
+      const norm = normalizeDateKey(p.tanggal);
+      return targetYearMonths.some((ym) => norm.startsWith(ym));
+    }),
+    periodeLabel: `${semType === '1' ? 'Semester 1 (Ganjil)' : 'Semester 2 (Genap)'} ${thn}`
+  };
+}
+
+/**
+ * ============================================================================
+ * EXPORT BUILDER WORKBOOK (Dapat dipakai baik untuk download browser maupun verifikasi)
+ * ============================================================================
+ */
+export function buildSingleClassReportWorkbook(
+  type: 'harian' | 'mingguan' | 'bulanan' | 'semester',
+  kelas: string,
+  dateOrPeriod: string,
   siswaList: Siswa[],
   presensiList: Presensi[],
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string },
   settings?: SystemSettings
-) {
-  const { targetYearMonths, effectiveDays } = getEffectiveSemesterDays(tahunAjaran, semesterType, presensiList);
+): { workbook: ExcelJS.Workbook; filename: string } {
+  const wb = createConfiguredWorkbook();
+  const isAll = !kelas || kelas === 'Semua Kelas' || kelas === 'SEMUA KELAS';
+  const cleanKelas = kelas.replace(/[\s-]+/g, '_').toUpperCase();
+  const { filtered: periodLogs, periodeLabel } = filterPresensiForPeriod(
+    presensiList,
+    type,
+    dateOrPeriod,
+    semesterOptions
+  );
 
-  let totalSiswaAll = 0,
-    totalHAll = 0,
-    totalTAll = 0,
-    totalSAll = 0,
-    totalIAll = 0,
-    totalAAll = 0,
-    totalMasukAll = 0,
-    sumPct = 0;
+  let filename = '';
 
-  const rows: (string | number)[][] = DAFTAR_KELAS.map((namaKelas, idx) => {
-    const classStudents = siswaList.filter((s) => isSameClass(s.kelas, namaKelas));
-    const totalSiswa = classStudents.length;
-
-    let hadir = 0,
-      terlambat = 0,
-      sakit = 0,
-      izin = 0,
-      alfa = 0;
-
-    classStudents.forEach((siswa) => {
-      const studentRecords = presensiList.filter((p) => {
-        if (!isPresensiMatchSiswa(p, siswa)) return false;
-        const norm = normalizeDateKey(p.tanggal);
-        return targetYearMonths.some((ym) => norm.startsWith(ym));
+  if (type === 'harian') {
+    const monthStr = dateOrPeriod.slice(0, 7);
+    if (isAll) {
+      addRingkasanPerKelasSheet(wb, {
+        sheetName: 'Ringkasan Per Kelas',
+        mode: 'harian',
+        dateOrPeriod,
+        siswaList,
+        presensiList,
+        settings
       });
-      const dateMap = new Map<string, Presensi>();
-      studentRecords.forEach((r) => {
-        const d = normalizeDateKey(r.tanggal);
-        if (isRecordNewer(r, dateMap.get(d))) dateMap.set(d, r);
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: 'Semua Kelas',
+        records: periodLogs,
+        siswaList,
+        settings
       });
-      dateMap.forEach((rec) => {
-        if (rec.status === 'Hadir') hadir++;
-        else if (rec.status === 'Terlambat') terlambat++;
-        else if (rec.status === 'Sakit') sakit++;
-        else if (rec.status === 'Izin') izin++;
-        else if (rec.status === 'Alfa') alfa++;
+      DAFTAR_KELAS.forEach((cls) => {
+        addDaftarHadirKelasSheet(wb, {
+          sheetName: `Kelas ${formatShortKelasLabel(cls)}`,
+          kelas: cls,
+          mode: 'bulanan',
+          monthOrMondayStr: monthStr,
+          highlightDateStr: dateOrPeriod,
+          siswaList,
+          presensiList,
+          settings
+        });
       });
-    });
+    } else {
+      addDaftarHadirKelasSheet(wb, {
+        sheetName: `Daftar Hadir ${formatShortKelasLabel(kelas)}`,
+        kelas,
+        mode: 'bulanan',
+        monthOrMondayStr: monthStr,
+        highlightDateStr: dateOrPeriod,
+        siswaList,
+        presensiList,
+        settings
+      });
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: kelas,
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+    }
+    filename = `DIGIWANGI_REKAP_HARIAN_${cleanKelas}_${dateOrPeriod}.xlsx`;
+  } else if (type === 'mingguan') {
+    const monday = getMondayOfWeek(dateOrPeriod);
+    if (isAll) {
+      addRingkasanPerKelasSheet(wb, {
+        sheetName: 'Ringkasan Per Kelas',
+        mode: 'mingguan',
+        dateOrPeriod: monday,
+        siswaList,
+        presensiList,
+        settings
+      });
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: 'Semua Kelas',
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+      DAFTAR_KELAS.forEach((cls) => {
+        addDaftarHadirKelasSheet(wb, {
+          sheetName: `Kelas ${formatShortKelasLabel(cls)}`,
+          kelas: cls,
+          mode: 'mingguan',
+          monthOrMondayStr: monday,
+          siswaList,
+          presensiList,
+          settings
+        });
+      });
+    } else {
+      addDaftarHadirKelasSheet(wb, {
+        sheetName: `Daftar Hadir ${formatShortKelasLabel(kelas)}`,
+        kelas,
+        mode: 'mingguan',
+        monthOrMondayStr: monday,
+        siswaList,
+        presensiList,
+        settings
+      });
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: kelas,
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+    }
+    filename = `DIGIWANGI_REKAP_MINGGUAN_${cleanKelas}_${monday}.xlsx`;
+  } else if (type === 'bulanan') {
+    const ym = dateOrPeriod.slice(0, 7);
+    if (isAll) {
+      addRingkasanPerKelasSheet(wb, {
+        sheetName: 'Ringkasan Per Kelas',
+        mode: 'bulanan',
+        dateOrPeriod: ym,
+        siswaList,
+        presensiList,
+        settings
+      });
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: 'Semua Kelas',
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+      DAFTAR_KELAS.forEach((cls) => {
+        addDaftarHadirKelasSheet(wb, {
+          sheetName: `Kelas ${formatShortKelasLabel(cls)}`,
+          kelas: cls,
+          mode: 'bulanan',
+          monthOrMondayStr: ym,
+          siswaList,
+          presensiList,
+          settings
+        });
+      });
+    } else {
+      addDaftarHadirKelasSheet(wb, {
+        sheetName: `Daftar Hadir ${formatShortKelasLabel(kelas)}`,
+        kelas,
+        mode: 'bulanan',
+        monthOrMondayStr: ym,
+        siswaList,
+        presensiList,
+        settings
+      });
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: kelas,
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+    }
+    filename = `DIGIWANGI_REKAP_BULANAN_${cleanKelas}_${ym}.xlsx`;
+  } else {
+    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
+    const thn = semesterOptions?.tahunAjaran || '2026/2027';
+    if (isAll) {
+      addRingkasanPerKelasSheet(wb, {
+        sheetName: 'Ringkasan Per Kelas',
+        mode: 'semester',
+        dateOrPeriod,
+        siswaList,
+        presensiList,
+        semesterOptions: { semesterType: semType, tahunAjaran: thn },
+        settings
+      });
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: 'Semua Kelas',
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+      addSemesterClassSheetToWorkbook(wb, 'Rekap Semua Siswa', 'Semua Kelas', semType, thn, siswaList, presensiList, settings);
+    } else {
+      addSemesterClassSheetToWorkbook(wb, `Semester ${formatShortKelasLabel(kelas)}`, kelas, semType, thn, siswaList, presensiList, settings);
+      addLogPresensiHarianSheet(wb, {
+        sheetName: 'Log Presensi Harian',
+        periodeLabel,
+        kelasFilter: kelas,
+        records: periodLogs,
+        siswaList,
+        settings
+      });
+    }
+    filename = `DIGIWANGI_REKAP_SEMESTER_${semType}_${cleanKelas}_${thn.replace('/', '-')}.xlsx`;
+  }
 
-    const totalMasuk = hadir + terlambat;
-    const totalPossible = totalSiswa * effectiveDays;
-    const persen = totalPossible > 0 ? Math.min(100, Math.round((totalMasuk / totalPossible) * 100)) : 0;
-
-    let predikat = 'Perlu Pendampingan';
-    if (persen >= 90) predikat = 'Sangat Tinggi (A)';
-    else if (persen >= 80) predikat = 'Tinggi (B)';
-    else if (persen >= 60) predikat = 'Cukup (C)';
-
-    const shiftLabel =
-      getAttendanceShift(null, namaKelas, undefined, settings) === 'Siang' ? 'Siang (12.30)' : 'Pagi (07.00)';
-
-    totalSiswaAll += totalSiswa;
-    totalHAll += hadir;
-    totalTAll += terlambat;
-    totalSAll += sakit;
-    totalIAll += izin;
-    totalAAll += alfa;
-    totalMasukAll += totalMasuk;
-    sumPct += persen;
-
-    return [idx + 1, namaKelas, getWaliKelasByKelas(namaKelas), shiftLabel, totalSiswa, hadir, terlambat, sakit, izin, alfa, totalMasuk, persen / 100, predikat];
-  });
-
-  const avgPct = Math.round(sumPct / DAFTAR_KELAS.length);
-  const semLabel = semesterType === '1' ? 'Semester 1 (Ganjil)' : 'Semester 2 (Genap)';
-
-  buildStyledWorksheet({
-    workbook: wb,
-    sheetName: 'Ringkasan Rombel Semester',
-    tabColor: 'FF1E3A8A',
-    title: 'REKAPITULASI PRESENSI SELURUH ROMBEL PER SEMESTER',
-    metaInfo: `Tahun Ajaran: ${tahunAjaran}  |  ${semLabel}  |  Hari Efektif: ${effectiveDays} Hari  |  Total: ${totalSiswaAll} Siswa`,
-    kpiCards: [
-      { label: 'Total Siswa', value: totalSiswaAll, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hari Efektif', value: `${effectiveDays} Hari`, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Hadir Tepat', value: totalHAll, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: totalTAll, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: totalSAll, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: totalIAll, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: totalAAll, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' },
-      { label: 'Keaktifan Sekolah', value: `${avgPct}%`, bgHex: 'FFDBEAFE', fontHex: 'FF1E3A8A' }
-    ],
-    headers: ['No', 'Rombel', 'Wali Kelas', 'Shift', 'Murid', 'Hadir', 'Telat', 'Sakit', 'Izin', 'Alfa', 'Masuk Fisik', 'Keaktifan', 'Predikat Rombel'],
-    rows,
-    totalRow: ['', 'TOTAL SEKOLAH', '12 Rombel', 'Semua Sesi', totalSiswaAll, totalHAll, totalTAll, totalSAll, totalIAll, totalAAll, totalMasukAll, avgPct / 100, avgPct >= 90 ? 'Sangat Tinggi (A)' : 'Baik (B)'],
-    columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { width: 12, align: 'center' },
-      { minWidth: 24, maxWidth: 32, align: 'left' },
-      { width: 14, align: 'center' },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 9, align: 'center', isNumeric: true },
-      { width: 12, align: 'center', isNumeric: true },
-      { width: 11, align: 'center', isPercent: true },
-      { width: 20, align: 'center' }
-    ],
-    cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 3) return styleShiftCell(val);
-      if (cIdx === 11 || cIdx === 12) return styleQualificationOrRateCell(val);
-      return undefined;
-    },
-    signatureRightLabel: 'Cisurupan, Garut • Petugas Piket Harian',
-    signatureRightName: 'Panji Teguh Amarta S, S.Pd.I'
-  });
+  return { workbook: wb, filename };
 }
 
 /**
@@ -1251,52 +1298,20 @@ export async function downloadSingleClassReport(
   semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string },
   settings?: SystemSettings
 ): Promise<void> {
-  const wb = createConfiguredWorkbook();
-  const isAll = !kelas || kelas === 'Semua Kelas' || kelas === 'SEMUA KELAS';
-  const cleanKelas = kelas.replace(/[\s-]+/g, '_').toUpperCase();
-  let filename = '';
-
-  if (type === 'harian') {
-    if (isAll) {
-      addDailyRombelSummarySheetToWorkbook(wb, dateOrPeriod, siswaList, presensiList, settings);
-      addDailyClassSheetToWorkbook(wb, 'Detail Semua Siswa', 'Semua Kelas', dateOrPeriod, siswaList, presensiList, settings);
-    } else {
-      addDailyClassSheetToWorkbook(wb, `Rekap ${kelas}`, kelas, dateOrPeriod, siswaList, presensiList, settings);
-    }
-    filename = `REKAP_PRESENSI_HARIAN_${cleanKelas}_${dateOrPeriod}.xlsx`;
-  } else if (type === 'mingguan') {
-    if (isAll) {
-      addWeeklyRombelSummarySheetToWorkbook(wb, dateOrPeriod, siswaList, presensiList, settings);
-      addWeeklyClassSheetToWorkbook(wb, 'Matriks Semua Siswa', 'Semua Kelas', dateOrPeriod, siswaList, presensiList, settings);
-    } else {
-      addWeeklyClassSheetToWorkbook(wb, `Mingguan ${kelas}`, kelas, dateOrPeriod, siswaList, presensiList, settings);
-    }
-    filename = `REKAP_PRESENSI_MINGGUAN_${cleanKelas}_MULAI_${dateOrPeriod}.xlsx`;
-  } else if (type === 'bulanan') {
-    if (isAll) {
-      addMonthlyRombelSummarySheetToWorkbook(wb, dateOrPeriod, siswaList, presensiList, settings);
-      addMonthlyClassSheetToWorkbook(wb, 'Detail Semua Siswa', 'Semua Kelas', dateOrPeriod, siswaList, presensiList, settings, false);
-    } else {
-      addMonthlyClassSheetToWorkbook(wb, `Bulanan ${kelas}`, kelas, dateOrPeriod, siswaList, presensiList, settings, true);
-    }
-    filename = `REKAP_PRESENSI_BULANAN_${cleanKelas}_${dateOrPeriod}.xlsx`;
-  } else {
-    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
-    const thn = semesterOptions?.tahunAjaran || '2026/2027';
-    if (isAll) {
-      addSemesterRombelSummarySheetToWorkbook(wb, semType, thn, siswaList, presensiList, settings);
-      addSemesterClassSheetToWorkbook(wb, 'Buku Induk Semua Siswa', 'Semua Kelas', semType, thn, siswaList, presensiList, settings);
-    } else {
-      addSemesterClassSheetToWorkbook(wb, `Semester ${kelas}`, kelas, semType, thn, siswaList, presensiList, settings);
-    }
-    filename = `REKAP_PRESENSI_SEMESTER_${semType}_${cleanKelas}_${thn.replace('/', '-')}.xlsx`;
-  }
-
-  await downloadWorkbookXlsx(wb, filename);
+  const { workbook, filename } = buildSingleClassReportWorkbook(
+    type,
+    kelas,
+    dateOrPeriod,
+    siswaList,
+    presensiList,
+    semesterOptions,
+    settings
+  );
+  await downloadWorkbookXlsx(workbook, filename);
 }
 
 /**
- * TRIGGER DOWNLOAD SEMUA KELAS DALAM PAKET ZIP (.XLSX PER KELAS + 1 WORKBOOK MASTER 12 SHEET)
+ * TRIGGER DOWNLOAD SEMUA KELAS DALAM PAKET ZIP (.XLSX PER KELAS + MASTER WORKBOOK + RINGKASAN + LOG)
  */
 export async function downloadAllClassesZip(
   type: 'harian' | 'mingguan' | 'bulanan' | 'semester',
@@ -1309,104 +1324,118 @@ export async function downloadAllClassesZip(
 ) {
   const zip = new JSZip();
   const classes = DAFTAR_KELAS;
-  const total = classes.length + 2;
+  const total = classes.length + 3;
+  const { filtered: periodLogs, periodeLabel } = filterPresensiForPeriod(
+    presensiList,
+    type,
+    dateOrPeriod,
+    semesterOptions
+  );
 
-  const masterWb = createConfiguredWorkbook();
+  // 01: Ringkasan Per Kelas
+  onProgress?.(1, total, 'Ringkasan Keaktifan Per Kelas (.xlsx)');
+  const summaryWb = createConfiguredWorkbook();
+  addRingkasanPerKelasSheet(summaryWb, {
+    sheetName: 'Ringkasan Per Kelas',
+    mode: type,
+    dateOrPeriod,
+    siswaList,
+    presensiList,
+    semesterOptions,
+    settings
+  });
+  zip.file(`01_DIGIWANGI_RINGKASAN_PER_KELAS_${dateOrPeriod.replace('/', '-')}.xlsx`, await workbookToXlsxBuffer(summaryWb));
 
-  if (type === 'harian') {
-    onProgress?.(1, total, 'Ringkasan Seluruh Rombel (.xlsx)');
-    const summaryWb = createConfiguredWorkbook();
-    addDailyRombelSummarySheetToWorkbook(summaryWb, dateOrPeriod, siswaList, presensiList, settings);
-    addDailyRombelSummarySheetToWorkbook(masterWb, dateOrPeriod, siswaList, presensiList, settings);
-    zip.file(`01_REKAPITULASI_SELURUH_ROMBEL_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(summaryWb));
+  // 02: Log Presensi Harian (QR & Manual)
+  onProgress?.(2, total, 'Log Presensi Harian QR & Manual (.xlsx)');
+  const logWb = createConfiguredWorkbook();
+  addLogPresensiHarianSheet(logWb, {
+    sheetName: 'Log Presensi Harian',
+    periodeLabel,
+    kelasFilter: 'Semua Kelas',
+    records: periodLogs,
+    siswaList,
+    settings
+  });
+  zip.file(`02_DIGIWANGI_LOG_PRESENSI_HARIAN_${dateOrPeriod.replace('/', '-')}.xlsx`, await workbookToXlsxBuffer(logWb));
 
-    for (let i = 0; i < classes.length; i++) {
-      const cls = classes[i];
-      onProgress?.(i + 2, total, `Excel ${cls}`);
-      const clsWb = createConfiguredWorkbook();
-      addDailyClassSheetToWorkbook(clsWb, `Rekap ${cls}`, cls, dateOrPeriod, siswaList, presensiList, settings);
-      addDailyClassSheetToWorkbook(masterWb, cls, cls, dateOrPeriod, siswaList, presensiList, settings);
-      const cleanName = cls.replace(/[\s-]+/g, '_');
-      zip.file(`REKAP_HARIAN_${cleanName}_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(clsWb));
-    }
-
-    onProgress?.(total, total, 'Master Workbook 12 Kelas (.xlsx)');
-    zip.file(`00_MASTER_LENGKAP_12_KELAS_HARIAN_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(masterWb));
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    triggerFileDownload(zipBlob, `PAKET_EXCEL_PRESENSI_HARIAN_SEMUA_KELAS_${dateOrPeriod}.zip`);
-  } else if (type === 'mingguan') {
-    onProgress?.(1, total, 'Ringkasan Mingguan Semua Rombel (.xlsx)');
-    const summaryWb = createConfiguredWorkbook();
-    addWeeklyRombelSummarySheetToWorkbook(summaryWb, dateOrPeriod, siswaList, presensiList, settings);
-    addWeeklyRombelSummarySheetToWorkbook(masterWb, dateOrPeriod, siswaList, presensiList, settings);
-    zip.file(`01_REKAP_MINGGUAN_SEMUA_ROMBEL_MULAI_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(summaryWb));
-
-    for (let i = 0; i < classes.length; i++) {
-      const cls = classes[i];
-      onProgress?.(i + 2, total, `Excel ${cls}`);
-      const clsWb = createConfiguredWorkbook();
-      addWeeklyClassSheetToWorkbook(clsWb, `Mingguan ${cls}`, cls, dateOrPeriod, siswaList, presensiList, settings);
-      addWeeklyClassSheetToWorkbook(masterWb, cls, cls, dateOrPeriod, siswaList, presensiList, settings);
-      const cleanName = cls.replace(/[\s-]+/g, '_');
-      zip.file(`REKAP_MINGGUAN_${cleanName}_MULAI_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(clsWb));
-    }
-
-    onProgress?.(total, total, 'Master Workbook 12 Kelas (.xlsx)');
-    zip.file(`00_MASTER_LENGKAP_12_KELAS_MINGGUAN_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(masterWb));
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    triggerFileDownload(zipBlob, `PAKET_EXCEL_PRESENSI_MINGGUAN_SEMUA_KELAS_MULAI_${dateOrPeriod}.zip`);
-  } else if (type === 'bulanan') {
-    onProgress?.(1, total, 'Ringkasan Bulanan Semua Rombel (.xlsx)');
-    const summaryWb = createConfiguredWorkbook();
-    addMonthlyRombelSummarySheetToWorkbook(summaryWb, dateOrPeriod, siswaList, presensiList, settings);
-    addMonthlyRombelSummarySheetToWorkbook(masterWb, dateOrPeriod, siswaList, presensiList, settings);
-    zip.file(`01_REKAP_BULANAN_SEMUA_ROMBEL_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(summaryWb));
-
-    for (let i = 0; i < classes.length; i++) {
-      const cls = classes[i];
-      onProgress?.(i + 2, total, `Excel ${cls}`);
-      const clsWb = createConfiguredWorkbook();
-      addMonthlyClassSheetToWorkbook(clsWb, `Bulanan ${cls}`, cls, dateOrPeriod, siswaList, presensiList, settings, true);
-      addMonthlyClassSheetToWorkbook(masterWb, cls, cls, dateOrPeriod, siswaList, presensiList, settings, false);
-      const cleanName = cls.replace(/[\s-]+/g, '_');
-      zip.file(`REKAP_BULANAN_${cleanName}_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(clsWb));
-    }
-
-    onProgress?.(total, total, 'Master Workbook 12 Kelas (.xlsx)');
-    zip.file(`00_MASTER_LENGKAP_12_KELAS_BULANAN_${dateOrPeriod}.xlsx`, await workbookToXlsxBuffer(masterWb));
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    triggerFileDownload(zipBlob, `PAKET_EXCEL_PRESENSI_BULANAN_SEMUA_KELAS_${dateOrPeriod}.zip`);
-  } else {
-    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
-    const thn = semesterOptions?.tahunAjaran || '2026/2027';
-    const thnClean = thn.replace('/', '-');
-
-    onProgress?.(1, total, 'Ringkasan Rombel Semester (.xlsx)');
-    const summaryWb = createConfiguredWorkbook();
-    addSemesterRombelSummarySheetToWorkbook(summaryWb, semType, thn, siswaList, presensiList, settings);
-    addSemesterRombelSummarySheetToWorkbook(masterWb, semType, thn, siswaList, presensiList, settings);
-    zip.file(`01_REKAPITULASI_ROMBEL_SEMESTER_${semType}_${thnClean}.xlsx`, await workbookToXlsxBuffer(summaryWb));
-
-    for (let i = 0; i < classes.length; i++) {
-      const cls = classes[i];
-      onProgress?.(i + 2, total, `Excel ${cls}`);
-      const clsWb = createConfiguredWorkbook();
-      addSemesterClassSheetToWorkbook(clsWb, `Semester ${cls}`, cls, semType, thn, siswaList, presensiList, settings);
-      addSemesterClassSheetToWorkbook(masterWb, cls, cls, semType, thn, siswaList, presensiList, settings);
-      const cleanName = cls.replace(/[\s-]+/g, '_');
-      zip.file(`REKAP_SEMESTER_${semType}_${cleanName}_${thnClean}.xlsx`, await workbookToXlsxBuffer(clsWb));
-    }
-
-    onProgress?.(total, total, 'Master Workbook 12 Kelas (.xlsx)');
-    zip.file(`00_MASTER_LENGKAP_12_KELAS_SEMESTER_${semType}_${thnClean}.xlsx`, await workbookToXlsxBuffer(masterWb));
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    triggerFileDownload(zipBlob, `PAKET_EXCEL_PRESENSI_SEMESTER_${semType}_SEMUA_KELAS_${thnClean}.zip`);
+  // Per-Kelas Workbooks
+  for (let i = 0; i < classes.length; i++) {
+    const cls = classes[i];
+    onProgress?.(i + 3, total, `Daftar Hadir ${cls}`);
+    const { workbook: clsWb } = buildSingleClassReportWorkbook(
+      type,
+      cls,
+      dateOrPeriod,
+      siswaList,
+      presensiList,
+      semesterOptions,
+      settings
+    );
+    const cleanName = cls.replace(/[\s-]+/g, '_');
+    zip.file(`REKAP_${cleanName}_${dateOrPeriod.replace('/', '-')}.xlsx`, await workbookToXlsxBuffer(clsWb));
   }
+
+  // 00: Master Workbook Lengkap (Ringkasan + Log + 12 Kelas)
+  onProgress?.(total, total, 'Master Workbook Lengkap (.xlsx)');
+  const { workbook: masterWb } = buildSingleClassReportWorkbook(
+    type,
+    'Semua Kelas',
+    dateOrPeriod,
+    siswaList,
+    presensiList,
+    semesterOptions,
+    settings
+  );
+  zip.file(`00_MASTER_LENGKAP_DIGIWANGI_${dateOrPeriod.replace('/', '-')}.xlsx`, await workbookToXlsxBuffer(masterWb));
+
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  triggerExcelBlobDownload(zipBlob, `PAKET_LAPORAN_DIGIWANGI_${type.toUpperCase()}_${dateOrPeriod.replace('/', '-')}.zip`);
 }
 
 /**
- * EKSPOR EXCEL MODERN DASHBOARD KEPALA SEKOLAH (Multi-sheet: Ringkasan Rombel + Log Presensi)
+ * EKSPOR EXCEL DASHBOARD KEPALA SEKOLAH (Template 3 Ringkasan Per Kelas + Template 1 Log Presensi Harian)
  */
+export function buildKepsekRekapWorkbook(
+  selectedKelas: string,
+  filterType: string,
+  filteredLogs: Presensi[],
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  settings?: SystemSettings
+): { workbook: ExcelJS.Workbook; filename: string } {
+  const wb = createConfiguredWorkbook();
+  const today = getLocalDateString();
+  const periodLabel =
+    filterType === 'hari' ? formatDateIndoLong(today) : filterType === 'minggu' ? '7 Hari Terakhir' : '30 Hari Terakhir';
+
+  // Sheet 1: Ringkasan Keaktifan Per Kelas
+  addRingkasanPerKelasSheet(wb, {
+    sheetName: 'Ringkasan Per Kelas',
+    mode: filterType === 'bulan' ? 'bulanan' : filterType === 'minggu' ? 'mingguan' : 'harian',
+    dateOrPeriod: filterType === 'bulan' ? today.slice(0, 7) : today,
+    siswaList,
+    presensiList,
+    settings
+  });
+
+  // Sheet 2: Log Presensi Harian (QR & Manual) sesuai filter kepsek
+  addLogPresensiHarianSheet(wb, {
+    sheetName: 'Log Presensi Harian',
+    periodeLabel: periodLabel,
+    kelasFilter: selectedKelas,
+    records: filteredLogs,
+    siswaList,
+    settings
+  });
+
+  const cleanCls = selectedKelas.replace(/[\s-]+/g, '_').toUpperCase();
+  return {
+    workbook: wb,
+    filename: `DIGIWANGI_LAPORAN_KEPSEK_${cleanCls}_${today}.xlsx`
+  };
+}
+
 export async function downloadKepsekRekapExcel(
   selectedKelas: string,
   filterType: string,
@@ -1415,86 +1444,19 @@ export async function downloadKepsekRekapExcel(
   presensiList: Presensi[],
   settings?: SystemSettings
 ): Promise<void> {
-  const wb = createConfiguredWorkbook();
-  const today = getLocalDateString();
-
-  // Sheet 1: Ringkasan Rombel Hari Ini
-  addDailyRombelSummarySheetToWorkbook(wb, today, siswaList, presensiList, settings);
-
-  // Sheet 2: Log Presensi Terfilter
-  let hadir = 0,
-    telat = 0,
-    sakit = 0,
-    izin = 0,
-    alfa = 0;
-  const rows: (string | number)[][] = filteredLogs.map((p, idx) => {
-    const siswa = siswaList.find((s) => s.id === p.siswaId);
-    if (p.status === 'Hadir') hadir++;
-    else if (p.status === 'Terlambat') telat++;
-    else if (p.status === 'Sakit') sakit++;
-    else if (p.status === 'Izin') izin++;
-    else if (p.status === 'Alfa') alfa++;
-
-    const metodeLabel = p.metodeLabel || (p.metode === 'QR_SCAN' ? 'Scan QR Code' : 'Manual Tap Wali');
-    return [
-      idx + 1,
-      p.tanggal,
-      p.waktu,
-      p.nis || '-',
-      p.nama,
-      p.kelas,
-      p.status,
-      metodeLabel,
-      p.operator || '-',
-      siswa?.waOrangTua || '-'
-    ];
-  });
-
-  const periodLabel = filterType === 'hari' ? 'Hari Ini' : filterType === 'minggu' ? '7 Hari Terakhir' : '30 Hari Terakhir';
-
-  buildStyledWorksheet({
-    workbook: wb,
-    sheetName: 'Log Presensi Terfilter',
-    tabColor: 'FF0F766E',
-    title: `LAPORAN LOG PRESENSI KEPALA SEKOLAH • ${selectedKelas.toUpperCase()}`,
-    metaInfo: `Horizon Laporan: ${periodLabel}  |  Filter Kelas: ${selectedKelas}  |  Total Rekaman: ${filteredLogs.length}`,
-    kpiCards: [
-      { label: 'Total Rekaman', value: filteredLogs.length, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'Hadir', value: hadir, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'Terlambat', value: telat, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'Sakit', value: sakit, bgHex: 'FFE0E7FF', fontHex: 'FF3730A3' },
-      { label: 'Izin', value: izin, bgHex: 'FFE0F2FE', fontHex: 'FF075985' },
-      { label: 'Alfa', value: alfa, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' }
-    ],
-    headers: ['No', 'Tanggal', 'Waktu', 'NIS', 'Nama Lengkap Siswa', 'Kelas', 'Status', 'Metode', 'Operator Input', 'No. WA Orang Tua'],
-    rows,
-    columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { width: 12, align: 'center' },
-      { width: 10, align: 'center' },
-      { minWidth: 11, maxWidth: 15, align: 'center', isTextId: true },
-      { minWidth: 25, maxWidth: 34, align: 'left' },
-      { width: 12, align: 'center' },
-      { width: 14, align: 'center' },
-      { width: 18, align: 'center' },
-      { minWidth: 18, maxWidth: 26, align: 'left' },
-      { width: 16, align: 'center', isTextId: true }
-    ],
-    cellStyler: (_rIdx, cIdx, val) => {
-      if (cIdx === 6) return styleAttendanceStatusCell(val);
-      if (cIdx === 7) return styleMetodeCell(val);
-      return undefined;
-    },
-    signatureRightLabel: 'Cisurupan, Garut • Petugas Piket Sekolah',
-    signatureRightName: 'Panji Teguh Amarta S, S.Pd.I'
-  });
-
-  const cleanCls = selectedKelas.replace(/[\s-]+/g, '_').toUpperCase();
-  await downloadWorkbookXlsx(wb, `REKAP_KEPSEK_SDN3_${cleanCls}_${filterType.toUpperCase()}_${today}.xlsx`);
+  const { workbook, filename } = buildKepsekRekapWorkbook(
+    selectedKelas,
+    filterType,
+    filteredLogs,
+    siswaList,
+    presensiList,
+    settings
+  );
+  await downloadWorkbookXlsx(workbook, filename);
 }
 
 /**
- * EKSPOR EXCEL MODERN PENILAIAN AKHLAK & PROFIL PELAJAR PANCASILA
+ * EKSPOR EXCEL PENILAIAN AKHLAK & PROFIL PELAJAR PANCASILA (Gaya Clean Emerald DIGIWANGI 3)
  */
 export async function downloadAkhlakRekapExcel(
   selectedKelas: string,
@@ -1503,26 +1465,16 @@ export async function downloadAkhlakRekapExcel(
 ): Promise<void> {
   const wb = createConfiguredWorkbook();
 
-  let countB = 0,
-    countM = 0,
-    countS = 0,
-    countK = 0;
-
   const rows: (string | number)[][] = filteredList.map((item, idx) => {
     const student = siswaList.find((s) => isRecordMatchStudent(item.kunci_siswa, s));
     const dim = DAFTAR_DIMENSI_PROFIL.find((d) => d.id === item.dimensi_profil);
     const skalaInfo = SKALA_PENILAIAN_MAP[item.nilai_skala];
 
-    if (item.nilai_skala === 'B') countB++;
-    else if (item.nilai_skala === 'M') countM++;
-    else if (item.nilai_skala === 'S') countS++;
-    else if (item.nilai_skala === 'K') countK++;
-
     return [
       idx + 1,
       item.kunci_siswa || '-',
       student ? student.nama : 'Tidak Ditemukan',
-      student ? student.kelas : '-',
+      student ? formatShortKelasLabel(student.kelas) : '-',
       item.tanggal,
       dim ? dim.nama : `Dimensi ${item.dimensi_profil}`,
       item.sub_bidang_akhlak || '-',
@@ -1540,44 +1492,37 @@ export async function downloadAkhlakRekapExcel(
   buildStyledWorksheet({
     workbook: wb,
     sheetName: 'Penilaian Akhlak P5',
-    tabColor: 'FFD97706',
-    title: `REKAPITULASI PENILAIAN AKHLAK & PROFIL PELAJAR PANCASILA • ${selectedKelas.toUpperCase()}`,
-    metaInfo: `Kurikulum Merdeka • SDN 3 Karamatwangi  |  Kelas: ${selectedKelas}  |  Total Catatan: ${filteredList.length}`,
-    kpiCards: [
-      { label: 'Total Penilaian', value: filteredList.length, bgHex: 'FFF1F5F9', fontHex: 'FF0F172A' },
-      { label: 'B (Membudaya)', value: countB, bgHex: 'FFDCFCE7', fontHex: 'FF166534' },
-      { label: 'M (Berkembang)', value: countM, bgHex: 'FFECFDF5', fontHex: 'FF047857' },
-      { label: 'S (Mulai Berkembang)', value: countS, bgHex: 'FFFEF3C7', fontHex: 'FF92400E' },
-      { label: 'K (Perlu Bimbingan)', value: countK, bgHex: 'FFFEE2E2', fontHex: 'FF991B1B' }
-    ],
+    tabColor: DIGI_COLORS.EMERALD_HEADER,
+    title: `REKAP PENILAIAN AKHLAK & PROFIL PELAJAR PANCASILA — SDN 3 KARAMATWANGI`,
+    metaInfo: `Kelas: ${selectedKelas} · Total Catatan: ${filteredList.length} · Kurikulum Merdeka`,
     headers: [
-      'No',
-      'Kunci Siswa (NISN/NIK)',
-      'Nama Lengkap Siswa',
-      'Kelas',
-      'Tanggal',
-      'Dimensi Profil Pancasila',
-      'Sub-Bidang Akhlak',
-      'Skala',
-      'Keterangan Skala',
-      'Catatan Pengamatan Guru',
-      'Tahun Ajaran',
-      'Semester',
-      'Penilai'
+      'NO',
+      'NISN / NIK',
+      'NAMA SISWA',
+      'KELAS',
+      'TANGGAL',
+      'DIMENSI PROFIL PANCASILA',
+      'SUB-BIDANG AKHLAK',
+      'SKALA',
+      'KETERANGAN SKALA',
+      'CATATAN PENGAMATAN GURU',
+      'TAHUN PELAJARAN',
+      'SEMESTER',
+      'PENILAI'
     ],
     rows,
     columnMeta: [
-      { width: 5, align: 'center', isNumeric: true },
-      { minWidth: 14, maxWidth: 19, align: 'center', isTextId: true },
+      { width: 6, align: 'center', isNumeric: true },
+      { minWidth: 14, maxWidth: 18, align: 'center', isTextId: true },
       { minWidth: 24, maxWidth: 32, align: 'left' },
-      { width: 11, align: 'center' },
+      { width: 10, align: 'center' },
       { width: 12, align: 'center' },
       { minWidth: 22, maxWidth: 30, align: 'left', wrapText: true },
       { minWidth: 18, maxWidth: 26, align: 'left', wrapText: true },
       { width: 8, align: 'center' },
       { width: 20, align: 'center' },
       { minWidth: 26, maxWidth: 38, align: 'left', wrapText: true },
-      { width: 12, align: 'center' },
+      { width: 14, align: 'center' },
       { width: 10, align: 'center' },
       { minWidth: 18, maxWidth: 26, align: 'left' }
     ],
@@ -1585,12 +1530,14 @@ export async function downloadAkhlakRekapExcel(
       if (cIdx === 7 || cIdx === 8) return styleQualificationOrRateCell(val);
       return undefined;
     },
-    signatureRightLabel: `Cisurupan, Garut • Penilai / ${selectedKelas}`,
+    signatureLeftLabel: 'Mengetahui,\nKepala Sekolah',
+    signatureLeftName: 'Cucu Maspika, S.Pd.I., M.Pd., MCE.',
+    signatureRightLabel: `Cisurupan, Garut\nPenilai / ${selectedKelas}`,
     signatureRightName: waliName
   });
 
   await downloadWorkbookXlsx(
     wb,
-    `REKAP_PENILAIAN_AKHLAK_${selectedKelas.replace(/[\s-]+/g, '_').toUpperCase()}_${getLocalDateString()}.xlsx`
+    `DIGIWANGI_PENILAIAN_AKHLAK_${selectedKelas.replace(/[\s-]+/g, '_').toUpperCase()}_${getLocalDateString()}.xlsx`
   );
 }
