@@ -119,6 +119,7 @@ export interface SystemSettings {
   nipKepsek?: string; // NIP Kepala Sekolah
   waliKelasList?: WaliKelas[]; // Data Wali Kelas per rombel & nomor WhatsApp
   serverWaNumber?: string; // Nomor Server Gateway WhatsApp (misal: 08214134551)
+  updatedAt?: number; // Epoch ms saat konfigurasi/jadwal terakhir disimpan
 }
 
 export interface ActivityLog {
@@ -268,48 +269,75 @@ export function getApplicableJadwal(
   }
 
   if (classMatches.length > 1) {
+    // Prioritaskan jadwal khusus/custom yang dibuat admin atas jadwal bawaan standar
+    const defaultIds = new Set(['jdw-pagi-reguler', 'jdw-siang-kelas-1-6']);
+    const customMatches = classMatches.filter((s) => !defaultIds.has(s.id));
+    if (customMatches.length === 1) {
+      return customMatches[0];
+    }
+
+    const candidatePool = customMatches.length > 0 ? customMatches : classMatches;
+    const activeMatch = settings.activeJadwalId
+      ? candidatePool.find((s) => s.id === settings.activeJadwalId)
+      : undefined;
+
     if (currentHourMinute) {
       const [nowH, nowM] = currentHourMinute.split(':').map(Number);
       const nowTotalMin = (nowH || 0) * 60 + (nowM || 0);
 
-      // Pisahkan jadwal Pagi (< 11:00) dan Siang (>= 11:00) agar siswa yang terlambat pagi
-      // tetap dievaluasi menggunakan toleransi Jadwal Pagi, bukan loncat ke Jadwal Siang.
-      const morningSchedules = classMatches.filter((s) => {
-        const [inH] = (s.jamMasuk || '07:00').split(':').map(Number);
-        return (inH || 0) < 11;
-      });
-      const afternoonSchedules = classMatches.filter((s) => {
+      // Pisahkan jadwal Pagi (< 11:00) dan Siang (>= 11:00) bila kelas memang memiliki 2 shift aktif
+      const isAfternoon = (s: JadwalPresensi) => {
+        if (s.tipe === 'Siang') return true;
+        if (s.tipe === 'Pagi') return false;
         const [inH] = (s.jamMasuk || '07:00').split(':').map(Number);
         return (inH || 0) >= 11;
-      });
+      };
+      const morningSchedules = candidatePool.filter((s) => !isAfternoon(s));
+      const afternoonSchedules = candidatePool.filter((s) => isAfternoon(s));
 
       if (morningSchedules.length > 0 && afternoonSchedules.length > 0) {
-        const [aftH, aftM] = (afternoonSchedules[0].jamMasuk || '12:30').split(':').map(Number);
-        const afternoonStartWindow = (aftH || 12) * 60 + (aftM || 30) - 90; // Mulai 11:00 WIB
-        const pool = nowTotalMin >= afternoonStartWindow ? afternoonSchedules : morningSchedules;
-        return pool[0];
+        const chosenAfternoon =
+          (settings.activeJadwalId && afternoonSchedules.find((s) => s.id === settings.activeJadwalId)) ||
+          afternoonSchedules[afternoonSchedules.length - 1];
+        const chosenMorning =
+          (settings.activeJadwalId && morningSchedules.find((s) => s.id === settings.activeJadwalId)) ||
+          morningSchedules[morningSchedules.length - 1];
+        const [aftH, aftM] = (chosenAfternoon.jamMasuk || '12:30').split(':').map(Number);
+        const afternoonStartWindow = (aftH || 12) * 60 + (aftM || 30) - 90;
+        return nowTotalMin >= afternoonStartWindow ? chosenAfternoon : chosenMorning;
       }
 
-      let closest = classMatches[0];
+      if (activeMatch) {
+        return activeMatch;
+      }
+
+      let closest = candidatePool[candidatePool.length - 1];
       let minDiff = Infinity;
 
-      for (const sch of classMatches) {
+      for (const sch of candidatePool) {
         const [inH, inM] = (sch.jamMasuk || '07:00').split(':').map(Number);
         const inTotalMin = (inH || 0) * 60 + (inM || 0);
         const diff = Math.abs(nowTotalMin - inTotalMin);
-        if (diff < minDiff) {
+        if (diff <= minDiff) {
           minDiff = diff;
           closest = sch;
         }
       }
       return closest;
     }
-    return classMatches[0];
+
+    if (activeMatch) {
+      return activeMatch;
+    }
+    return candidatePool[candidatePool.length - 1];
   }
 
-  // 3. If no specific class match in list, check global active schedule or build default
+  // 3. If no specific class match in list, check primary active schedule or first active schedule
   if (activeSchedules.length > 0) {
-    return activeSchedules[0];
+    const primary = settings.activeJadwalId
+      ? activeSchedules.find((s) => s.id === settings.activeJadwalId)
+      : undefined;
+    return primary || activeSchedules[0];
   }
 
   // Fallback default

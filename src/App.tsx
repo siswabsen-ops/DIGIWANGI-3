@@ -43,6 +43,7 @@ import {
   syncMasterPresensiToCloud,
   syncMasterAccountsToCloud,
   fetchCloudSyncPresensiOnce,
+  fetchSettingsFromFirestoreOnce,
   DeletedTombstone,
   getIsQuotaExhausted
 } from './lib/firebase';
@@ -226,6 +227,9 @@ export default function App() {
     return persistentLogo ? { ...SETTINGS_INITIAL, appLogoUrl: persistentLogo } : SETTINGS_INITIAL;
   });
 
+  const latestSettingsRef = useRef<SystemSettings>(settings);
+  latestSettingsRef.current = settings;
+
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
     const cached = safeGetItem('karapres3_logs');
     if (cached) {
@@ -357,11 +361,12 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Cloud Master Load on Mount (Server + Firestore sync/presensi 1-read hydration)
+    // 1. Initial Cloud Master Load on Mount (Server + Firestore 1-read hydration)
     Promise.all([
       fetchCloudMasterData(),
-      fetchCloudSyncPresensiOnce().catch(() => null)
-    ]).then(([data, cloudSyncSnap]) => {
+      fetchCloudSyncPresensiOnce().catch(() => null),
+      fetchSettingsFromFirestoreOnce().catch(() => null)
+    ]).then(([data, cloudSyncSnap, firestoreSettings]) => {
       if (!isMounted) return;
 
       let activeStudents = latestSiswaRef.current;
@@ -370,6 +375,11 @@ export default function App() {
         latestSiswaRef.current = data.students;
         setSiswaList(data.students);
         safeSetItem('karapres3_siswa_v5', JSON.stringify(data.students));
+        if (!safeGetItem('karapres3_students_429_synced')) {
+          syncMasterStudentsToCloud(data.students, 'Update Data Siswa PDF')
+            .then(() => safeSetItem('karapres3_students_429_synced', '1'))
+            .catch(() => {});
+        }
       }
 
       if (data?.waliKelas && Array.isArray(data.waliKelas) && data.waliKelas.length > 0) {
@@ -421,10 +431,37 @@ export default function App() {
         }).catch(() => {});
       }
 
-      if (data?.settings) {
-        setSettings((prev) => ({ ...prev, ...data.settings }));
-        safeSetItem('karapres3_settings', JSON.stringify(data.settings));
+      // Timestamp-based arbitration for System Settings & Shift Schedules
+      const serverSettings = data?.settings;
+      const serverTs = typeof serverSettings?.updatedAt === 'number' ? serverSettings.updatedAt : 0;
+      const firestoreTs = typeof firestoreSettings?.updatedAt === 'number' ? firestoreSettings.updatedAt : 0;
+      const localCurrent = latestSettingsRef.current;
+      const localTs = typeof localCurrent?.updatedAt === 'number' ? localCurrent.updatedAt : 0;
+      const persistentLogo = safeGetItem(APP_LOGO_STORAGE_KEY) || localCurrent?.appLogoUrl || undefined;
+
+      if (firestoreSettings && firestoreTs > serverTs && firestoreTs >= localTs) {
+        const mergedRemote: SystemSettings = {
+          ...SETTINGS_INITIAL,
+          ...firestoreSettings,
+          appLogoUrl: firestoreSettings.appLogoUrl || persistentLogo
+        };
+        latestSettingsRef.current = mergedRemote;
+        setSettings(mergedRemote);
+        safeSetItem('karapres3_settings', JSON.stringify(mergedRemote));
+        syncSettingsToCloud(mergedRemote, 'Cloud Settings Recovery').catch(() => {});
+      } else if (serverSettings && (serverTs >= localTs || localTs === 0)) {
+        const mergedServer: SystemSettings = {
+          ...SETTINGS_INITIAL,
+          ...serverSettings,
+          appLogoUrl: serverSettings.appLogoUrl || persistentLogo
+        };
+        latestSettingsRef.current = mergedServer;
+        setSettings(mergedServer);
+        safeSetItem('karapres3_settings', JSON.stringify(mergedServer));
+      } else if (localTs > serverTs && localCurrent) {
+        syncSettingsToCloud(localCurrent, 'Local Settings Push').catch(() => {});
       }
+
       if (data?.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
         setAccountsList(data.accounts);
         safeSetItem('karapres3_accounts_v4', JSON.stringify(data.accounts));
@@ -472,14 +509,19 @@ export default function App() {
       onSettingsChange: (incomingSettings) => {
         if (!isMounted) return;
         if (incomingSettings) {
+          const currentTs = typeof latestSettingsRef.current?.updatedAt === 'number' ? latestSettingsRef.current.updatedAt : 0;
+          const incomingTs = typeof incomingSettings.updatedAt === 'number' ? incomingSettings.updatedAt : 0;
+          if (currentTs > 0 && incomingTs > 0 && incomingTs < currentTs) {
+            return;
+          }
           if (incomingSettings.appLogoUrl) {
             safeSetItem(APP_LOGO_STORAGE_KEY, incomingSettings.appLogoUrl);
           }
-          setSettings((prev) => {
-            const persistentLogo = incomingSettings.appLogoUrl || prev.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
-            return { ...incomingSettings, appLogoUrl: persistentLogo };
-          });
-          safeSetItem('karapres3_settings', JSON.stringify(incomingSettings));
+          const persistentLogo = incomingSettings.appLogoUrl || latestSettingsRef.current?.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
+          const nextSettings: SystemSettings = { ...incomingSettings, appLogoUrl: persistentLogo };
+          latestSettingsRef.current = nextSettings;
+          setSettings(nextSettings);
+          safeSetItem('karapres3_settings', JSON.stringify(nextSettings));
         }
       },
       onAccountsChange: (incomingAccounts) => {
@@ -948,15 +990,20 @@ export default function App() {
 
   // Settings Save action
   const handleSaveSettings = useCallback((newSettings: SystemSettings) => {
-    if (newSettings.appLogoUrl) {
-      safeSetItem(APP_LOGO_STORAGE_KEY, newSettings.appLogoUrl);
+    const stampedSettings: SystemSettings = {
+      ...newSettings,
+      updatedAt: Date.now()
+    };
+    if (stampedSettings.appLogoUrl) {
+      safeSetItem(APP_LOGO_STORAGE_KEY, stampedSettings.appLogoUrl);
     }
-    setSettings(newSettings);
-    safeSetItem('karapres3_settings', JSON.stringify(newSettings));
-    saveSettingsToFirestore(newSettings);
-    syncSettingsToCloud(newSettings, 'Admin');
-    addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, template WA, logo resmi, atau ID integrasi Google.');
-    triggerNotice('Pengaturan sistem berhasil disimpan & disinkronkan ke seluruh perangkat.', 'success');
+    latestSettingsRef.current = stampedSettings;
+    setSettings(stampedSettings);
+    safeSetItem('karapres3_settings', JSON.stringify(stampedSettings));
+    saveSettingsToFirestore(stampedSettings);
+    syncSettingsToCloud(stampedSettings, 'Admin');
+    addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, jadwal shift, template WA, logo resmi, atau ID integrasi Google.');
+    triggerNotice('Pengaturan sistem & jadwal presensi berhasil disimpan paten ke seluruh perangkat.', 'success');
   }, [addActivityLog]);
 
   // Record a scanned or manually marked attendance (100% atomic, side-effect-free state update)

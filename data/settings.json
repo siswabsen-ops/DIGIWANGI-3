@@ -1,0 +1,110 @@
+{
+  "jamMasuk": "07:00",
+  "jamToleransi": "07:15",
+  "jamPulang": "12:30",
+  "jadwalList": [
+    {
+      "id": "jdw-pagi-reguler",
+      "nama": "Jadwal Pagi Reguler",
+      "tipe": "Pagi",
+      "kelas": [
+        "Kelas 1-A",
+        "Kelas 1-B",
+        "Kelas 2-A",
+        "Kelas 2-B",
+        "Kelas 3-A",
+        "Kelas 3-B",
+        "Kelas 4-A",
+        "Kelas 4-B",
+        "Kelas 5-A",
+        "Kelas 5-B",
+        "Kelas 6-A",
+        "Kelas 6-B"
+      ],
+      "hari": [
+        "Senin",
+        "Selasa",
+        "Rabu",
+        "Kamis",
+        "Jumat",
+        "Sabtu"
+      ],
+      "jamMasuk": "07:00",
+      "jamToleransi": "07:15",
+      "jamPulang": "12:30",
+      "isAktif": true,
+      "keterangan": "Jadwal presensi shift pagi standar seluruh kelas"
+    },
+    {
+      "id": "jdw-siang-kelas-1-6",
+      "nama": "Jadwal Siang Kelas 1–6",
+      "tipe": "Siang",
+      "kelas": [
+        "Kelas 1-A",
+        "Kelas 1-B",
+        "Kelas 2-A",
+        "Kelas 2-B",
+        "Kelas 3-A",
+        "Kelas 3-B",
+        "Kelas 4-A",
+        "Kelas 4-B",
+        "Kelas 5-A",
+        "Kelas 5-B",
+        "Kelas 6-A",
+        "Kelas 6-B"
+      ],
+      "hari": [
+        "Senin",
+        "Selasa",
+        "Rabu",
+        "Kamis",
+        "Jumat",
+        "Sabtu"
+      ],
+      "jamMasuk": "12:30",
+      "jamToleransi": "12:45",
+      "jamPulang": "16:30",
+      "isAktif": true,
+      "keterangan": "Jadwal presensi shift siang untuk kelas 1A sampai 6B"
+    },
+    {
+      "id": "jdw-1795376933198",
+      "nama": "Jadwal Siang Kelas 1–6",
+      "tipe": "Pagi",
+      "kelas": [
+        "Kelas 4-A",
+        "Kelas 4-B",
+        "Kelas 5-A",
+        "Kelas 5-B",
+        "Kelas 6-A",
+        "Kelas 6-B",
+        "Kelas 1-B",
+        "Kelas 2-B",
+        "Kelas 3-B"
+      ],
+      "hari": [
+        "Senin",
+        "Selasa",
+        "Rabu",
+        "Kamis",
+        "Jumat",
+        "Sabtu"
+      ],
+      "jamMasuk": "07:00",
+      "jamToleransi": "07:30",
+      "jamPulang": "12:30",
+      "isAktif": true,
+      "keterangan": "Jadwal presensi shift siang untuk seluruh kelas 1 sampai 6 (1A–6B)"
+    }
+  ],
+  "activeJadwalId": "jdw-pagi-reguler",
+  "templatePesan": "🔔 *NOTIFIKASI KEHADIRAN - SDN 3 KARAMATWANGI*\n\nYth. Orang Tua / Wali Murid,\nSiswa atas nama: *[Nama Lengkap Siswa]*\nKelas: *[Kelas]* (NIS: *[NIS]*)\n\nTelah tercatat *[Status Kehadiran]* di sekolah pada pukul *[Jam:Menit]* WIB.\n\nTerima kasih atas perhatian dan kerja samanya.",
+  "templatePesanPulang": "🔔 *NOTIFIKASI PULANG SEKOLAH - SDN 3 KARAMATWANGI*\n\nYth. Orang Tua / Wali Murid,\nSiswa atas nama: *[Nama Lengkap Siswa]*\nKelas: *[Kelas]* (NIS: *[NIS]*)\n\nTelah selesai mengikuti kegiatan pembelajaran dan *Pulang Sekolah* pada pukul *[Jam:Menit]* WIB.\n\nSemoga selamat sampai di rumah. Terima kasih.",
+  "googleSpreadsheetId": "1V6IomZ0hR_E2N_lF5aK804-Oat_bVzNlW3O0Vj2vExF",
+  "googleDriveFolderId": "1RoPgYTYP3GqzcDhLv_xKJshIYRjQisoe",
+  "isGoogleConnected": false,
+  "isWhatsAppConnected": true,
+  "waApiKey": "KARA3_WS_GATEWAY_v2",
+  "serverWaNumber": "08214134551",
+  "updatedAt": 1795380696168
+}

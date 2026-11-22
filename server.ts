@@ -543,9 +543,23 @@ async function startServer() {
       res.status(400).json({ error: "Invalid settings object." });
       return;
     }
-    writeJsonFile(SETTINGS_FILE, data);
+    const existingSettings = readJsonFile<any>(SETTINGS_FILE, null);
+    const incomingTs = typeof data.updatedAt === "number" && !isNaN(data.updatedAt) ? data.updatedAt : Date.now();
+    const existingTs = typeof existingSettings?.updatedAt === "number" && !isNaN(existingSettings.updatedAt) ? existingSettings.updatedAt : 0;
+
+    // Never allow an explicitly older timestamped snapshot to revert newer settings
+    if (typeof data.updatedAt === "number" && existingTs > 0 && incomingTs < existingTs) {
+      res.json({ success: true, version: syncVersion, settings: existingSettings, ignoredStale: true });
+      return;
+    }
+
+    const savedSettings = {
+      ...data,
+      updatedAt: incomingTs
+    };
+    writeJsonFile(SETTINGS_FILE, savedSettings);
     incrementSyncVersion(`Update Settings by ${updatedBy || 'user'}`);
-    res.json({ success: true, version: syncVersion });
+    res.json({ success: true, version: syncVersion, settings: savedSettings });
   });
 
   // 7. Sync Operator Accounts
@@ -887,6 +901,28 @@ async function startServer() {
           saveCachedPresensi(merged);
           incrementSyncVersion(`Hydrate Cloud Sync Presensi (${merged.length} records)`);
           console.log(`[Cloud Presensi] Terhidrasi dari Firestore sync/presensi (${merged.length} rekaman).`);
+        }
+      }
+
+      // Also hydrate settings/system when missing locally or when Firestore holds a strictly newer timestamp
+      const settingsUrl = "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1/documents/settings/system";
+      const settingsResp = await fetch(settingsUrl, { signal: AbortSignal.timeout(7000) });
+      if (settingsResp.ok) {
+        const settingsJson = await settingsResp.json();
+        const sFields = settingsJson?.fields;
+        if (sFields) {
+          const remoteSettings: Record<string, any> = {};
+          for (const k of Object.keys(sFields)) {
+            remoteSettings[k] = fromFirestoreValue(sFields[k]);
+          }
+          const localSettings = readJsonFile<any>(SETTINGS_FILE, null);
+          const localTs = typeof localSettings?.updatedAt === "number" ? localSettings.updatedAt : 0;
+          const remoteTs = typeof remoteSettings.updatedAt === "number" ? remoteSettings.updatedAt : 0;
+          if (!localSettings || (remoteTs > localTs && Array.isArray(remoteSettings.jadwalList))) {
+            writeJsonFile(SETTINGS_FILE, remoteSettings);
+            incrementSyncVersion("Hydrate System Settings from Firestore");
+            console.log(`[Cloud Settings] Terhidrasi dari Firestore settings/system.`);
+          }
         }
       }
     } catch {

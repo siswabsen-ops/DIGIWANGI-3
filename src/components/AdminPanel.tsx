@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Users,
   Sliders,
@@ -38,9 +38,10 @@ import {
   Upload,
   RefreshCcw,
   Phone,
-  MessageSquare
+  MessageSquare,
+  Star
 } from 'lucide-react';
-import { Siswa, SystemSettings, ActivityLog, User, Role, DAFTAR_KELAS, StatusDapodik, QRIdentifierType, getStudentQRIdentifier, JadwalPresensi, normalizeKelasCode, WaliKelas } from '../types';
+import { Siswa, SystemSettings, ActivityLog, User, Role, DAFTAR_KELAS, StatusDapodik, QRIdentifierType, getStudentQRIdentifier, JadwalPresensi, normalizeKelasCode, getApplicableJadwal, WaliKelas } from '../types';
 import { DAFTAR_WALI_KELAS, getWaliKelasByKelas, getWaliKelasObject, getWaliKelasPhoneByKelas, DEFAULT_JADWAL_PRESENSI } from '../lib/demoData';
 import { 
   DEFAULT_DIGIWANGI_LOGO 
@@ -165,7 +166,24 @@ function AdminPanel({
   const [formJadwalJamPulang, setFormJadwalJamPulang] = useState('16:30');
   const [formJadwalIsAktif, setFormJadwalIsAktif] = useState(true);
   const [formJadwalKeterangan, setFormJadwalKeterangan] = useState('Jadwal presensi shift siang untuk kelas 1 sampai 6 (1A–6B)');
+  const [replaceConflictingClasses, setReplaceConflictingClasses] = useState(true);
   const [jadwalToDelete, setJadwalToDelete] = useState<JadwalPresensi | null>(null);
+
+  // Keep local form states synchronized whenever settings prop updates from server/cloud
+  useEffect(() => {
+    setJamMasuk(settings.jamMasuk || '07:00');
+    setJamToleransi(settings.jamToleransi || '07:15');
+    setTemplatePesan(settings.templatePesan || '');
+    setServerWaNumber(settings.serverWaNumber || '08214134551');
+    setSpreadsheetId(settings.googleSpreadsheetId || '');
+    setDriveFolderId(settings.googleDriveFolderId || '');
+    if (settings.appLogoUrl !== undefined) {
+      setAppLogoInput(settings.appLogoUrl || '');
+    }
+    if (!isAddingJadwal) {
+      setJadwalList(settings.jadwalList && settings.jadwalList.length > 0 ? settings.jadwalList : DEFAULT_JADWAL_PRESENSI);
+    }
+  }, [settings, isAddingJadwal]);
 
   // Card view layout switcher for individual pupils printing helper
   const [selectedPrintSiswa, setSelectedPrintSiswa] = useState<Siswa | null>(null);
@@ -647,7 +665,10 @@ function AdminPanel({
       return;
     }
 
+    const savedId = editingJadwalId || `jdw-${Date.now()}`;
+    const selectedNormSet = new Set(formJadwalKelas.map(normalizeKelasCode));
     let updatedList: JadwalPresensi[];
+
     if (editingJadwalId) {
       updatedList = jadwalList.map((item) => {
         if (item.id === editingJadwalId) {
@@ -668,7 +689,7 @@ function AdminPanel({
       });
     } else {
       const newJadwal: JadwalPresensi = {
-        id: `jdw-${Date.now()}`,
+        id: savedId,
         nama: formJadwalNama.trim(),
         tipe: formJadwalTipe,
         kelas: formJadwalKelas,
@@ -682,18 +703,157 @@ function AdminPanel({
       updatedList = [...jadwalList, newJadwal];
     }
 
+    // Jika jadwal aktif & opsi Gantikan Jadwal Lama dicentang, cabut kelas terpilih dari jadwal lain agar tidak tumpang tindih
+    if (formJadwalIsAktif && replaceConflictingClasses) {
+      updatedList = updatedList.map((item) => {
+        if (item.id === savedId) return item;
+        const baseKelas = item.kelas && item.kelas.length > 0 ? item.kelas : [...DAFTAR_KELAS];
+        const remainingKelas = baseKelas.filter((ck) => !selectedNormSet.has(normalizeKelasCode(ck)));
+        return {
+          ...item,
+          kelas: remainingKelas,
+          isAktif: remainingKelas.length === 0 ? false : item.isAktif,
+        };
+      });
+    }
+
     setJadwalList(updatedList);
     setIsAddingJadwal(false);
     setEditingJadwalId(null);
 
+    const isAllClasses = formJadwalKelas.length === DAFTAR_KELAS.length;
+    const isPrimary = settings.activeJadwalId === savedId || (formJadwalIsAktif && isAllClasses);
+    const nextJamMasuk = isPrimary ? formJadwalJamMasuk : jamMasuk;
+    const nextJamToleransi = isPrimary ? formJadwalJamToleransi : jamToleransi;
+    if (isPrimary) {
+      setJamMasuk(formJadwalJamMasuk);
+      setJamToleransi(formJadwalJamToleransi);
+    }
+
     const updatedSettings: SystemSettings = {
       ...settings,
-      jamMasuk,
-      jamToleransi,
+      jamMasuk: nextJamMasuk,
+      jamToleransi: nextJamToleransi,
+      jamPulang: isPrimary ? formJadwalJamPulang : (settings.jamPulang || '12:30'),
+      activeJadwalId: isPrimary ? savedId : settings.activeJadwalId,
       jadwalList: updatedList,
     };
     onSaveSettings(updatedSettings);
-    displayNotice('success', `Jadwal presensi "${formJadwalNama}" berhasil disimpan!`);
+    displayNotice('success', `Jadwal presensi "${formJadwalNama}" berhasil disimpan paten!`);
+  };
+
+  // Pengaturan cepat per kelas (Pagi / Siang) yang langsung tersimpan paten & bebas konflik
+  const handleSetClassShift = (targetClasses: string[], shiftType: 'Pagi' | 'Siang') => {
+    const targetNorm = new Set(targetClasses.map(normalizeKelasCode));
+    const preferredId = shiftType === 'Pagi' ? 'jdw-pagi-reguler' : 'jdw-siang-kelas-1-6';
+
+    let nextList: JadwalPresensi[] = jadwalList.map((item) => ({
+      ...item,
+      kelas: item.kelas ? [...item.kelas] : [],
+      hari: item.hari ? [...item.hari] : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+    }));
+
+    // Pastikan jadwal master target tersedia
+    let targetScheduleIndex = nextList.findIndex((j) => j.id === preferredId);
+    if (targetScheduleIndex === -1) {
+      targetScheduleIndex = nextList.findIndex(
+        (j) => j.tipe === shiftType || (shiftType === 'Pagi' ? /pagi/i.test(j.nama) : /siang/i.test(j.nama))
+      );
+    }
+
+    if (targetScheduleIndex === -1) {
+      const created: JadwalPresensi =
+        shiftType === 'Pagi'
+          ? {
+              id: 'jdw-pagi-reguler',
+              nama: 'Jadwal Pagi Reguler',
+              tipe: 'Pagi',
+              kelas: [],
+              hari: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+              jamMasuk: '07:00',
+              jamToleransi: '07:15',
+              jamPulang: '12:30',
+              isAktif: true,
+              keterangan: 'Jadwal presensi shift pagi standar sekolah',
+            }
+          : {
+              id: 'jdw-siang-kelas-1-6',
+              nama: 'Jadwal Siang Kelas 1–6',
+              tipe: 'Siang',
+              kelas: [],
+              hari: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+              jamMasuk: '12:30',
+              jamToleransi: '12:45',
+              jamPulang: '16:30',
+              isAktif: true,
+              keterangan: 'Jadwal presensi shift siang kelas',
+            };
+      nextList.push(created);
+      targetScheduleIndex = nextList.length - 1;
+    }
+
+    const chosenScheduleId = nextList[targetScheduleIndex].id;
+
+    // Cabut targetClasses dari seluruh jadwal lain agar kelas hanya tunduk pada 1 shift paten
+    nextList = nextList.map((item) => {
+      if (item.id === chosenScheduleId) {
+        const merged = new Set([...(item.kelas || []), ...targetClasses]);
+        const ordered = DAFTAR_KELAS.filter((dk) => merged.has(dk) || Array.from(merged).some((m) => normalizeKelasCode(m) === normalizeKelasCode(dk)));
+        return {
+          ...item,
+          tipe: shiftType,
+          kelas: ordered,
+          isAktif: true,
+        };
+      }
+      const existingKelas = item.kelas && item.kelas.length > 0 ? item.kelas : [];
+      const filtered = existingKelas.filter((ck) => !targetNorm.has(normalizeKelasCode(ck)));
+      return {
+        ...item,
+        kelas: filtered,
+        isAktif: filtered.length === 0 ? false : item.isAktif,
+      };
+    });
+
+    const chosenSchedule = nextList.find((j) => j.id === chosenScheduleId)!;
+    const isAllSameShift = chosenSchedule.kelas.length === DAFTAR_KELAS.length;
+    if (isAllSameShift) {
+      setJamMasuk(chosenSchedule.jamMasuk);
+      setJamToleransi(chosenSchedule.jamToleransi);
+    }
+
+    setJadwalList(nextList);
+    onSaveSettings({
+      ...settings,
+      jamMasuk: isAllSameShift ? chosenSchedule.jamMasuk : jamMasuk,
+      jamToleransi: isAllSameShift ? chosenSchedule.jamToleransi : jamToleransi,
+      jamPulang: isAllSameShift ? chosenSchedule.jamPulang : (settings.jamPulang || '12:30'),
+      activeJadwalId: isAllSameShift ? chosenSchedule.id : settings.activeJadwalId,
+      jadwalList: nextList,
+    });
+
+    const label = targetClasses.length === DAFTAR_KELAS.length
+      ? `Seluruh kelas (1A–6B)`
+      : targetClasses.map((k) => k.replace('Kelas ', '')).join(', ');
+    displayNotice('success', `${label} ditetapkan ke Shift ${shiftType} (${chosenSchedule.jamMasuk}–${chosenSchedule.jamToleransi}) secara paten.`);
+  };
+
+  const handleSetPrimaryJadwal = (item: JadwalPresensi) => {
+    const updatedList = jadwalList.map((j) =>
+      j.id === item.id ? { ...j, isAktif: true } : j
+    );
+    setJadwalList(updatedList);
+    setJamMasuk(item.jamMasuk || '07:00');
+    setJamToleransi(item.jamToleransi || '07:15');
+    onSaveSettings({
+      ...settings,
+      jamMasuk: item.jamMasuk || '07:00',
+      jamToleransi: item.jamToleransi || '07:15',
+      jamPulang: item.jamPulang || settings.jamPulang || '12:30',
+      activeJadwalId: item.id,
+      jadwalList: updatedList,
+    });
+    displayNotice('success', `"${item.nama}" dijadikan Jadwal Utama Sekolah & disimpan paten.`);
   };
 
   const handleToggleJadwalActive = (id: string) => {
@@ -705,15 +865,19 @@ function AdminPanel({
     });
     setJadwalList(updatedList);
     onSaveSettings({ ...settings, jadwalList: updatedList });
-    displayNotice('success', 'Status aktif jadwal berhasil diperbarui.');
+    displayNotice('success', 'Status aktif jadwal berhasil diperbarui & disimpan.');
   };
 
   const handleDeleteJadwalConfirm = () => {
     if (!jadwalToDelete) return;
     const updatedList = jadwalList.filter((j) => j.id !== jadwalToDelete.id);
     setJadwalList(updatedList);
-    onSaveSettings({ ...settings, jadwalList: updatedList });
-    displayNotice('success', `Jadwal "${jadwalToDelete.nama}" berhasil dihapus.`);
+    onSaveSettings({
+      ...settings,
+      activeJadwalId: settings.activeJadwalId === jadwalToDelete.id ? updatedList[0]?.id : settings.activeJadwalId,
+      jadwalList: updatedList,
+    });
+    displayNotice('success', `Jadwal "${jadwalToDelete.nama}" berhasil dihapus permanen.`);
     setJadwalToDelete(null);
   };
 
@@ -2176,6 +2340,138 @@ function AdminPanel({
                 </div>
               </div>
 
+              {/* PENGATURAN CEPAT SHIFT AKTIF PER KELAS (PAGI / SIANG - PATEN) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 font-display">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Status Shift Aktif Per Kelas (Tersimpan Paten)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Klik Pagi atau Siang di bawah ini untuk langsung menetapkan shift paten per kelas tanpa tertimpa jadwal lain.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSetClassShift([...DAFTAR_KELAS], 'Pagi')}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl transition cursor-pointer shadow-xs"
+                    >
+                      ☀️ Semua Kelas Pagi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSetClassShift([...DAFTAR_KELAS], 'Siang')}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-xl transition cursor-pointer shadow-xs"
+                    >
+                      🌤️ Semua Kelas Siang
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const kelas1to3 = DAFTAR_KELAS.filter((k) => /Kelas\s*[123]/i.test(k));
+                        const kelas4to6 = DAFTAR_KELAS.filter((k) => /Kelas\s*[456]/i.test(k));
+                        const norm13 = new Set(kelas1to3.map(normalizeKelasCode));
+                        const pagiBase = jadwalList.find((j) => j.id === 'jdw-pagi-reguler') || {
+                          id: 'jdw-pagi-reguler',
+                          nama: 'Jadwal Pagi Reguler',
+                          tipe: 'Pagi' as const,
+                          kelas: [],
+                          hari: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+                          jamMasuk: '07:00',
+                          jamToleransi: '07:15',
+                          jamPulang: '12:30',
+                          isAktif: true,
+                          keterangan: 'Jadwal presensi shift pagi',
+                        };
+                        const siangBase = jadwalList.find((j) => j.id === 'jdw-siang-kelas-1-6') || {
+                          id: 'jdw-siang-kelas-1-6',
+                          nama: 'Jadwal Siang Kelas 1–6',
+                          tipe: 'Siang' as const,
+                          kelas: [],
+                          hari: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+                          jamMasuk: '12:30',
+                          jamToleransi: '12:45',
+                          jamPulang: '16:30',
+                          isAktif: true,
+                          keterangan: 'Jadwal presensi shift siang',
+                        };
+                        const others = jadwalList
+                          .filter((j) => j.id !== pagiBase.id && j.id !== siangBase.id)
+                          .map((j) => ({ ...j, kelas: [], isAktif: false }));
+                        const nextList: JadwalPresensi[] = [
+                          { ...pagiBase, tipe: 'Pagi', kelas: kelas1to3, isAktif: kelas1to3.length > 0 },
+                          { ...siangBase, tipe: 'Siang', kelas: kelas4to6, isAktif: kelas4to6.length > 0 },
+                          ...others,
+                        ];
+                        void norm13;
+                        setJadwalList(nextList);
+                        onSaveSettings({ ...settings, jadwalList: nextList });
+                        displayNotice('success', 'Shift ditetapkan paten: Kelas 1–3 Pagi dan Kelas 4–6 Siang.');
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-xl transition cursor-pointer shadow-xs"
+                    >
+                      1–3 Pagi • 4–6 Siang
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                  {DAFTAR_KELAS.map((k) => {
+                    const effective = getApplicableJadwal(k, { ...settings, jadwalList });
+                    const isSiangEffective =
+                      effective.tipe === 'Siang' || parseInt((effective.jamMasuk || '07:00').split(':')[0], 10) >= 11;
+                    const shortName = k.replace('Kelas ', '');
+                    return (
+                      <div
+                        key={k}
+                        className={`rounded-2xl p-2.5 border bg-white space-y-2 transition ${
+                          isSiangEffective ? 'border-amber-200' : 'border-emerald-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-slate-800 font-mono">{shortName}</span>
+                          <span
+                            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
+                              isSiangEffective
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {effective.jamMasuk}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSetClassShift([k], 'Pagi')}
+                            className={`py-1 rounded-lg text-[10px] font-extrabold transition cursor-pointer ${
+                              !isSiangEffective
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-emerald-50'
+                            }`}
+                          >
+                            Pagi
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetClassShift([k], 'Siang')}
+                            className={`py-1 rounded-lg text-[10px] font-extrabold transition cursor-pointer ${
+                              isSiangEffective
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-amber-50'
+                            }`}
+                          >
+                            Siang
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* FORM TAMBAH / EDIT JADWAL PRESENSI */}
               {isAddingJadwal && (
                 <form onSubmit={handleSaveJadwalSubmit} className="bg-blue-50/50 border-2 border-blue-200 rounded-3xl p-5 sm:p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
@@ -2453,6 +2749,17 @@ function AdminPanel({
                         placeholder="Catatan tambahan (opsional)..."
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                      <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={replaceConflictingClasses}
+                          onChange={(e) => setReplaceConflictingClasses(e.target.checked)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-[11px] font-bold text-slate-700">
+                          Gantikan jadwal lama untuk kelas terpilih (agar perubahan paten)
+                        </span>
+                      </label>
                     </div>
                   </div>
 
@@ -2537,6 +2844,20 @@ function AdminPanel({
                                   }`}
                                 >
                                   {item.isAktif !== false ? '🟢 Aktif' : '⚪ Nonaktif'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetPrimaryJadwal(item)}
+                                  className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md cursor-pointer transition flex items-center gap-1 ${
+                                    settings.activeJadwalId === item.id
+                                      ? 'bg-blue-600 text-white border border-blue-600'
+                                      : 'bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200'
+                                  }`}
+                                  title="Jadikan Jadwal Utama Default"
+                                >
+                                  <Star className="w-3 h-3" />
+                                  <span>{settings.activeJadwalId === item.id ? 'Utama' : 'Jadikan Utama'}</span>
                                 </button>
                               </div>
 

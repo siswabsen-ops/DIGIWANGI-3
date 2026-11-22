@@ -660,19 +660,52 @@ export const getAttendanceShift = (
   settings?: SystemSettings
 ): 'Pagi' | 'Siang' => {
   if (record?.shift) return record.shift;
-  const timeStr = record?.waktu || targetTime;
-  if (timeStr && timeStr !== '-') {
-    const hour = parseInt(timeStr.slice(0, 2), 10);
+
+  const evalTime = record?.waktu || targetTime;
+  if (settings && kelasName) {
+    const normKelas = normalizeKelasCode(kelasName);
+    const activeForClass = (settings.jadwalList || []).filter((j) => {
+      if (j.isAktif === false) return false;
+      if (!j.kelas || j.kelas.length === 0) return true;
+      return j.kelas.some((ck) => normalizeKelasCode(ck) === normKelas);
+    });
+
+    const hasExplicitPagi = activeForClass.some(
+      (j) => j.tipe === 'Pagi' || (!j.tipe && parseInt((j.jamMasuk || '07:00').slice(0, 2), 10) < 11)
+    );
+    const hasExplicitSiang = activeForClass.some(
+      (j) => j.tipe === 'Siang' || parseInt((j.jamMasuk || '07:00').slice(0, 2), 10) >= 11
+    );
+
+    const jadwal = getApplicableJadwal(kelasName, settings, evalTime);
+    const jadwalIsSiang =
+      jadwal.tipe === 'Siang' || parseInt((jadwal.jamMasuk || '07:00').slice(0, 2), 10) >= 11;
+
+    // Jika kelas hanya aktif pada satu tipe shift (Pagi saja atau Siang saja), patuhi jadwal tersimpan
+    if (hasExplicitSiang && !hasExplicitPagi) return 'Siang';
+    if (hasExplicitPagi && !hasExplicitSiang) return 'Pagi';
+
+    // Jika activeJadwalId menunjuk langsung ke jadwal yang dipilih user
+    if (settings.activeJadwalId && jadwal.id === settings.activeJadwalId && jadwal.tipe !== 'Khusus' && jadwal.tipe !== 'Lainnya') {
+      return jadwalIsSiang ? 'Siang' : 'Pagi';
+    }
+
+    if (evalTime && evalTime !== '-') {
+      const hour = parseInt(evalTime.slice(0, 2), 10);
+      if (!isNaN(hour)) {
+        if (hour >= 11) return 'Siang';
+        if (hour > 0) return 'Pagi';
+      }
+    }
+    return jadwalIsSiang ? 'Siang' : 'Pagi';
+  }
+
+  if (evalTime && evalTime !== '-') {
+    const hour = parseInt(evalTime.slice(0, 2), 10);
     if (!isNaN(hour)) {
       if (hour >= 11) return 'Siang';
       if (hour > 0) return 'Pagi';
     }
-  }
-  if (settings && kelasName) {
-    const jadwal = getApplicableJadwal(kelasName, settings, targetTime);
-    if (jadwal.tipe === 'Siang') return 'Siang';
-    const inHour = parseInt((jadwal.jamMasuk || '07:00').slice(0, 2), 10);
-    if (!isNaN(inHour) && inHour >= 11) return 'Siang';
   }
   return 'Pagi';
 };
@@ -804,7 +837,11 @@ export const calculateAllRombelSummaryList = (
       totalPagi > 0 && totalSiang === 0 ? 'Pagi' :
       totalSiang > 0 && totalPagi > 0 ? 'Campuran' : defaultClassShift;
 
-    const shiftLabel = shift === 'Siang' ? 'Siang (12.30 WIB)' : (shift === 'Campuran' ? 'Pagi & Siang' : 'Pagi (07.00 WIB)');
+    const classJadwal = settings ? getApplicableJadwal(namaKelas, settings) : undefined;
+    const jamDisplay = (classJadwal?.jamMasuk || (shift === 'Siang' ? '12:30' : '07:00')).replace(':', '.');
+    const shiftLabel = shift === 'Siang'
+      ? `Siang (${jamDisplay} WIB)`
+      : (shift === 'Campuran' ? 'Pagi & Siang' : `Pagi (${jamDisplay} WIB)`);
 
     const totalTercatat = stats.totalSiswa - stats.belumAbsen;
     const isTuntas = stats.totalSiswa > 0 && stats.belumAbsen === 0;

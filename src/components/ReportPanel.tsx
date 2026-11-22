@@ -1706,7 +1706,7 @@ function ReportPanel({
                     className="text-[10px] font-black bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded-lg cursor-pointer shrink-0 transition"
                   >
                     {statusFilter === 'sudah_absen' && selectedKelas === 'Semua Kelas'
-                      ? 'Tampilkan Semua (428 Siswa)'
+                      ? `Tampilkan Semua (${grandTotalSchool.totalSiswa} Siswa)`
                       : `Fokus Daftar Hadir (${grandTotalSchool.totalSiswa - grandTotalSchool.belumAbsen})`}
                   </button>
                 </div>

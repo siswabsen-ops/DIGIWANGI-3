@@ -154,10 +154,9 @@ function GuruPanel({
         : `pr-${siswa.id}-${normTargetDate}`;
 
     const applicableJadwal = settings ? getApplicableJadwal(siswa.kelas, settings, waktuSekarang) : undefined;
-    const resolvedShift: 'Pagi' | 'Siang' =
-      applicableJadwal?.tipe === 'Siang' || parseInt(waktuSekarang.slice(0, 2), 10) >= 11
-        ? 'Siang'
-        : getAttendanceShift(null, siswa.kelas, waktuSekarang, settings);
+    const resolvedShift: 'Pagi' | 'Siang' = applicableJadwal
+      ? ((applicableJadwal.tipe === 'Siang' || parseInt((applicableJadwal.jamMasuk || '07:00').slice(0, 2), 10) >= 11) ? 'Siang' : 'Pagi')
+      : getAttendanceShift(null, siswa.kelas, waktuSekarang, settings);
 
     const customNote = tapKeterangan.trim();
     const defaultNote =

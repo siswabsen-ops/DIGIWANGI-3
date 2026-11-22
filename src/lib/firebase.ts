@@ -294,6 +294,15 @@ export const cleanSettingsForFirestore = (s: SystemSettings) => {
   if (s.jamPulang) payload.jamPulang = s.jamPulang;
   if (s.activeJadwalId) payload.activeJadwalId = s.activeJadwalId;
   if (s.templatePesanPulang) payload.templatePesanPulang = s.templatePesanPulang;
+  if (s.serverWaNumber) payload.serverWaNumber = s.serverWaNumber;
+  if (s.namaSekolah) payload.namaSekolah = s.namaSekolah;
+  if (s.alamatSekolah) payload.alamatSekolah = s.alamatSekolah;
+  if (s.npsn) payload.npsn = s.npsn;
+  if (s.tahunAjaran) payload.tahunAjaran = s.tahunAjaran;
+  if (s.semester) payload.semester = s.semester;
+  if (s.namaKepsek) payload.namaKepsek = s.namaKepsek;
+  if (s.nipKepsek) payload.nipKepsek = s.nipKepsek;
+  if (typeof s.updatedAt === 'number' && !isNaN(s.updatedAt)) payload.updatedAt = s.updatedAt;
   if (s.appLogoUrl) payload.appLogoUrl = s.appLogoUrl;
   if (s.dinasLogoUrl) payload.dinasLogoUrl = s.dinasLogoUrl;
   if (s.garutLogoUrl) payload.garutLogoUrl = s.garutLogoUrl;
@@ -421,12 +430,24 @@ export const deleteAccountFromFirestore = async (userId: string) => {
 
 // Settings CRUD
 export const saveSettingsToFirestore = async (settings: SystemSettings) => {
-  if (getIsQuotaExhausted()) return;
+  if (getIsWriteQuotaExhausted()) return;
   const path = 'settings/system';
   try {
     await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settings));
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
+  }
+};
+
+export const fetchSettingsFromFirestoreOnce = async (): Promise<SystemSettings | null> => {
+  if (getIsReadQuotaExhausted()) return null;
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'system'));
+    if (!snap.exists()) return null;
+    return snap.data() as SystemSettings;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, 'settings/system');
+    return null;
   }
 };
 

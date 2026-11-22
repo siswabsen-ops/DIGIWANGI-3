@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, Search, UserCheck, AlertTriangle, AlertOctagon, Clock, Smartphone, MessageCircle, RefreshCw, Star, CalendarClock, Sun } from 'lucide-react';
 import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, getStudentQRIdentifier, getApplicableJadwal, DAFTAR_KELAS, WaliKelas } from '../types';
-import { getLocalDateString, getLocalTimeString, getLatestAttendanceForStudent, buildDailyAttendanceIndex, getAttendanceFromIndex, isPresensiDateMatch } from '../lib/attendanceUtils';
+import { getLocalDateString, getLocalTimeString, getLatestAttendanceForStudent, buildDailyAttendanceIndex, getAttendanceFromIndex, isPresensiDateMatch, getAttendanceShift } from '../lib/attendanceUtils';
 import { getWaliKelasObject } from '../lib/waliKelasData';
 import QRCodeRenderer from './QRCodeRenderer';
 import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
@@ -446,10 +446,9 @@ function ScanScreen({
       ? `Tercatat ${determinedStatus} pukul ${waktuSekarang.slice(0, 5)} WIB via Scan Barcode Kartu Siswa Resmi`
       : `Tercatat manual oleh ${currentUser.namaLengkap} [${determinedStatus}]`;
 
-    const resolvedShift: 'Pagi' | 'Siang' = 
-      applicableJadwal?.tipe === 'Siang' || (parseInt(waktuSekarang.slice(0, 2), 10) >= 11) 
-        ? 'Siang' 
-        : 'Pagi';
+    const resolvedShift: 'Pagi' | 'Siang' = applicableJadwal
+      ? ((applicableJadwal.tipe === 'Siang' || parseInt((applicableJadwal.jamMasuk || '07:00').slice(0, 2), 10) >= 11) ? 'Siang' : 'Pagi')
+      : getAttendanceShift(null, matchedSiswa.kelas, waktuSekarang, settings);
 
     const newRecord: Presensi = {
       id: newPresensiId,
@@ -540,13 +539,23 @@ function ScanScreen({
               </span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 {settings.jadwalList && settings.jadwalList.filter(j => j.isAktif !== false).length > 0 ? (
-                  <div className="flex flex-col items-end gap-0.5">
-                    {settings.jadwalList.filter(j => j.isAktif !== false).slice(0, 2).map(j => (
-                      <span key={j.id} className="text-[11px] font-black text-blue-800 bg-blue-50 border border-blue-200 py-0.5 px-2 rounded-lg flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-blue-600" />
-                        <span className="font-sans">{j.nama}</span>: <span className="font-mono">{j.jamMasuk}–{j.jamToleransi}</span>
-                      </span>
-                    ))}
+                  <div className="flex flex-col items-end gap-0.5 max-h-20 overflow-y-auto pr-0.5">
+                    {settings.jadwalList.filter(j => j.isAktif !== false).map(j => {
+                      const isPrimary = settings.activeJadwalId === j.id;
+                      return (
+                        <span
+                          key={j.id}
+                          className={`text-[10px] font-black py-0.5 px-2 rounded-lg flex items-center gap-1 border ${
+                            isPrimary
+                              ? 'text-blue-900 bg-blue-100 border-blue-300'
+                              : 'text-blue-800 bg-blue-50 border-blue-200'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3 text-blue-600 shrink-0" />
+                          <span className="font-sans">{j.nama}</span>: <span className="font-mono">{j.jamMasuk}–{j.jamToleransi}</span>
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : (
                   <span className="text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 py-1 px-2.5 rounded-xl flex items-center gap-1.5">
