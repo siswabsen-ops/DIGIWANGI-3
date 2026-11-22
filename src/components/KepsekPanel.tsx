@@ -19,11 +19,11 @@ import {
   getLocalDateString,
   safeAddDays,
   normalizeDateKey,
-  calculateClassAttendanceStats,
-  calculateSchoolAttendanceStats,
+  formatDateIndoShort,
   calculateAllRombelSummaryList,
-  isPresensiDateMatch,
-  isSameClass,
+  calculatePeriodRombelSummary,
+  getPeriodAuthoritativeRecords,
+  isSameClass
 } from '../lib/attendanceUtils';
 import { downloadKepsekRekapExcel } from '../lib/attendanceReportExport';
 
@@ -42,35 +42,33 @@ function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
   const [logLimit, setLogLimit] = useState(50);
 
   const todayStr = getLocalDateString();
+  const rangeStartStr = useMemo(() => {
+    if (filterType === 'minggu') return safeAddDays(todayStr, -6);
+    if (filterType === 'bulan') return safeAddDays(todayStr, -29);
+    return todayStr;
+  }, [filterType, todayStr]);
 
-  // Filtered lists based on filters chosen
-  const filteredLogs = useMemo(() => {
-    let base = [...presensiList];
-
-    // Filter by class
-    if (selectedKelas !== 'Semua Kelas') {
-      base = base.filter((p) => isSameClass(p.kelas, selectedKelas));
-    }
-
-    // Filter by time horizon (timezone-safe string comparison)
+  const datePredicate = useMemo(() => {
     if (filterType === 'hari') {
-      base = base.filter((p) => isPresensiDateMatch(p.tanggal, todayStr));
-    } else if (filterType === 'minggu') {
-      const startStr = safeAddDays(todayStr, -6);
-      base = base.filter((p) => {
-        const d = normalizeDateKey(p.tanggal);
-        return d >= startStr && d <= todayStr;
-      });
-    } else if (filterType === 'bulan') {
-      const startStr = safeAddDays(todayStr, -29);
-      base = base.filter((p) => {
-        const d = normalizeDateKey(p.tanggal);
-        return d >= startStr && d <= todayStr;
-      });
+      return (normDate: string) => normDate === todayStr;
     }
+    return (normDate: string) => normDate >= rangeStartStr && normDate <= todayStr;
+  }, [filterType, todayStr, rangeStartStr]);
 
-    // Sort newest date and latest time/updatedAt first so today's live scans appear at top
-    base.sort((a, b) => {
+  const horizonLabel = useMemo(() => {
+    if (filterType === 'hari') return `Tanggal ${todayStr}`;
+    if (filterType === 'minggu') {
+      return `7 Hari Terakhir (${formatDateIndoShort(rangeStartStr)} – ${formatDateIndoShort(todayStr)})`;
+    }
+    return `30 Hari Terakhir (${formatDateIndoShort(rangeStartStr)} – ${formatDateIndoShort(todayStr)})`;
+  }, [filterType, todayStr, rangeStartStr]);
+
+  // Deduplicated authoritative logs (1 siswa max 1 log per hari), sorted terbaru di atas
+  const filteredLogs = useMemo(() => {
+    const items = getPeriodAuthoritativeRecords(siswaList, presensiList, datePredicate, selectedKelas);
+    const records = items.map((it) => it.record);
+
+    records.sort((a, b) => {
       const dA = normalizeDateKey(a.tanggal);
       const dB = normalizeDateKey(b.tanggal);
       if (dA !== dB) return dB.localeCompare(dA);
@@ -80,83 +78,100 @@ function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
 
-    return base;
-  }, [presensiList, selectedKelas, filterType, todayStr]);
+    return records;
+  }, [siswaList, presensiList, datePredicate, selectedKelas]);
 
-  // Statistics calculation helpers - Accurate unique students for today
-  const schoolTodayStats = useMemo(() => {
-    return calculateSchoolAttendanceStats(
-      siswaList,
-      presensiList,
-      todayStr,
-      selectedKelas
-    );
-  }, [siswaList, presensiList, todayStr, selectedKelas]);
+  // Rombel summary list for all 12 classes & grand totals synchronized across hari / 7 hari / 30 hari
+  const periodSummary = useMemo(() => {
+    if (filterType === 'hari') {
+      const list = calculateAllRombelSummaryList(siswaList, presensiList, todayStr, settings);
+      let totalSiswa = 0, hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0, belumAbsen = 0, totalHadir = 0;
+      list.forEach((r) => {
+        totalSiswa += r.totalSiswa;
+        hadir += r.hadir;
+        terlambat += r.terlambat;
+        sakit += r.sakit;
+        izin += r.izin;
+        alfa += r.alfa;
+        belumAbsen += r.belumAbsen;
+        totalHadir += r.totalHadir;
+      });
+      const persentase = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
+      return {
+        rombelList: list,
+        effectiveDays: 1,
+        totalSiswa,
+        hadir,
+        terlambat,
+        sakit,
+        izin,
+        alfa,
+        belumAbsen,
+        totalHadir,
+        persentase
+      };
+    }
 
-  const totalSiswaSesuaiFilter = schoolTodayStats.totalSiswa;
-
-  // When filtering today, use exact unique pupil counts. When filtering range (minggu/bulan), use active days * students
-  const activeRangeDays = useMemo(() => {
-    if (filterType === 'hari') return 1;
-    const distinctDates = new Set(filteredLogs.map((p) => normalizeDateKey(p.tanggal)).filter(Boolean));
-    return Math.max(1, distinctDates.size);
-  }, [filterType, filteredLogs]);
-
-  const jmlHadir = filterType === 'hari' ? schoolTodayStats.hadir : filteredLogs.filter(p => p.status === 'Hadir').length;
-  const jmlTerlambat = filterType === 'hari' ? schoolTodayStats.terlambat : filteredLogs.filter(p => p.status === 'Terlambat').length;
-  const jmlSakit = filterType === 'hari' ? schoolTodayStats.sakit : filteredLogs.filter(p => p.status === 'Sakit').length;
-  const jmlIzin = filterType === 'hari' ? schoolTodayStats.izin : filteredLogs.filter(p => p.status === 'Izin').length;
-  const jmlAlfa = filterType === 'hari' ? schoolTodayStats.alfa : filteredLogs.filter(p => p.status === 'Alfa').length;
-  const totalSlotsInRange = totalSiswaSesuaiFilter * activeRangeDays;
-  const tIdakHadir = filterType === 'hari' ? schoolTodayStats.belumAbsen : Math.max(0, totalSlotsInRange - (jmlHadir + jmlTerlambat + jmlSakit + jmlIzin + jmlAlfa));
-
-  const persentaseHadir = filterType === 'hari'
-    ? schoolTodayStats.persentaseKeaktifan
-    : (totalSlotsInRange > 0 ? Math.min(100, Math.round(((jmlHadir + jmlTerlambat) / totalSlotsInRange) * 100)) : 0);
-
-  // Rombel summary list for all 12 classes
-  const allRombelSummary = useMemo(() => {
-    return calculateAllRombelSummaryList(siswaList, presensiList, todayStr, settings);
-  }, [siswaList, presensiList, todayStr, settings]);
-
-  const grandTotalSchool = useMemo(() => {
-    let totalSiswa = 0;
-    let hadir = 0;
-    let terlambat = 0;
-    let sakit = 0;
-    let izin = 0;
-    let alfa = 0;
-    let sakitDanIzin = 0;
-    let belumAbsen = 0;
-    let totalHadir = 0;
-
-    allRombelSummary.forEach((r) => {
-      totalSiswa += r.totalSiswa;
-      hadir += r.hadir;
-      terlambat += r.terlambat;
-      sakit += r.sakit;
-      izin += r.izin;
-      alfa += r.alfa;
-      sakitDanIzin += r.sakitDanIzin;
-      belumAbsen += r.belumAbsen;
-      totalHadir += r.totalHadir;
-    });
-
-    const persentase = totalSiswa > 0 ? Math.min(100, Math.round((totalHadir / totalSiswa) * 100)) : 0;
-
+    const periodName = filterType === 'minggu' ? '7 Hari Terakhir' : '30 Hari Terakhir';
+    const res = calculatePeriodRombelSummary(siswaList, presensiList, datePredicate, periodName, settings);
     return {
-      totalSiswa,
-      hadir,
-      terlambat,
-      sakit,
-      izin,
-      alfa,
-      sakitDanIzin,
-      belumAbsen,
-      totalHadir,
-      persentase
+      rombelList: res.rombelList,
+      effectiveDays: res.effectiveDays,
+      totalSiswa: res.totalSiswa,
+      hadir: res.hadir,
+      terlambat: res.terlambat,
+      sakit: res.sakit,
+      izin: res.izin,
+      alfa: res.alfa,
+      belumAbsen: res.belumAbsen,
+      totalHadir: res.totalHadir,
+      persentase: res.persentase
     };
-  }, [allRombelSummary]);
+  }, [filterType, siswaList, presensiList, todayStr, datePredicate, settings]);
+
+  const allRombelSummary = periodSummary.rombelList;
+
+  // KPI Card numbers derived directly from periodSummary (100% consistent with table & Excel)
+  const activeSummarySlice = useMemo(() => {
+    if (selectedKelas !== 'Semua Kelas') {
+      const found = allRombelSummary.find((r) => isSameClass(r.kelas, selectedKelas));
+      if (found) {
+        return {
+          totalSiswa: found.totalSiswa,
+          hadir: found.hadir,
+          terlambat: found.terlambat,
+          sakit: found.sakit,
+          izin: found.izin,
+          alfa: found.alfa,
+          belumAbsen: found.belumAbsen,
+          totalHadir: found.totalHadir,
+          persentase: found.persentase
+        };
+      }
+    }
+    return periodSummary;
+  }, [selectedKelas, allRombelSummary, periodSummary]);
+
+  const jmlHadir = activeSummarySlice.hadir;
+  const jmlTerlambat = activeSummarySlice.terlambat;
+  const jmlSakit = activeSummarySlice.sakit;
+  const jmlIzin = activeSummarySlice.izin;
+  const jmlAlfa = activeSummarySlice.alfa;
+  const tIdakHadir = activeSummarySlice.belumAbsen;
+  const persentaseHadir = activeSummarySlice.persentase;
+
+  const grandTotalSchool = useMemo(() => ({
+    totalSiswa: periodSummary.totalSiswa,
+    hadir: periodSummary.hadir,
+    terlambat: periodSummary.terlambat,
+    sakit: periodSummary.sakit,
+    izin: periodSummary.izin,
+    alfa: periodSummary.alfa,
+    sakitDanIzin: periodSummary.sakit + periodSummary.izin,
+    belumAbsen: periodSummary.belumAbsen,
+    totalHadir: periodSummary.totalHadir,
+    persentase: periodSummary.persentase
+  }), [periodSummary]);
 
   // Modern Excel (.xlsx) Exporter download
   const handleExportExcel = async () => {
@@ -343,12 +358,12 @@ function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
                 REKAPITULASI KEHADIRAN PER ROMBEL KELAS (1-A s/d 6-B)
               </h3>
               <p className="text-[11px] text-slate-500">
-                Data presensi per rombel untuk tanggal <b>{todayStr}</b>. Tersinkronisasi secara real-time.
+                Data presensi per rombel untuk <b>{horizonLabel}</b> ({periodSummary.effectiveDays} Hari Efektif). Tersinkronisasi 100% dengan unduhan Excel.
               </p>
             </div>
           </div>
           <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-800 px-3 py-1 rounded-xl border border-indigo-200">
-            Total Seluruh: {grandTotalSchool.totalHadir}/{grandTotalSchool.totalSiswa} Siswa ({grandTotalSchool.persentase}%)
+            Total Kehadiran: {grandTotalSchool.totalHadir}/{grandTotalSchool.totalSiswa * periodSummary.effectiveDays} Slot ({grandTotalSchool.persentase}%)
           </span>
         </div>
 
@@ -430,23 +445,25 @@ function KepsekPanel({ siswaList, presensiList, settings }: KepsekPanelProps) {
           </h3>
 
           <div className="space-y-3 pt-2">
-            {DAFTAR_KELAS.map((curKelasName) => {
-              const pupilsInKelas = siswaList.filter((s) => s.kelas === curKelasName);
-              const totalPupils = pupilsInKelas.length;
-              const classStats = calculateClassAttendanceStats(pupilsInKelas, presensiList, todayStr);
-              const safePercent = classStats.persentaseKeaktifan;
-              const totalHadirCount = classStats.totalHadirSemua;
+            {allRombelSummary.map((rombel) => {
+              const safePercent = rombel.persentase;
+              const totalHadirCount = rombel.totalHadir;
+              const totalSlots = rombel.totalSiswa * periodSummary.effectiveDays;
 
               return (
-                <div key={curKelasName} className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-150">
+                <div key={rombel.kelas} className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-150">
                   <div className="flex justify-between items-start text-xs">
                     <div>
-                      <span className="font-bold text-slate-800">{curKelasName} ({totalPupils} Siswa)</span>
-                      <span className="text-[11px] text-slate-500 block font-medium">👤 {getWaliKelasByKelas(curKelasName)}</span>
+                      <span className="font-bold text-slate-800">{rombel.kelas} ({rombel.totalSiswa} Siswa)</span>
+                      <span className="text-[11px] text-slate-500 block font-medium">👤 {rombel.waliKelas}</span>
                     </div>
                     <div className="text-right">
                       <span className="font-mono font-black text-blue-700 block">{safePercent}% Hadir</span>
-                      <span className="text-[10px] text-slate-500 font-medium">{totalHadirCount}/{totalPupils} Anak</span>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        {filterType === 'hari'
+                          ? `${totalHadirCount}/${rombel.totalSiswa} Anak`
+                          : `${totalHadirCount}/${totalSlots} Kehadiran`}
+                      </span>
                     </div>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden border border-slate-250 mt-1">

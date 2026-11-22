@@ -16,10 +16,12 @@ import {
   isPresensiMatchSiswa,
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
+  buildPeriodAttendanceLookup,
+  calculateStudentsMetricsFromLookup,
+  getPeriodAuthoritativeRecords,
+  calculatePeriodRombelSummary,
+  getSemesterYearMonths,
   calculateAllRombelSummaryList,
-  calculateWeeklyRombelSummaryList,
-  calculateMonthlyRombelSummaryList,
-  calculateSemesterRombelSummaryList,
   normalizeDateKey,
   getAttendanceShift,
   getMondayOfWeek,
@@ -83,28 +85,59 @@ function getKepsekName(settings?: SystemSettings): string {
   return settings?.namaKepsek || 'Cucu Maspika, S.Pd.I., M.Pd., MCE.';
 }
 
-function getEffectiveSemesterDays(tahunAjaran: string, semesterType: '1' | '2', presensiList: Presensi[]) {
-  const parts = tahunAjaran.replace('–', '/').replace('-', '/').split('/');
-  const startYear = parseInt(parts[0]) || 2026;
-  const endYear = parseInt(parts[1]) || startYear + 1;
-
-  const targetYearMonths =
-    semesterType === '1'
-      ? ['07', '08', '09', '10', '11', '12'].map((m) => `${startYear}-${m}`)
-      : ['01', '02', '03', '04', '05', '06'].map((m) => `${endYear}-${m}`);
-
-  const rawDatesInSemester = new Set<string>();
-  presensiList.forEach((p) => {
-    if (!p.tanggal) return;
-    const norm = normalizeDateKey(p.tanggal);
-    if (targetYearMonths.some((ym) => norm.startsWith(ym))) {
-      rawDatesInSemester.add(norm);
-    }
-  });
-
+function createPeriodDatePredicate(
+  mode: 'harian' | 'mingguan' | 'bulanan' | 'semester' | 'range',
+  dateOrPeriod: string,
+  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string },
+  rangeStartDate?: string,
+  rangeEndDate?: string
+): {
+  datePredicate: (normDate: string) => boolean;
+  periodeLabel: string;
+  targetYearMonths: string[];
+} {
+  if (mode === 'harian') {
+    const target = normalizeDateKey(dateOrPeriod);
+    return {
+      datePredicate: (d) => d === target,
+      periodeLabel: formatDateIndoLong(target),
+      targetYearMonths: []
+    };
+  }
+  if (mode === 'mingguan') {
+    const monday = getMondayOfWeek(dateOrPeriod);
+    const weekSet = new Set([0, 1, 2, 3, 4].map((i) => safeAddDays(monday, i)));
+    const friday = safeAddDays(monday, 4);
+    return {
+      datePredicate: (d) => weekSet.has(d),
+      periodeLabel: `${formatDateIndoShort(monday)} – ${formatDateIndoShort(friday)}`,
+      targetYearMonths: []
+    };
+  }
+  if (mode === 'bulanan') {
+    const ym = (dateOrPeriod || '').slice(0, 7);
+    return {
+      datePredicate: (d) => d.startsWith(ym),
+      periodeLabel: formatMonthIndo(ym),
+      targetYearMonths: [ym]
+    };
+  }
+  if (mode === 'range') {
+    const start = normalizeDateKey(rangeStartDate || dateOrPeriod);
+    const end = normalizeDateKey(rangeEndDate || dateOrPeriod);
+    return {
+      datePredicate: (d) => d >= start && d <= end,
+      periodeLabel: `${formatDateIndoShort(start)} – ${formatDateIndoShort(end)}`,
+      targetYearMonths: []
+    };
+  }
+  const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
+  const thn = semesterOptions?.tahunAjaran || '2026/2027';
+  const targetYearMonths = getSemesterYearMonths(semType, thn);
   return {
-    targetYearMonths,
-    effectiveDays: Math.max(1, rawDatesInSemester.size)
+    datePredicate: (d) => targetYearMonths.some((ym) => d.startsWith(ym)),
+    periodeLabel: `${semType === '1' ? 'Semester 1 (Ganjil)' : 'Semester 2 (Genap)'} ${thn}`,
+    targetYearMonths
   };
 }
 
@@ -151,6 +184,11 @@ export function addLogPresensiHarianSheet(
     records: Presensi[];
     siswaList: Siswa[];
     settings?: SystemSettings;
+    mode?: 'harian' | 'mingguan' | 'bulanan' | 'semester' | 'range';
+    dateOrPeriod?: string;
+    semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string };
+    rangeStartDate?: string;
+    rangeEndDate?: string;
   }
 ) {
   const {
@@ -159,49 +197,29 @@ export function addLogPresensiHarianSheet(
     kelasFilter,
     records,
     siswaList,
-    settings
+    settings,
+    mode,
+    dateOrPeriod,
+    semesterOptions,
+    rangeStartDate,
+    rangeEndDate
   } = options;
 
   const isAll = !kelasFilter || kelasFilter === 'Semua Kelas' || kelasFilter === 'SEMUA KELAS';
-  const siswaMapById = new Map<string, Siswa>();
-  const siswaMapByNis = new Map<string, Siswa>();
-  siswaList.forEach((s) => {
-    if (s.id) siswaMapById.set(s.id, s);
-    if (s.nis) siswaMapByNis.set(s.nis.trim(), s);
-  });
+  const datePredicate =
+    mode && dateOrPeriod
+      ? createPeriodDatePredicate(mode, dateOrPeriod, semesterOptions, rangeStartDate, rangeEndDate).datePredicate
+      : () => true;
 
-  // Deduplikasi per siswa + tanggal agar sinkron real-time dengan rekap
-  const dedupedMap = new Map<string, Presensi>();
-  records.forEach((rec) => {
-    if (!rec || !rec.tanggal) return;
-    if (!isAll && !isSameClass(rec.kelas, kelasFilter)) return;
-    const normDate = normalizeDateKey(rec.tanggal);
-    const key = `${rec.siswaId || rec.nis || rec.nama}__${normDate}`;
-    const existing = dedupedMap.get(key);
-    if (!existing || isRecordNewer(rec, existing)) {
-      dedupedMap.set(key, { ...rec, tanggal: normDate });
-    }
-  });
+  // Gunakan sumber otoritatif terpadu agar jumlah Log sinkron 100% dengan Ringkasan Per Kelas (TOTAL LOG)
+  const authoritativeItems = getPeriodAuthoritativeRecords(siswaList, records, datePredicate, kelasFilter);
+  const sortedLogs = authoritativeItems.map((item) => item.record);
 
-  const sortedLogs = Array.from(dedupedMap.values()).sort((a, b) => {
-    if (a.tanggal !== b.tanggal) return a.tanggal < b.tanggal ? -1 : 1;
-    const wA = (a.waktu || '00:00:00').slice(0, 8);
-    const wB = (b.waktu || '00:00:00').slice(0, 8);
-    if (wA !== wB) return wA < wB ? -1 : 1;
-    if (a.kelas !== b.kelas) return a.kelas.localeCompare(b.kelas);
-    return (a.nama || '').localeCompare(b.nama || '');
-  });
-
-  const rows: (string | number)[][] = sortedLogs.map((rec, idx) => {
-    const siswa =
-      (rec.siswaId ? siswaMapById.get(rec.siswaId) : undefined) ||
-      (rec.nis ? siswaMapByNis.get(rec.nis.trim()) : undefined) ||
-      siswaList.find((s) => isPresensiMatchSiswa(rec, s));
-
-    const nisVal = siswa?.nis || rec.nis || '-';
-    const nisnVal = siswa?.nisn || siswa?.nik || '-';
-    const namaVal = siswa?.nama || rec.nama || '-';
-    const kelasVal = formatShortKelasLabel(siswa?.kelas || rec.kelas || '-');
+  const rows: (string | number)[][] = authoritativeItems.map(({ siswa, record: rec }, idx) => {
+    const nisVal = siswa.nis || rec.nis || '-';
+    const nisnVal = siswa.nisn || siswa.nik || '-';
+    const namaVal = siswa.nama || rec.nama || '-';
+    const kelasVal = formatShortKelasLabel(siswa.kelas || rec.kelas || '-');
 
     return [
       idx + 1,
@@ -218,9 +236,7 @@ export function addLogPresensiHarianSheet(
   });
 
   const waliName = isAll
-    ? settings?.waliKelasList?.[0]?.nama
-      ? 'Panji Teguh Amarta Surya, S.Pd.I., Gr.'
-      : 'Panji Teguh Amarta Surya, S.Pd.I., Gr.'
+    ? 'Panji Teguh Amarta Surya, S.Pd.I., Gr.'
     : getWaliKelasByKelas(kelasFilter);
 
   buildStyledWorksheet({
@@ -288,7 +304,7 @@ export function addDaftarHadirKelasSheet(
   options: {
     sheetName?: string;
     kelas: string;
-    mode: 'bulanan' | 'mingguan';
+    mode: 'harian' | 'bulanan' | 'mingguan';
     monthOrMondayStr: string;
     highlightDateStr?: string;
     siswaList: Siswa[];
@@ -327,7 +343,18 @@ export function addDaftarHadirKelasSheet(
   let groupHeaderLabel = '';
   let tanggalBarLabel = '';
 
-  if (mode === 'bulanan') {
+  if (mode === 'harian') {
+    const targetDate = normalizeDateKey(monthOrMondayStr);
+    const { day } = safeDateParts(targetDate);
+    const monthName = formatMonthIndo(targetDate.slice(0, 7));
+    dayCols.push({
+      dateStr: targetDate,
+      headerLabel: String(day)
+    });
+    periodeLabel = formatDateIndoLong(targetDate);
+    groupHeaderLabel = `TGL (${monthName.toUpperCase()})`;
+    tanggalBarLabel = periodeLabel;
+  } else if (mode === 'bulanan') {
     const ym = monthOrMondayStr.slice(0, 7);
     const [yrStr, moStr] = ym.split('-');
     const year = parseInt(yrStr, 10) || 2026;
@@ -364,12 +391,12 @@ export function addDaftarHadirKelasSheet(
   // Indeks presensi harian untuk setiap kolom tanggal (O(N))
   const dayIndexes = dayCols.map((dc) => buildDailyAttendanceIndex(presensiList, dc.dateStr));
 
-  // Hitung tanggal aktif di mana kelas (atau kelompok siswa) ini memiliki setidaknya 1 catatan
-  const activeDateFlags = dayCols.map((_, dayIdx) => {
-    const idxMap = dayIndexes[dayIdx];
-    return filteredStudents.some((s) => Boolean(getAttendanceFromIndex(s, idxMap)));
-  });
-  const activeDaysCount = Math.max(1, activeDateFlags.filter(Boolean).length);
+  // Gunakan jumlah hari efektif sekolah yang seragam di periode ini agar 100% sinkron dengan Ringkasan Per Kelas & UI
+  const periodDateSet = new Set(dayCols.map((dc) => dc.dateStr));
+  const activeDaysCount =
+    mode === 'harian'
+      ? 1
+      : buildPeriodAttendanceLookup(siswaList, presensiList, (d) => periodDateSet.has(d)).effectiveDays;
 
   // Kumpulkan baris siswa + statistik harian & total
   let sumH = 0;
@@ -547,7 +574,8 @@ export function addDaftarHadirKelasSheet(
     ws.mergeCells(7, dateStartCol, 7, dateEndCol);
   }
   dayCols.forEach((dc, idx) => {
-    headerBot.getCell(dateStartCol + idx).value = mode === 'bulanan' ? Number(dc.headerLabel) : dc.headerLabel;
+    headerBot.getCell(dateStartCol + idx).value =
+      mode === 'bulanan' || mode === 'harian' ? Number(dc.headerLabel) : dc.headerLabel;
   });
 
   headerTop.getCell(summaryStartCol).value = 'JUMLAH';
@@ -690,7 +718,7 @@ export function addDaftarHadirKelasSheet(
   ws.getColumn(4).width = 7.5;
   ws.getColumn(5).width = 28;
   for (let c = dateStartCol; c <= dateEndCol; c++) {
-    ws.getColumn(c).width = mode === 'bulanan' ? 3.5 : 10;
+    ws.getColumn(c).width = mode === 'bulanan' ? 3.5 : mode === 'harian' ? 9 : 10;
   }
   for (let c = summaryStartCol; c <= summaryStartCol + 4; c++) {
     ws.getColumn(c).width = 5;
@@ -747,11 +775,13 @@ export function addRingkasanPerKelasSheet(
   wb: ExcelJS.Workbook,
   options: {
     sheetName?: string;
-    mode: 'harian' | 'mingguan' | 'bulanan' | 'semester';
+    mode: 'harian' | 'mingguan' | 'bulanan' | 'semester' | 'range';
     dateOrPeriod: string;
     siswaList: Siswa[];
     presensiList: Presensi[];
     semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string };
+    rangeStartDate?: string;
+    rangeEndDate?: string;
     settings?: SystemSettings;
   }
 ) {
@@ -762,28 +792,44 @@ export function addRingkasanPerKelasSheet(
     siswaList,
     presensiList,
     semesterOptions,
+    rangeStartDate,
+    rangeEndDate,
     settings
   } = options;
 
   const thnAjar = getTahunAjaran(settings, semesterOptions?.tahunAjaran);
   let periodeLabel = '';
-  let summaryList = [];
+  let effectiveDays = 1;
+  let summaryList = calculateAllRombelSummaryList(siswaList, presensiList, dateOrPeriod, settings);
+  let grandPct = 0;
 
   if (mode === 'harian') {
     periodeLabel = formatDateIndoLong(dateOrPeriod);
-    summaryList = calculateAllRombelSummaryList(siswaList, presensiList, dateOrPeriod, settings);
-  } else if (mode === 'mingguan') {
-    const monday = getMondayOfWeek(dateOrPeriod);
-    const friday = safeAddDays(monday, 4);
-    periodeLabel = `${formatDateIndoShort(monday)} – ${formatDateIndoShort(friday)}`;
-    summaryList = calculateWeeklyRombelSummaryList(siswaList, presensiList, monday);
-  } else if (mode === 'bulanan') {
-    periodeLabel = formatMonthIndo(dateOrPeriod);
-    summaryList = calculateMonthlyRombelSummaryList(siswaList, presensiList, dateOrPeriod);
+    effectiveDays = 1;
+    const totalSiswaHarian = summaryList.reduce((acc, r) => acc + r.totalSiswa, 0);
+    const totalMasukHarian = summaryList.reduce((acc, r) => acc + r.totalHadir, 0);
+    grandPct = totalSiswaHarian > 0 ? Math.min(100, Math.round((totalMasukHarian / totalSiswaHarian) * 100)) : 0;
   } else {
-    const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
-    periodeLabel = semType === '1' ? 'Semester 1 (Ganjil • Juli–Des)' : 'Semester 2 (Genap • Jan–Jun)';
-    summaryList = calculateSemesterRombelSummaryList(siswaList, presensiList, semType, thnAjar.replace('–', '/'));
+    const resolved = createPeriodDatePredicate(mode, dateOrPeriod, semesterOptions, rangeStartDate, rangeEndDate);
+    periodeLabel = resolved.periodeLabel;
+    const periodName =
+      mode === 'mingguan'
+        ? 'Mingguan'
+        : mode === 'bulanan'
+        ? 'Bulanan'
+        : mode === 'range'
+        ? 'Rentang Waktu'
+        : 'Semester';
+    const periodSummary = calculatePeriodRombelSummary(
+      siswaList,
+      presensiList,
+      resolved.datePredicate,
+      periodName,
+      settings
+    );
+    summaryList = periodSummary.rombelList;
+    effectiveDays = periodSummary.effectiveDays;
+    grandPct = periodSummary.persentase;
   }
 
   let totalSiswaAll = 0;
@@ -818,17 +864,12 @@ export function addRingkasanPerKelasSheet(
     ];
   });
 
-  const grandPct =
-    summaryList.length > 0
-      ? Math.round(summaryList.reduce((acc, item) => acc + item.persentase, 0) / summaryList.length)
-      : 0;
-
   buildStyledWorksheet({
     workbook: wb,
     sheetName,
     tabColor: DIGI_COLORS.EMERALD_HEADER,
     title: 'RINGKASAN KEAKTIFAN PER KELAS — SDN 3 KARAMATWANGI',
-    metaInfo: `Periode: ${periodeLabel} · Tahun Pelajaran ${thnAjar}`,
+    metaInfo: `Periode: ${periodeLabel} · Tahun Pelajaran ${thnAjar} · Hari Efektif: ${effectiveDays} Hari`,
     headers: [
       'NO',
       'KELAS',
@@ -900,7 +941,12 @@ export function addSemesterClassSheetToWorkbook(
   const filteredStudents = sortStudentsByClassAndName(
     isAll ? siswaList : siswaList.filter((s) => isSameClass(s.kelas, kelas))
   );
-  const { targetYearMonths, effectiveDays } = getEffectiveSemesterDays(tahunAjaran, semesterType, presensiList);
+  const targetYearMonths = getSemesterYearMonths(semesterType, tahunAjaran);
+  const lookup = buildPeriodAttendanceLookup(siswaList, presensiList, (d) =>
+    targetYearMonths.some((ym) => d.startsWith(ym))
+  );
+  const effectiveDays = lookup.effectiveDays;
+  const studentMetrics = calculateStudentsMetricsFromLookup(filteredStudents, lookup);
 
   let sumH = 0;
   let sumT = 0;
@@ -908,36 +954,9 @@ export function addSemesterClassSheetToWorkbook(
   let sumI = 0;
   let sumA = 0;
   let sumMasuk = 0;
-  let sumPct = 0;
 
-  const rows: (string | number)[][] = filteredStudents.map((siswa, idx) => {
-    const studentRecords = presensiList.filter((p) => {
-      if (!isPresensiMatchSiswa(p, siswa)) return false;
-      const norm = normalizeDateKey(p.tanggal);
-      return targetYearMonths.some((ym) => norm.startsWith(ym));
-    });
-
-    const dateMap = new Map<string, Presensi>();
-    studentRecords.forEach((r) => {
-      const d = normalizeDateKey(r.tanggal);
-      if (isRecordNewer(r, dateMap.get(d))) dateMap.set(d, r);
-    });
-
-    let hadir = 0;
-    let terlambat = 0;
-    let sakit = 0;
-    let izin = 0;
-    let alfa = 0;
-    dateMap.forEach((rec) => {
-      if (rec.status === 'Hadir') hadir++;
-      else if (rec.status === 'Terlambat') terlambat++;
-      else if (rec.status === 'Sakit') sakit++;
-      else if (rec.status === 'Izin') izin++;
-      else if (rec.status === 'Alfa') alfa++;
-    });
-
-    const totalMasuk = hadir + terlambat;
-    const persen = Math.min(100, Math.round((totalMasuk / effectiveDays) * 100));
+  const rows: (string | number)[][] = studentMetrics.map((m, idx) => {
+    const { siswa, hadir, terlambat, sakit, izin, alfa, totalMasuk, persen } = m;
     let predikat = 'Perlu Bimbingan';
     if (persen >= 90) predikat = 'Sangat Baik (A)';
     else if (persen >= 80) predikat = 'Baik (B)';
@@ -949,7 +968,6 @@ export function addSemesterClassSheetToWorkbook(
     sumI += izin;
     sumA += alfa;
     sumMasuk += totalMasuk;
-    sumPct += persen;
 
     return [
       idx + 1,
@@ -969,7 +987,8 @@ export function addSemesterClassSheetToWorkbook(
     ];
   });
 
-  const avgPersen = filteredStudents.length > 0 ? Math.round(sumPct / filteredStudents.length) : 0;
+  const totalSlots = filteredStudents.length * effectiveDays;
+  const overallPersen = totalSlots > 0 ? Math.min(100, Math.round((sumMasuk / totalSlots) * 100)) : 0;
   const semLabel = semesterType === '1' ? 'Semester 1 (Ganjil • Juli–Des)' : 'Semester 2 (Genap • Jan–Jun)';
   const waliName = isAll ? 'Panji Teguh Amarta Surya, S.Pd.I., Gr.' : getWaliKelasByKelas(kelas);
 
@@ -994,8 +1013,8 @@ export function addSemesterClassSheetToWorkbook(
       sumI,
       sumA,
       sumMasuk,
-      avgPersen / 100,
-      avgPersen >= 90 ? 'Sangat Baik (A)' : avgPersen >= 80 ? 'Baik (B)' : 'Cukup (C)'
+      overallPersen / 100,
+      overallPersen >= 90 ? 'Sangat Baik (A)' : overallPersen >= 80 ? 'Baik (B)' : overallPersen >= 60 ? 'Cukup (C)' : 'Perlu Bimbingan'
     ],
     columnMeta: [
       { width: 6, align: 'center', isNumeric: true },
@@ -1028,47 +1047,6 @@ export function addSemesterClassSheetToWorkbook(
   });
 }
 
-function filterPresensiForPeriod(
-  presensiList: Presensi[],
-  mode: 'harian' | 'mingguan' | 'bulanan' | 'semester',
-  dateOrPeriod: string,
-  semesterOptions?: { semesterType: '1' | '2'; tahunAjaran: string }
-): { filtered: Presensi[]; periodeLabel: string } {
-  if (mode === 'harian') {
-    const target = normalizeDateKey(dateOrPeriod);
-    return {
-      filtered: presensiList.filter((p) => normalizeDateKey(p.tanggal) === target),
-      periodeLabel: formatDateIndoLong(target)
-    };
-  }
-  if (mode === 'mingguan') {
-    const monday = getMondayOfWeek(dateOrPeriod);
-    const weekSet = new Set([0, 1, 2, 3, 4].map((i) => safeAddDays(monday, i)));
-    const friday = safeAddDays(monday, 4);
-    return {
-      filtered: presensiList.filter((p) => weekSet.has(normalizeDateKey(p.tanggal))),
-      periodeLabel: `${formatDateIndoShort(monday)} – ${formatDateIndoShort(friday)}`
-    };
-  }
-  if (mode === 'bulanan') {
-    const ym = dateOrPeriod.slice(0, 7);
-    return {
-      filtered: presensiList.filter((p) => normalizeDateKey(p.tanggal).startsWith(ym)),
-      periodeLabel: formatMonthIndo(ym)
-    };
-  }
-  const semType = semesterOptions?.semesterType || (dateOrPeriod.includes('SEM_2') ? '2' : '1');
-  const thn = semesterOptions?.tahunAjaran || '2026/2027';
-  const { targetYearMonths } = getEffectiveSemesterDays(thn, semType, presensiList);
-  return {
-    filtered: presensiList.filter((p) => {
-      const norm = normalizeDateKey(p.tanggal);
-      return targetYearMonths.some((ym) => norm.startsWith(ym));
-    }),
-    periodeLabel: `${semType === '1' ? 'Semester 1 (Ganjil)' : 'Semester 2 (Genap)'} ${thn}`
-  };
-}
-
 /**
  * ============================================================================
  * EXPORT BUILDER WORKBOOK (Dapat dipakai baik untuk download browser maupun verifikasi)
@@ -1086,22 +1064,18 @@ export function buildSingleClassReportWorkbook(
   const wb = createConfiguredWorkbook();
   const isAll = !kelas || kelas === 'Semua Kelas' || kelas === 'SEMUA KELAS';
   const cleanKelas = kelas.replace(/[\s-]+/g, '_').toUpperCase();
-  const { filtered: periodLogs, periodeLabel } = filterPresensiForPeriod(
-    presensiList,
-    type,
-    dateOrPeriod,
-    semesterOptions
-  );
+  const { periodeLabel } = createPeriodDatePredicate(type, dateOrPeriod, semesterOptions);
 
   let filename = '';
 
   if (type === 'harian') {
-    const monthStr = dateOrPeriod.slice(0, 7);
+    const normDay = normalizeDateKey(dateOrPeriod);
+    const monthStr = normDay.slice(0, 7);
     if (isAll) {
       addRingkasanPerKelasSheet(wb, {
         sheetName: 'Ringkasan Per Kelas',
         mode: 'harian',
-        dateOrPeriod,
+        dateOrPeriod: normDay,
         siswaList,
         presensiList,
         settings
@@ -1110,17 +1084,19 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: 'Semua Kelas',
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'harian',
+        dateOrPeriod: normDay
       });
       DAFTAR_KELAS.forEach((cls) => {
         addDaftarHadirKelasSheet(wb, {
           sheetName: `Kelas ${formatShortKelasLabel(cls)}`,
           kelas: cls,
-          mode: 'bulanan',
-          monthOrMondayStr: monthStr,
-          highlightDateStr: dateOrPeriod,
+          mode: 'harian',
+          monthOrMondayStr: normDay,
+          highlightDateStr: normDay,
           siswaList,
           presensiList,
           settings
@@ -1130,9 +1106,9 @@ export function buildSingleClassReportWorkbook(
       addDaftarHadirKelasSheet(wb, {
         sheetName: `Daftar Hadir ${formatShortKelasLabel(kelas)}`,
         kelas,
-        mode: 'bulanan',
-        monthOrMondayStr: monthStr,
-        highlightDateStr: dateOrPeriod,
+        mode: 'harian',
+        monthOrMondayStr: normDay,
+        highlightDateStr: normDay,
         siswaList,
         presensiList,
         settings
@@ -1141,12 +1117,24 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: kelas,
-        records: periodLogs,
+        records: presensiList,
         siswaList,
+        settings,
+        mode: 'harian',
+        dateOrPeriod: normDay
+      });
+      addDaftarHadirKelasSheet(wb, {
+        sheetName: `Matriks ${formatMonthIndo(monthStr)}`,
+        kelas,
+        mode: 'bulanan',
+        monthOrMondayStr: monthStr,
+        highlightDateStr: normDay,
+        siswaList,
+        presensiList,
         settings
       });
     }
-    filename = `DIGIWANGI_REKAP_HARIAN_${cleanKelas}_${dateOrPeriod}.xlsx`;
+    filename = `DIGIWANGI_REKAP_HARIAN_${cleanKelas}_${normDay}.xlsx`;
   } else if (type === 'mingguan') {
     const monday = getMondayOfWeek(dateOrPeriod);
     if (isAll) {
@@ -1162,9 +1150,11 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: 'Semua Kelas',
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'mingguan',
+        dateOrPeriod: monday
       });
       DAFTAR_KELAS.forEach((cls) => {
         addDaftarHadirKelasSheet(wb, {
@@ -1191,9 +1181,11 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: kelas,
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'mingguan',
+        dateOrPeriod: monday
       });
     }
     filename = `DIGIWANGI_REKAP_MINGGUAN_${cleanKelas}_${monday}.xlsx`;
@@ -1212,9 +1204,11 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: 'Semua Kelas',
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'bulanan',
+        dateOrPeriod: ym
       });
       DAFTAR_KELAS.forEach((cls) => {
         addDaftarHadirKelasSheet(wb, {
@@ -1241,9 +1235,11 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: kelas,
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'bulanan',
+        dateOrPeriod: ym
       });
     }
     filename = `DIGIWANGI_REKAP_BULANAN_${cleanKelas}_${ym}.xlsx`;
@@ -1264,9 +1260,12 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: 'Semua Kelas',
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'semester',
+        dateOrPeriod,
+        semesterOptions: { semesterType: semType, tahunAjaran: thn }
       });
       addSemesterClassSheetToWorkbook(wb, 'Rekap Semua Siswa', 'Semua Kelas', semType, thn, siswaList, presensiList, settings);
     } else {
@@ -1275,9 +1274,12 @@ export function buildSingleClassReportWorkbook(
         sheetName: 'Log Presensi Harian',
         periodeLabel,
         kelasFilter: kelas,
-        records: periodLogs,
+        records: presensiList,
         siswaList,
-        settings
+        settings,
+        mode: 'semester',
+        dateOrPeriod,
+        semesterOptions: { semesterType: semType, tahunAjaran: thn }
       });
     }
     filename = `DIGIWANGI_REKAP_SEMESTER_${semType}_${cleanKelas}_${thn.replace('/', '-')}.xlsx`;
@@ -1325,12 +1327,7 @@ export async function downloadAllClassesZip(
   const zip = new JSZip();
   const classes = DAFTAR_KELAS;
   const total = classes.length + 3;
-  const { filtered: periodLogs, periodeLabel } = filterPresensiForPeriod(
-    presensiList,
-    type,
-    dateOrPeriod,
-    semesterOptions
-  );
+  const { periodeLabel } = createPeriodDatePredicate(type, dateOrPeriod, semesterOptions);
 
   // 01: Ringkasan Per Kelas
   onProgress?.(1, total, 'Ringkasan Keaktifan Per Kelas (.xlsx)');
@@ -1353,9 +1350,12 @@ export async function downloadAllClassesZip(
     sheetName: 'Log Presensi Harian',
     periodeLabel,
     kelasFilter: 'Semua Kelas',
-    records: periodLogs,
+    records: presensiList,
     siswaList,
-    settings
+    settings,
+    mode: type,
+    dateOrPeriod,
+    semesterOptions
   });
   zip.file(`02_DIGIWANGI_LOG_PRESENSI_HARIAN_${dateOrPeriod.replace('/', '-')}.xlsx`, await workbookToXlsxBuffer(logWb));
 
@@ -1406,14 +1406,21 @@ export function buildKepsekRekapWorkbook(
 ): { workbook: ExcelJS.Workbook; filename: string } {
   const wb = createConfiguredWorkbook();
   const today = getLocalDateString();
-  const periodLabel =
-    filterType === 'hari' ? formatDateIndoLong(today) : filterType === 'minggu' ? '7 Hari Terakhir' : '30 Hari Terakhir';
+  const isDaily = filterType === 'hari';
+  const startDate = filterType === 'minggu' ? safeAddDays(today, -6) : safeAddDays(today, -29);
+  const periodLabel = isDaily
+    ? formatDateIndoLong(today)
+    : filterType === 'minggu'
+    ? `7 Hari Terakhir (${formatDateIndoShort(startDate)} – ${formatDateIndoShort(today)})`
+    : `30 Hari Terakhir (${formatDateIndoShort(startDate)} – ${formatDateIndoShort(today)})`;
 
   // Sheet 1: Ringkasan Keaktifan Per Kelas
   addRingkasanPerKelasSheet(wb, {
     sheetName: 'Ringkasan Per Kelas',
-    mode: filterType === 'bulan' ? 'bulanan' : filterType === 'minggu' ? 'mingguan' : 'harian',
-    dateOrPeriod: filterType === 'bulan' ? today.slice(0, 7) : today,
+    mode: isDaily ? 'harian' : 'range',
+    dateOrPeriod: today,
+    rangeStartDate: isDaily ? undefined : startDate,
+    rangeEndDate: isDaily ? undefined : today,
     siswaList,
     presensiList,
     settings
@@ -1424,9 +1431,13 @@ export function buildKepsekRekapWorkbook(
     sheetName: 'Log Presensi Harian',
     periodeLabel: periodLabel,
     kelasFilter: selectedKelas,
-    records: filteredLogs,
+    records: presensiList.length > 0 ? presensiList : filteredLogs,
     siswaList,
-    settings
+    settings,
+    mode: isDaily ? 'harian' : 'range',
+    dateOrPeriod: today,
+    rangeStartDate: isDaily ? undefined : startDate,
+    rangeEndDate: isDaily ? undefined : today
   });
 
   const cleanCls = selectedKelas.replace(/[\s-]+/g, '_').toUpperCase();

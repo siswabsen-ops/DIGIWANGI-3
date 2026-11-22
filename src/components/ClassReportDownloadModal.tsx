@@ -17,7 +17,19 @@ import {
 import { Siswa, Presensi, SystemSettings, DAFTAR_KELAS } from '../types';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import { downloadSingleClassReport, downloadAllClassesZip } from '../lib/attendanceReportExport';
-import { isSameClass, getLocalDateString } from '../lib/attendanceUtils';
+import {
+  isSameClass,
+  getLocalDateString,
+  calculateAllRombelSummaryList,
+  calculateWeeklyRombelSummaryList,
+  calculateMonthlyRombelSummaryList,
+  calculateSemesterRombelSummaryList,
+  getMondayOfWeek,
+  safeAddDays,
+  formatDateIndoShort,
+  formatMonthIndo,
+  ClassRombelSummary
+} from '../lib/attendanceUtils';
 
 interface ClassReportDownloadModalProps {
   isOpen: boolean;
@@ -64,18 +76,52 @@ export default function ClassReportDownloadModal({
   const [downloadSuccess, setDownloadSuccess] = useState<string>('');
   const [downloadError, setDownloadError] = useState<string>('');
 
-  // Class list with count and wali kelas
+  // Ringkasan live per kelas sesuai tipe laporan & periode terpilih agar konsisten dengan Excel yang diunduh
+  const rombelSummaryMap = useMemo(() => {
+    let summaries: ClassRombelSummary[] = [];
+    if (reportType === 'harian') {
+      summaries = calculateAllRombelSummaryList(siswaList, presensiList, targetDate, settings);
+    } else if (reportType === 'mingguan') {
+      summaries = calculateWeeklyRombelSummaryList(siswaList, presensiList, targetDate, settings);
+    } else if (reportType === 'bulanan') {
+      summaries = calculateMonthlyRombelSummaryList(siswaList, presensiList, targetMonth, settings);
+    } else {
+      summaries = calculateSemesterRombelSummaryList(
+        siswaList,
+        presensiList,
+        targetSemesterType,
+        targetTahunAjaran,
+        settings
+      );
+    }
+    const map = new Map<string, ClassRombelSummary>();
+    summaries.forEach((s) => map.set(s.kelas, s));
+    return map;
+  }, [
+    reportType,
+    targetDate,
+    targetMonth,
+    targetSemesterType,
+    targetTahunAjaran,
+    siswaList,
+    presensiList,
+    settings
+  ]);
+
+  // Class list with count, wali kelas, and synchronized metrics
   const classesInfo = useMemo(() => {
     return DAFTAR_KELAS.map(kelas => {
       const students = siswaList.filter(s => isSameClass(s.kelas, kelas));
       const waliKelas = getWaliKelasByKelas(kelas);
+      const stats = rombelSummaryMap.get(kelas);
       return {
         kelas,
         waliKelas,
-        totalSiswa: students.length
+        totalSiswa: students.length,
+        stats
       };
     });
-  }, [siswaList]);
+  }, [siswaList, rombelSummaryMap]);
 
   const filteredClasses = useMemo(() => {
     if (!searchClass.trim()) return classesInfo;
@@ -125,7 +171,7 @@ export default function ClassReportDownloadModal({
     setDownloadError('');
     try {
       setIsZipping(true);
-      setZipProgress({ current: 0, total: DAFTAR_KELAS.length + 2, className: 'Mempersiapkan berkas Excel...' });
+      setZipProgress({ current: 0, total: DAFTAR_KELAS.length + 3, className: 'Mempersiapkan berkas Excel...' });
 
       await downloadAllClassesZip(
         reportType, 
@@ -301,6 +347,17 @@ export default function ClassReportDownloadModal({
                   >
                     Oktober 2026
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetMonth('2026-11')}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                      targetMonth === '2026-11'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    November 2026
+                  </button>
                 </div>
               </div>
             )}
@@ -392,8 +449,22 @@ export default function ClassReportDownloadModal({
                     Wali: {cls.waliKelas}
                   </h4>
                   <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                    Format: {reportType === 'harian' ? `Harian (${targetDate})` : reportType === 'mingguan' ? `Mingguan (${targetDate})` : `Bulanan (${targetMonth})`}
+                    Format:{' '}
+                    {reportType === 'harian'
+                      ? `Harian (${formatDateIndoShort(targetDate)})`
+                      : reportType === 'mingguan'
+                      ? `Mingguan (${formatDateIndoShort(getMondayOfWeek(targetDate))} – ${formatDateIndoShort(safeAddDays(getMondayOfWeek(targetDate), 4))})`
+                      : reportType === 'bulanan'
+                      ? `Bulanan (${formatMonthIndo(targetMonth)})`
+                      : `Semester ${targetSemesterType} (${targetTahunAjaran})`}
                   </p>
+                  {cls.stats && (
+                    <div className="mt-2 flex items-center justify-between gap-1 text-[10px] font-bold bg-slate-50 border border-slate-150 rounded-xl px-2.5 py-1.5">
+                      <span className="text-emerald-700">H:{cls.stats.hadir} T:{cls.stats.terlambat}</span>
+                      <span className="text-slate-500">S/I/A:{cls.stats.sakit + cls.stats.izin + cls.stats.alfa}</span>
+                      <span className="text-blue-700 font-black">{cls.stats.persentase}%</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">

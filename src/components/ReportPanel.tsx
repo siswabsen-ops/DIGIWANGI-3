@@ -33,26 +33,20 @@ import AttendancePrintModal from './AttendancePrintModal';
 import ClassReportDownloadModal from './ClassReportDownloadModal';
 import {
   getLocalDateString,
-  getLatestAttendanceForStudent,
-  isPresensiMatchSiswa,
-  isPresensiDateMatch,
   calculateAllRombelSummaryList,
-  calculateWeeklyRombelSummaryList,
-  calculateMonthlyRombelSummaryList,
-  calculateSemesterRombelSummaryList,
-  calculateClassAttendanceStats,
-  calculateSchoolAttendanceStats,
+  buildPeriodAttendanceLookup,
+  calculateStudentsMetricsFromLookup,
+  calculatePeriodRombelSummary,
+  getSemesterYearMonths,
   isSameClass,
   buildDailyAttendanceIndex,
   getAttendanceFromIndex,
-  normalizeDateKey,
   getMondayOfWeek,
   safeAddDays,
   safeDateParts,
   getAttendanceShift,
   formatDateIndoLong,
-  formatMonthIndo,
-  isRecordNewer
+  formatMonthIndo
 } from '../lib/attendanceUtils';
 import { downloadSingleClassReport } from '../lib/attendanceReportExport';
 import { auditAndSyncSemesterPresensi, fetchQRErrorsFromCloud } from '../lib/cloudSync';
@@ -207,22 +201,37 @@ function ReportPanel({
   }, [allRombelSummary, rombelFilter, sesiFilter]);
 
   // Rekapitulasi Rombel Mingguan Semua Kelas (1-A s/d 6-B)
-  const weeklyRombelSummary = useMemo(() => {
-    if (activeTab !== 'mingguan') return [];
-    return calculateWeeklyRombelSummaryList(siswaList, presensiList, mingguanDate);
-  }, [siswaList, presensiList, mingguanDate, activeTab]);
+  const weeklyPeriodSummary = useMemo(() => {
+    if (activeTab !== 'mingguan') return null;
+    const weekSet = new Set(weekDates.map((w) => w.dateStr));
+    return calculatePeriodRombelSummary(siswaList, presensiList, (d) => weekSet.has(d), 'Mingguan', settings);
+  }, [siswaList, presensiList, weekDates, activeTab, settings]);
+
+  const weeklyRombelSummary = weeklyPeriodSummary?.rombelList || [];
 
   // Rekapitulasi Rombel Bulanan Semua Kelas (1-A s/d 6-B)
-  const monthlyRombelSummary = useMemo(() => {
-    if (activeTab !== 'bulanan') return [];
-    return calculateMonthlyRombelSummaryList(siswaList, presensiList, bulananMonth);
-  }, [siswaList, presensiList, bulananMonth, activeTab]);
+  const monthlyPeriodSummary = useMemo(() => {
+    if (activeTab !== 'bulanan') return null;
+    const ym = (bulananMonth || '').slice(0, 7);
+    return calculatePeriodRombelSummary(siswaList, presensiList, (d) => d.startsWith(ym), 'Bulanan', settings);
+  }, [siswaList, presensiList, bulananMonth, activeTab, settings]);
+
+  const monthlyRombelSummary = monthlyPeriodSummary?.rombelList || [];
 
   // Rekapitulasi Rombel Semester Semua Kelas (1-A s/d 6-B)
-  const semesterRombelSummary = useMemo(() => {
-    if (activeTab !== 'semester') return [];
-    return calculateSemesterRombelSummaryList(siswaList, presensiList, semesterType, semesterTahunAjaran);
-  }, [siswaList, presensiList, semesterType, semesterTahunAjaran, activeTab]);
+  const semesterPeriodSummary = useMemo(() => {
+    if (activeTab !== 'semester') return null;
+    const yms = getSemesterYearMonths(semesterType, semesterTahunAjaran);
+    return calculatePeriodRombelSummary(
+      siswaList,
+      presensiList,
+      (d) => yms.some((ym) => d.startsWith(ym)),
+      'Semester',
+      settings
+    );
+  }, [siswaList, presensiList, semesterType, semesterTahunAjaran, activeTab, settings]);
+
+  const semesterRombelSummary = semesterPeriodSummary?.rombelList || [];
 
   // Grand Total untuk Seluruh Sekolah pada tanggal terpilih
   const grandTotalSchool = useMemo(() => {
@@ -275,52 +284,71 @@ function ReportPanel({
 
   // Grand Total Mingguan untuk Seluruh Sekolah (12 Rombel Kelas)
   const grandTotalWeekly = useMemo(() => {
-    let totalSiswa = 0;
-    let hadir = 0;
-    let terlambat = 0;
-    let sakit = 0;
-    let izin = 0;
-    let alfa = 0;
-    let sakitDanIzin = 0;
-    let belumAbsen = 0;
-    let totalTidakHadir = 0;
-    let totalHadir = 0;
-
-    weeklyRombelSummary.forEach((r) => {
-      totalSiswa += r.totalSiswa;
-      hadir += r.hadir;
-      terlambat += r.terlambat;
-      sakit += r.sakit;
-      izin += r.izin;
-      alfa += r.alfa;
-      sakitDanIzin += r.sakitDanIzin;
-      belumAbsen += r.belumAbsen;
-      totalTidakHadir += r.totalTidakHadir;
-      totalHadir += r.totalHadir;
-    });
-
-    // Hitung hari yang sudah terisi presensi pada minggu ini
-    const activeDaysCount = Math.max(1, weekDates.filter(w => {
-      return presensiList.some(p => p.tanggal && normalizeDateKey(p.tanggal) === w.dateStr);
-    }).length);
-
-    const evaluatedSlots = totalSiswa * activeDaysCount;
-    const persentase = evaluatedSlots > 0 ? Math.min(100, Math.round((totalHadir / evaluatedSlots) * 100)) : 0;
-
+    if (!weeklyPeriodSummary) {
+      return {
+        totalSiswa: 0,
+        hadir: 0,
+        terlambat: 0,
+        sakit: 0,
+        izin: 0,
+        alfa: 0,
+        sakitDanIzin: 0,
+        belumAbsen: 0,
+        totalTidakHadir: 0,
+        totalHadir: 0,
+        persentase: 0,
+        effectiveDays: 1
+      };
+    }
     return {
-      totalSiswa,
-      hadir,
-      terlambat,
-      sakit,
-      izin,
-      alfa,
-      sakitDanIzin,
-      belumAbsen,
-      totalTidakHadir,
-      totalHadir,
-      persentase
+      totalSiswa: weeklyPeriodSummary.totalSiswa,
+      hadir: weeklyPeriodSummary.hadir,
+      terlambat: weeklyPeriodSummary.terlambat,
+      sakit: weeklyPeriodSummary.sakit,
+      izin: weeklyPeriodSummary.izin,
+      alfa: weeklyPeriodSummary.alfa,
+      sakitDanIzin: weeklyPeriodSummary.sakit + weeklyPeriodSummary.izin,
+      belumAbsen: weeklyPeriodSummary.belumAbsen,
+      totalTidakHadir: weeklyPeriodSummary.totalTidakHadir,
+      totalHadir: weeklyPeriodSummary.totalHadir,
+      persentase: weeklyPeriodSummary.persentase,
+      effectiveDays: weeklyPeriodSummary.effectiveDays
     };
-  }, [weeklyRombelSummary, weekDates, presensiList]);
+  }, [weeklyPeriodSummary]);
+
+  const grandTotalMonthly = useMemo(() => {
+    if (!monthlyPeriodSummary) {
+      return {
+        totalSiswa: 0,
+        hadir: 0,
+        terlambat: 0,
+        sakit: 0,
+        izin: 0,
+        alfa: 0,
+        totalHadir: 0,
+        persentase: 0,
+        effectiveDays: 1
+      };
+    }
+    return monthlyPeriodSummary;
+  }, [monthlyPeriodSummary]);
+
+  const grandTotalSemester = useMemo(() => {
+    if (!semesterPeriodSummary) {
+      return {
+        totalSiswa: 0,
+        hadir: 0,
+        terlambat: 0,
+        sakit: 0,
+        izin: 0,
+        alfa: 0,
+        totalHadir: 0,
+        persentase: 0,
+        effectiveDays: 1
+      };
+    }
+    return semesterPeriodSummary;
+  }, [semesterPeriodSummary]);
 
   // Common filtered list of students
   const filteredStudents = useMemo(() => {
@@ -436,6 +464,11 @@ function ReportPanel({
   }, [harianReportDataRaw, settings]);
 
   // MINGGUAN: Calculate student matrix for Monday - Friday (Instant indexed execution)
+  const mingguanEffectiveDays = useMemo(() => {
+    if (activeTab !== 'mingguan') return 1;
+    return weeklyPeriodSummary?.effectiveDays || 1;
+  }, [weeklyPeriodSummary, activeTab]);
+
   const mingguanReportData = useMemo(() => {
     if (activeTab !== 'mingguan') return [];
 
@@ -468,96 +501,36 @@ function ReportPanel({
     });
   }, [filteredStudents, presensiList, weekDates, activeTab]);
 
-  // BULANAN: Aggregates for the whole month (Optimized with pre-built student bucket map)
+  // BULANAN: Aggregates using canonical PeriodAttendanceLookup
   const bulananReportData = useMemo(() => {
     if (activeTab !== 'bulanan') return [];
+    const ym = (bulananMonth || '').slice(0, 7);
+    const lookup = buildPeriodAttendanceLookup(siswaList, presensiList, (d) => d.startsWith(ym));
+    const metricsList = calculateStudentsMetricsFromLookup(filteredStudents, lookup);
 
-    const monthRecords = presensiList.filter(p => p.tanggal && normalizeDateKey(p.tanggal).startsWith(bulananMonth));
-    const uniqueDaysWithAttendance = Array.from(new Set(monthRecords.map(p => normalizeDateKey(p.tanggal)))).length;
-    const totalSchoolDays = Math.max(uniqueDaysWithAttendance, 1);
-
-    // Pre-bucket month records by student ID & NIS for O(1) lookup
-    const recordsByStudentKey = new Map<string, Presensi[]>();
-    for (const r of monthRecords) {
-      if (r.siswaId) {
-        const arr = recordsByStudentKey.get(r.siswaId) || [];
-        arr.push(r);
-        recordsByStudentKey.set(r.siswaId, arr);
+    return metricsList.map((m) => ({
+      siswa: m.siswa,
+      metrics: {
+        registrasi: m.totalLog,
+        hadir: m.hadir,
+        terlambat: m.terlambat,
+        sakit: m.sakit,
+        izin: m.izin,
+        alfa: m.alfa,
+        belumAbsen: m.belumAbsen,
+        totalMasuk: m.totalMasuk,
+        persen: m.persen,
+        baseSchoolDays: m.effectiveDays
       }
-      if (r.nis) {
-        const cleanNis = r.nis.trim();
-        const arr = recordsByStudentKey.get(`nis:${cleanNis}`) || [];
-        arr.push(r);
-        recordsByStudentKey.set(`nis:${cleanNis}`, arr);
-      }
-    }
+    }));
+  }, [filteredStudents, siswaList, presensiList, bulananMonth, activeTab]);
 
-    return filteredStudents.map(siswa => {
-      const byId = recordsByStudentKey.get(siswa.id) || [];
-      const byNisRaw = siswa.nis && siswa.nis.trim().length >= 4 ? (recordsByStudentKey.get(`nis:${siswa.nis.trim()}`) || []) : [];
-      const seen = new Set<Presensi>(byId);
-      const studentMonthRecords: Presensi[] = [...byId];
-      for (const r of byNisRaw) {
-        if (!seen.has(r) && isPresensiMatchSiswa(r, siswa)) {
-          seen.add(r);
-          studentMonthRecords.push(r);
-        }
-      }
-      
-      const dateMap = new Map<string, Presensi>();
-      studentMonthRecords.forEach(r => {
-        const dKey = normalizeDateKey(r.tanggal);
-        const existing = dateMap.get(dKey);
-        if (isRecordNewer(r, existing)) {
-          dateMap.set(dKey, r);
-        }
-      });
-
-      const uniqueMonthlyRecords = Array.from(dateMap.values());
-      
-      let hadir = 0;
-      let terlambat = 0;
-      let sakit = 0;
-      let izin = 0;
-      let alfa = 0;
-
-      uniqueMonthlyRecords.forEach(r => {
-        switch (r.status) {
-          case 'Hadir': hadir++; break;
-          case 'Terlambat': terlambat++; break;
-          case 'Sakit': sakit++; break;
-          case 'Izin': izin++; break;
-          case 'Alfa': alfa++; break;
-        }
-      });
-
-      const belumAbsen = Math.max(0, totalSchoolDays - (hadir + terlambat + sakit + izin + alfa));
-      const presentCount = hadir + terlambat;
-      const percentage = totalSchoolDays > 0 ? Math.round((presentCount / totalSchoolDays) * 100) : 0;
-
-      return {
-        siswa,
-        metrics: {
-          registrasi: uniqueMonthlyRecords.length,
-          hadir,
-          terlambat,
-          sakit,
-          izin,
-          alfa,
-          belumAbsen,
-          totalMasuk: presentCount,
-          persen: percentage,
-          baseSchoolDays: totalSchoolDays
-        }
-      };
-    });
-  }, [filteredStudents, presensiList, bulananMonth, activeTab]);
-
-  // Bulanan stats overall
+  // Bulanan stats overall (weighted by totalSlots agar 100% sinkron dengan tabel rombel & Excel)
   const bulananStats = useMemo(() => {
-    if (bulananReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0, totalHadir: 0, totalTerlambat: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0, totalMasuk: 0 };
-    const totalPercentage = bulananReportData.reduce((acc, curr) => acc + curr.metrics.persen, 0);
-    const avgPersen = Math.round(totalPercentage / bulananReportData.length);
+    if (bulananReportData.length === 0) {
+      return { avgPersen: 0, totalApresiasi: 0, totalHadir: 0, totalTerlambat: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0, totalMasuk: 0 };
+    }
+    const effectiveDays = bulananReportData[0].metrics.baseSchoolDays || 1;
     const totalApresiasi = bulananReportData.filter(r => r.metrics.persen >= 90).length;
     const totalHadir = bulananReportData.reduce((acc, curr) => acc + curr.metrics.hadir, 0);
     const totalTerlambat = bulananReportData.reduce((acc, curr) => acc + curr.metrics.terlambat, 0);
@@ -565,114 +538,52 @@ function ReportPanel({
     const totalIzin = bulananReportData.reduce((acc, curr) => acc + curr.metrics.izin, 0);
     const totalAlfa = bulananReportData.reduce((acc, curr) => acc + curr.metrics.alfa, 0);
     const totalMasuk = totalHadir + totalTerlambat;
+    const totalSlots = bulananReportData.length * effectiveDays;
+    const avgPersen = totalSlots > 0 ? Math.min(100, Math.round((totalMasuk / totalSlots) * 100)) : 0;
 
     return { avgPersen, totalApresiasi, totalHadir, totalTerlambat, totalSakit, totalIzin, totalAlfa, totalMasuk };
   }, [bulananReportData]);
 
-  // 4. DATA REKAPITULASI SEMESTER
+  // 4. DATA REKAPITULASI SEMESTER (menggunakan PeriodAttendanceLookup terpadu)
   const semesterReportData = useMemo(() => {
     if (activeTab !== 'semester') return [];
+    const targetYearMonths = getSemesterYearMonths(semesterType, semesterTahunAjaran);
+    const lookup = buildPeriodAttendanceLookup(siswaList, presensiList, (d) =>
+      targetYearMonths.some((ym) => d.startsWith(ym))
+    );
+    const metricsList = calculateStudentsMetricsFromLookup(filteredStudents, lookup);
 
-    const parts = semesterTahunAjaran.split('/');
-    const startYear = parseInt(parts[0]) || 2026;
-    const endYear = parseInt(parts[1]) || (startYear + 1);
-
-    const targetYearMonths = semesterType === '1'
-      ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
-      : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
-
-    const semesterRecords = presensiList.filter(p => {
-      if (!p.tanggal) return false;
-      const norm = normalizeDateKey(p.tanggal);
-      return targetYearMonths.some(ym => norm.startsWith(ym));
-    });
-
-    const uniqueDaysWithAttendance = Array.from(new Set(semesterRecords.map(p => normalizeDateKey(p.tanggal)))).length;
-    const totalSchoolDays = Math.max(uniqueDaysWithAttendance, 1);
-
-    // Group records by student
-    const recordsByStudentKey = new Map<string, Presensi[]>();
-    for (const r of semesterRecords) {
-      if (r.siswaId) {
-        const arr = recordsByStudentKey.get(r.siswaId) || [];
-        arr.push(r);
-        recordsByStudentKey.set(r.siswaId, arr);
-      }
-      if (r.nis) {
-        const cleanNis = r.nis.trim();
-        const arr = recordsByStudentKey.get(`nis:${cleanNis}`) || [];
-        arr.push(r);
-        recordsByStudentKey.set(`nis:${cleanNis}`, arr);
-      }
-    }
-
-    return filteredStudents.map(siswa => {
-      const byId = recordsByStudentKey.get(siswa.id) || [];
-      const byNisRaw = siswa.nis && siswa.nis.trim().length >= 4 ? (recordsByStudentKey.get(`nis:${siswa.nis.trim()}`) || []) : [];
-      const seen = new Set<Presensi>(byId);
-      const studentSemesterRecords: Presensi[] = [...byId];
-      for (const r of byNisRaw) {
-        if (!seen.has(r) && isPresensiMatchSiswa(r, siswa)) {
-          seen.add(r);
-          studentSemesterRecords.push(r);
-        }
-      }
-
-      const dateMap = new Map<string, Presensi>();
-      studentSemesterRecords.forEach(r => {
-        const dKey = normalizeDateKey(r.tanggal);
-        const existing = dateMap.get(dKey);
-        if (isRecordNewer(r, existing)) {
-          dateMap.set(dKey, r);
-        }
-      });
-
-      const uniqueRecords = Array.from(dateMap.values());
-      let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
-
-      uniqueRecords.forEach(r => {
-        switch (r.status) {
-          case 'Hadir': hadir++; break;
-          case 'Terlambat': terlambat++; break;
-          case 'Sakit': sakit++; break;
-          case 'Izin': izin++; break;
-          case 'Alfa': alfa++; break;
-        }
-      });
-
-      const belumAbsen = Math.max(0, totalSchoolDays - (hadir + terlambat + sakit + izin + alfa));
-      const presentCount = hadir + terlambat;
-      const percentage = totalSchoolDays > 0 ? Math.min(100, Math.round((presentCount / totalSchoolDays) * 100)) : 0;
-
+    return metricsList.map((m) => {
       let predikat = 'Perlu Bimbingan (D)';
-      if (percentage >= 90) predikat = 'Sangat Baik (A)';
-      else if (percentage >= 80) predikat = 'Baik (B)';
-      else if (percentage >= 60) predikat = 'Cukup (C)';
+      if (m.persen >= 90) predikat = 'Sangat Baik (A)';
+      else if (m.persen >= 80) predikat = 'Baik (B)';
+      else if (m.persen >= 60) predikat = 'Cukup (C)';
 
       return {
-        siswa,
+        siswa: m.siswa,
         metrics: {
-          registrasi: uniqueRecords.length,
-          hadir,
-          terlambat,
-          sakit,
-          izin,
-          alfa,
-          belumAbsen,
-          totalMasuk: presentCount,
-          persen: percentage,
-          baseSchoolDays: totalSchoolDays,
+          registrasi: m.totalLog,
+          hadir: m.hadir,
+          terlambat: m.terlambat,
+          sakit: m.sakit,
+          izin: m.izin,
+          alfa: m.alfa,
+          belumAbsen: m.belumAbsen,
+          totalMasuk: m.totalMasuk,
+          persen: m.persen,
+          baseSchoolDays: m.effectiveDays,
           predikat
         }
       };
     });
-  }, [filteredStudents, presensiList, semesterType, semesterTahunAjaran, activeTab]);
+  }, [filteredStudents, siswaList, presensiList, semesterType, semesterTahunAjaran, activeTab]);
 
-  // Semester stats overall
+  // Semester stats overall (weighted by totalSlots agar 100% sinkron dengan tabel rombel & Excel)
   const semesterStats = useMemo(() => {
-    if (semesterReportData.length === 0) return { avgPersen: 0, totalApresiasi: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0, totalHadir: 0, totalTerlambat: 0, totalMasuk: 0, totalBelumAbsen: 0 };
-    const totalPercentage = semesterReportData.reduce((acc, curr) => acc + curr.metrics.persen, 0);
-    const avgPersen = Math.round(totalPercentage / semesterReportData.length);
+    if (semesterReportData.length === 0) {
+      return { avgPersen: 0, totalApresiasi: 0, totalSakit: 0, totalIzin: 0, totalAlfa: 0, totalHadir: 0, totalTerlambat: 0, totalMasuk: 0, totalBelumAbsen: 0 };
+    }
+    const effectiveDays = semesterReportData[0].metrics.baseSchoolDays || 1;
     const totalApresiasi = semesterReportData.filter(r => r.metrics.persen >= 90).length;
     const totalHadir = semesterReportData.reduce((acc, curr) => acc + curr.metrics.hadir, 0);
     const totalTerlambat = semesterReportData.reduce((acc, curr) => acc + curr.metrics.terlambat, 0);
@@ -681,6 +592,8 @@ function ReportPanel({
     const totalAlfa = semesterReportData.reduce((acc, curr) => acc + curr.metrics.alfa, 0);
     const totalBelumAbsen = semesterReportData.reduce((acc, curr) => acc + curr.metrics.belumAbsen, 0);
     const totalMasuk = totalHadir + totalTerlambat;
+    const totalSlots = semesterReportData.length * effectiveDays;
+    const avgPersen = totalSlots > 0 ? Math.min(100, Math.round((totalMasuk / totalSlots) * 100)) : 0;
 
     return { avgPersen, totalApresiasi, totalSakit, totalIzin, totalAlfa, totalHadir, totalTerlambat, totalMasuk, totalBelumAbsen };
   }, [semesterReportData]);
@@ -2277,8 +2190,7 @@ function ReportPanel({
                                 <span className="bg-sky-105 text-sky-800 px-1 rounded" title="Ijin / Sakit">IS:{row.summary.izin + row.summary.sakit}</span>
                                 <span className="bg-red-101 text-red-800 px-1 rounded" title="Alfa">A:{row.summary.alfa}</span>
                                 {(() => {
-                                  const effectiveDays = Math.max(1, row.recordsByDay.filter(r => r.status !== '-').length);
-                                  const studentPersen = Math.round(((row.summary.hadir + row.summary.terlambat) / effectiveDays) * 100);
+                                  const studentPersen = Math.min(100, Math.round(((row.summary.hadir + row.summary.terlambat) / mingguanEffectiveDays) * 100));
                                   return (
                                     <span className="bg-emerald-100 text-emerald-900 px-1 rounded font-black" title="Keaktifan">
                                       {studentPersen}%
@@ -2525,6 +2437,30 @@ function ReportPanel({
                         </tr>
                       );
                     })}
+                    {/* Grand Total Row Bulanan Seluruh Sekolah */}
+                    <tr className="bg-slate-200/90 border-t-2 border-slate-300 font-black text-slate-900">
+                      <td className="py-3 px-3 text-center">Σ</td>
+                      <td className="py-3 px-3">TOTAL SEKOLAH</td>
+                      <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel ({grandTotalMonthly.effectiveDays} Hari Efektif)</td>
+                      <td className="py-3 px-2.5 text-center bg-slate-300/70 font-black text-slate-950">{grandTotalMonthly.totalSiswa}</td>
+                      <td className="py-3 px-2 text-center text-emerald-900 font-black">{grandTotalMonthly.hadir}</td>
+                      <td className="py-3 px-2 text-center text-amber-900 font-black">{grandTotalMonthly.terlambat}</td>
+                      <td className="py-3 px-2 text-center text-indigo-900 font-black">{grandTotalMonthly.sakit}</td>
+                      <td className="py-3 px-2 text-center text-sky-900 font-black">{grandTotalMonthly.izin}</td>
+                      <td className="py-3 px-2 text-center text-rose-900 font-black">{grandTotalMonthly.alfa}</td>
+                      <td className="py-3 px-2.5 text-center text-blue-950 font-black bg-blue-100/80">{grandTotalMonthly.totalHadir}</td>
+                      <td className="py-3 px-2.5 text-center text-emerald-950 font-mono font-black bg-emerald-100/90 text-sm">
+                        {grandTotalMonthly.persentase}%
+                      </td>
+                      <td className="py-3 px-2.5 text-center">
+                        <button
+                          onClick={() => setSelectedKelas('Semua Kelas')}
+                          className="text-[10px] font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                        >
+                          Semua Kelas
+                        </button>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -2805,6 +2741,30 @@ function ReportPanel({
                         </tr>
                       );
                     })}
+                    {/* Grand Total Row Semester Seluruh Sekolah */}
+                    <tr className="bg-slate-200/90 border-t-2 border-slate-300 font-black text-slate-900">
+                      <td className="py-3 px-3 text-center">Σ</td>
+                      <td className="py-3 px-3">TOTAL SEKOLAH</td>
+                      <td className="py-3 px-3 text-slate-600 font-bold">12 Rombel ({grandTotalSemester.effectiveDays} Hari Efektif)</td>
+                      <td className="py-3 px-2.5 text-center bg-slate-300/70 font-black text-slate-950">{grandTotalSemester.totalSiswa}</td>
+                      <td className="py-3 px-2 text-center text-emerald-900 font-black">{grandTotalSemester.hadir}</td>
+                      <td className="py-3 px-2 text-center text-amber-900 font-black">{grandTotalSemester.terlambat}</td>
+                      <td className="py-3 px-2 text-center text-indigo-900 font-black">{grandTotalSemester.sakit}</td>
+                      <td className="py-3 px-2 text-center text-sky-900 font-black">{grandTotalSemester.izin}</td>
+                      <td className="py-3 px-2 text-center text-rose-900 font-black">{grandTotalSemester.alfa}</td>
+                      <td className="py-3 px-2.5 text-center text-blue-950 font-black bg-blue-100/80">{grandTotalSemester.totalHadir}</td>
+                      <td className="py-3 px-2.5 text-center text-emerald-950 font-mono font-black bg-emerald-100/90 text-sm">
+                        {grandTotalSemester.persentase}%
+                      </td>
+                      <td className="py-3 px-2.5 text-center">
+                        <button
+                          onClick={() => setSelectedKelas('Semua Kelas')}
+                          className="text-[10px] font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                        >
+                          Semua Kelas
+                        </button>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

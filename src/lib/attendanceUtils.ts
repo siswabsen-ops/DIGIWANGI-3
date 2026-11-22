@@ -882,72 +882,309 @@ export const calculateAllRombelSummaryList = (
   });
 };
 
+export interface PeriodAttendanceLookup {
+  activeDates: string[];
+  effectiveDays: number;
+  indexByDate: Map<string, AttendanceIndex>;
+}
+
+export interface StudentPeriodMetrics {
+  siswa: Siswa;
+  recordsByDate: Map<string, Presensi>;
+  hadir: number;
+  terlambat: number;
+  sakit: number;
+  izin: number;
+  alfa: number;
+  belumAbsen: number;
+  totalMasuk: number;
+  totalLog: number;
+  totalScanQR: number;
+  totalManualTap: number;
+  effectiveDays: number;
+  persen: number;
+}
+
+export interface PeriodSummaryResult {
+  rombelList: ClassRombelSummary[];
+  effectiveDays: number;
+  activeDates: string[];
+  totalSiswa: number;
+  totalLog: number;
+  hadir: number;
+  terlambat: number;
+  sakit: number;
+  izin: number;
+  alfa: number;
+  belumAbsen: number;
+  totalHadir: number;
+  totalTidakHadir: number;
+  persentase: number;
+}
+
 /**
- * Menghitung rekapitulasi kehadiran per rombel untuk periode MINGGUAN (Senin s/d Jumat)
+ * Membangun lookup presensi terpadu berbasis AttendanceIndex per tanggal unik
+ * Menjamin setiap siswa memiliki tepat 1 catatan otoritatif per tanggal (bebas duplikasi & mismatch ID/NIS/NIK/Nama).
  */
-export const calculateWeeklyRombelSummaryList = (
+export const buildPeriodAttendanceLookup = (
   siswaList: Siswa[],
   presensiList: Presensi[],
-  mondayDateStr: string
-): ClassRombelSummary[] => {
-  const monday = getMondayOfWeek(mondayDateStr);
-  const weekDays = [0, 1, 2, 3, 4].map(offset => safeAddDays(monday, offset));
-  const weekIndexes = weekDays.map(dateStr => buildDailyAttendanceIndex(presensiList, dateStr));
+  datePredicate: (normDate: string) => boolean
+): PeriodAttendanceLookup => {
+  const recordsByDate = new Map<string, Presensi[]>();
 
-  // Ambil hanya hari kerja sekolah yang sudah terisi rekaman presensi (hari aktif)
-  const activeDayIndices = weekDays
-    .map((dateStr, idx) => ({ dateStr, idx }))
-    .filter(d => weekIndexes[d.idx].bySiswaId.size > 0);
+  for (let i = 0; i < presensiList.length; i++) {
+    const p = presensiList[i];
+    if (!p || !p.tanggal) continue;
+    const normDate = normalizeDateKey(p.tanggal);
+    if (!normDate || !datePredicate(normDate)) continue;
+    const arr = recordsByDate.get(normDate);
+    if (arr) arr.push(p);
+    else recordsByDate.set(normDate, [p]);
+  }
 
-  const evaluatedDayIndices = activeDayIndices.length > 0
-    ? activeDayIndices.map(d => d.idx)
-    : [0]; // fallback jika minggu belum mulai
+  const candidateDates = Array.from(recordsByDate.keys()).sort();
+  const indexByDate = new Map<string, AttendanceIndex>();
+  const activeDates: string[] = [];
 
-  const effectiveDaysCount = evaluatedDayIndices.length;
+  for (let i = 0; i < candidateDates.length; i++) {
+    const dKey = candidateDates[i];
+    const dayIdx = buildDailyAttendanceIndex(recordsByDate.get(dKey) || [], dKey);
+    // Tanggal dianggap aktif bila ada minimal 1 siswa terdaftar yang memiliki rekaman valid pada tanggal tsb
+    let hasMatchedStudent = false;
+    for (let sIdx = 0; sIdx < siswaList.length; sIdx++) {
+      if (getAttendanceFromIndex(siswaList[sIdx], dayIdx)) {
+        hasMatchedStudent = true;
+        break;
+      }
+    }
+    if (hasMatchedStudent) {
+      indexByDate.set(dKey, dayIdx);
+      activeDates.push(dKey);
+    }
+  }
 
-  return DAFTAR_KELAS.map((namaKelas) => {
-    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
-    const totalSiswa = classStudents.length;
+  return {
+    activeDates,
+    effectiveDays: Math.max(1, activeDates.length),
+    indexByDate
+  };
+};
+
+/**
+ * Menghitung metrik presensi akurat per siswa untuk daftar tanggal aktif tertentu
+ */
+export const calculateStudentsMetricsFromLookup = (
+  students: Siswa[],
+  lookup: PeriodAttendanceLookup
+): StudentPeriodMetrics[] => {
+  const { activeDates, effectiveDays, indexByDate } = lookup;
+
+  return students.map((siswa) => {
+    const recordsByDate = new Map<string, Presensi>();
+    let hadir = 0;
+    let terlambat = 0;
+    let sakit = 0;
+    let izin = 0;
+    let alfa = 0;
+    let totalScanQR = 0;
+    let totalManualTap = 0;
+
+    for (let i = 0; i < activeDates.length; i++) {
+      const dKey = activeDates[i];
+      const idx = indexByDate.get(dKey);
+      if (!idx) continue;
+      const rec = getAttendanceFromIndex(siswa, idx);
+      if (!rec) continue;
+
+      recordsByDate.set(dKey, rec);
+      switch (rec.status) {
+        case 'Hadir':
+          hadir++;
+          break;
+        case 'Terlambat':
+          terlambat++;
+          break;
+        case 'Sakit':
+          sakit++;
+          break;
+        case 'Izin':
+          izin++;
+          break;
+        case 'Alfa':
+          alfa++;
+          break;
+        default:
+          hadir++;
+          break;
+      }
+
+      if (rec.metode === 'QR_SCAN' || (!rec.metode && (rec.status === 'Hadir' || rec.status === 'Terlambat'))) {
+        totalScanQR++;
+      } else {
+        totalManualTap++;
+      }
+    }
+
+    const totalMasuk = hadir + terlambat;
+    const totalLog = hadir + terlambat + sakit + izin + alfa;
+    const belumAbsen = Math.max(0, effectiveDays - totalLog);
+    const persen = effectiveDays > 0 ? Math.min(100, Math.round((totalMasuk / effectiveDays) * 100)) : 0;
+
+    return {
+      siswa,
+      recordsByDate,
+      hadir,
+      terlambat,
+      sakit,
+      izin,
+      alfa,
+      belumAbsen,
+      totalMasuk,
+      totalLog,
+      totalScanQR,
+      totalManualTap,
+      effectiveDays,
+      persen
+    };
+  });
+};
+
+/**
+ * Mengambil seluruh rekaman otoritatif terdeduplikasi (1 siswa max 1 record per hari) dalam suatu periode.
+ * Digunakan oleh Log Presensi Harian & Excel Export agar sinkron 100% dengan ringkasan per kelas.
+ */
+export const getPeriodAuthoritativeRecords = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  datePredicate: (normDate: string) => boolean,
+  kelasFilter: string = 'Semua Kelas'
+): { siswa: Siswa; record: Presensi }[] => {
+  const isAll = !kelasFilter || kelasFilter === 'Semua Kelas' || kelasFilter === 'SEMUA KELAS';
+  const targetStudents = isAll ? siswaList : siswaList.filter((s) => isSameClass(s.kelas, kelasFilter));
+  const lookup = buildPeriodAttendanceLookup(targetStudents, presensiList, datePredicate);
+
+  const items: { siswa: Siswa; record: Presensi }[] = [];
+  for (let d = 0; d < lookup.activeDates.length; d++) {
+    const dKey = lookup.activeDates[d];
+    const idx = lookup.indexByDate.get(dKey);
+    if (!idx) continue;
+    for (let s = 0; s < targetStudents.length; s++) {
+      const siswa = targetStudents[s];
+      const rec = getAttendanceFromIndex(siswa, idx);
+      if (rec) {
+        items.push({
+          siswa,
+          record: {
+            ...rec,
+            siswaId: siswa.id,
+            nis: siswa.nis || rec.nis || '',
+            nik: siswa.nik || rec.nik,
+            nama: siswa.nama,
+            kelas: siswa.kelas,
+            tanggal: dKey
+          }
+        });
+      }
+    }
+  }
+
+  items.sort((a, b) => {
+    if (a.record.tanggal !== b.record.tanggal) return a.record.tanggal < b.record.tanggal ? -1 : 1;
+    const tA = (a.record.waktu || '00:00:00').slice(0, 8);
+    const tB = (b.record.waktu || '00:00:00').slice(0, 8);
+    if (tA !== tB) return tA < tB ? -1 : 1;
+    if (a.siswa.kelas !== b.siswa.kelas) return a.siswa.kelas.localeCompare(b.siswa.kelas);
+    return a.siswa.nama.localeCompare(b.siswa.nama);
+  });
+
+  return items;
+};
+
+/**
+ * Menghitung ringkasan lengkap per rombel (1-A s/d 6-B) + Total Sekolah untuk periode mana pun
+ */
+export const calculatePeriodRombelSummary = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  datePredicate: (normDate: string) => boolean,
+  periodName: string,
+  settings?: SystemSettings
+): PeriodSummaryResult => {
+  const lookup = buildPeriodAttendanceLookup(siswaList, presensiList, datePredicate);
+  const { effectiveDays } = lookup;
+  const studentMetrics = calculateStudentsMetricsFromLookup(siswaList, lookup);
+
+  const metricsByClass = new Map<string, StudentPeriodMetrics[]>();
+  DAFTAR_KELAS.forEach((k) => metricsByClass.set(normalizeKelasCode(k), []));
+  studentMetrics.forEach((m) => {
+    const code = normalizeKelasCode(m.siswa.kelas);
+    const arr = metricsByClass.get(code);
+    if (arr) arr.push(m);
+  });
+
+  let grandSiswa = 0;
+  let grandLog = 0;
+  let grandH = 0;
+  let grandT = 0;
+  let grandS = 0;
+  let grandI = 0;
+  let grandA = 0;
+  let grandBelum = 0;
+  let grandHadir = 0;
+
+  const rombelList: ClassRombelSummary[] = DAFTAR_KELAS.map((namaKelas) => {
+    const list = metricsByClass.get(normalizeKelasCode(namaKelas)) || [];
+    const totalSiswa = list.length;
 
     let hadir = 0;
     let terlambat = 0;
     let sakit = 0;
     let izin = 0;
     let alfa = 0;
-    let belumAbsen = 0;
+    let totalScanQR = 0;
+    let totalManualTap = 0;
 
-    classStudents.forEach(siswa => {
-      evaluatedDayIndices.forEach(idx => {
-        const rec = getAttendanceFromIndex(siswa, weekIndexes[idx]);
-        if (!rec) {
-          belumAbsen++;
-        } else {
-          switch (rec.status) {
-            case 'Hadir': hadir++; break;
-            case 'Terlambat': terlambat++; break;
-            case 'Sakit': sakit++; break;
-            case 'Izin': izin++; break;
-            case 'Alfa': alfa++; break;
-            default: hadir++; break;
-          }
-        }
-      });
+    list.forEach((m) => {
+      hadir += m.hadir;
+      terlambat += m.terlambat;
+      sakit += m.sakit;
+      izin += m.izin;
+      alfa += m.alfa;
+      totalScanQR += m.totalScanQR;
+      totalManualTap += m.totalManualTap;
     });
 
     const totalHadir = hadir + terlambat;
+    const totalLog = totalHadir + sakit + izin + alfa;
     const sakitDanIzin = sakit + izin;
+    const totalPossibleSlots = totalSiswa * effectiveDays;
+    const belumAbsen = Math.max(0, totalPossibleSlots - totalLog);
     const totalTidakHadir = sakit + izin + alfa + belumAbsen;
+    const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
 
-    // Evaluasi persentase kehadiran berdasarkan hari aktif/berjalan di minggu tersebut
-    const evaluatedSlots = totalSiswa * effectiveDaysCount;
-    const persentase = evaluatedSlots > 0 ? Math.min(100, Math.round((totalHadir / evaluatedSlots) * 100)) : 0;
-    const totalTercatat = totalHadir + sakit + izin + alfa;
-    const isTuntas = evaluatedSlots > 0 && belumAbsen === 0;
-    const isBerjalan = totalTercatat > 0 && belumAbsen > 0;
-    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
-      ? 'Tuntas' 
-      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
-    const statusKeterangan = `${persentase}% Rata-rata Kehadiran Mingguan (${totalHadir} Masuk)`;
+    const isTuntas = totalPossibleSlots > 0 && belumAbsen === 0;
+    const isBerjalan = totalLog > 0 && belumAbsen > 0;
+    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas
+      ? 'Tuntas'
+      : isBerjalan
+      ? 'Sedang Berjalan'
+      : 'Belum Mulai';
+
+    const shiftVal = getAttendanceShift(null, namaKelas, undefined, settings);
+    const classJadwal = settings ? getApplicableJadwal(namaKelas, settings) : undefined;
+    const jamDisplay = (classJadwal?.jamMasuk || (shiftVal === 'Siang' ? '12:30' : '07:00')).replace(':', '.');
+    const shiftLabel = shiftVal === 'Siang' ? `Siang (${jamDisplay} WIB)` : `Pagi (${jamDisplay} WIB)`;
+
+    grandSiswa += totalSiswa;
+    grandLog += totalLog;
+    grandH += hadir;
+    grandT += terlambat;
+    grandS += sakit;
+    grandI += izin;
+    grandA += alfa;
+    grandBelum += belumAbsen;
+    grandHadir += totalHadir;
 
     return {
       kelas: namaKelas,
@@ -964,11 +1201,69 @@ export const calculateWeeklyRombelSummaryList = (
       totalHadir,
       persentase,
       statusAbsen,
-      statusKeterangan,
-      totalScanQR: totalHadir,
-      totalManualTap: sakit + izin + alfa
+      statusKeterangan: `${persentase}% Rata-rata ${periodName} (${totalHadir} Kehadiran)`,
+      totalScanQR,
+      totalManualTap,
+      shift: shiftVal,
+      shiftLabel
     };
   });
+
+  const grandSlots = grandSiswa * effectiveDays;
+  const grandPct = grandSlots > 0 ? Math.min(100, Math.round((grandHadir / grandSlots) * 100)) : 0;
+
+  return {
+    rombelList,
+    effectiveDays,
+    activeDates: lookup.activeDates,
+    totalSiswa: grandSiswa,
+    totalLog: grandLog,
+    hadir: grandH,
+    terlambat: grandT,
+    sakit: grandS,
+    izin: grandI,
+    alfa: grandA,
+    belumAbsen: grandBelum,
+    totalHadir: grandHadir,
+    totalTidakHadir: grandS + grandI + grandA + grandBelum,
+    persentase: grandPct
+  };
+};
+
+/**
+ * Helper rentang bulan untuk Semester 1 (Jul-Des) atau Semester 2 (Jan-Jun)
+ */
+export const getSemesterYearMonths = (
+  semesterType: '1' | '2',
+  tahunAjaran: string = '2026/2027'
+): string[] => {
+  const parts = tahunAjaran.replace('–', '/').replace('-', '/').split('/');
+  const startYear = parseInt(parts[0], 10) || 2026;
+  const endYear = parseInt(parts[1], 10) || startYear + 1;
+
+  return semesterType === '1'
+    ? ['07', '08', '09', '10', '11', '12'].map((m) => `${startYear}-${m}`)
+    : ['01', '02', '03', '04', '05', '06'].map((m) => `${endYear}-${m}`);
+};
+
+/**
+ * Menghitung rekapitulasi kehadiran per rombel untuk periode MINGGUAN (Senin s/d Jumat)
+ */
+export const calculateWeeklyRombelSummaryList = (
+  siswaList: Siswa[],
+  presensiList: Presensi[],
+  mondayDateStr: string,
+  settings?: SystemSettings
+): ClassRombelSummary[] => {
+  const monday = getMondayOfWeek(mondayDateStr);
+  const weekSet = new Set([0, 1, 2, 3, 4].map((offset) => safeAddDays(monday, offset)));
+  return calculatePeriodRombelSummary(
+    siswaList,
+    presensiList,
+    (d) => weekSet.has(d),
+    'Mingguan',
+    settings
+  ).rombelList;
 };
 
 /**
@@ -977,228 +1272,38 @@ export const calculateWeeklyRombelSummaryList = (
 export const calculateMonthlyRombelSummaryList = (
   siswaList: Siswa[],
   presensiList: Presensi[],
-  yearMonthStr: string
+  yearMonthStr: string,
+  settings?: SystemSettings
 ): ClassRombelSummary[] => {
-  const ym = yearMonthStr.slice(0, 7);
-  const monthRecords = presensiList.filter(p => p.tanggal && normalizeDateKey(p.tanggal).startsWith(ym));
-  const uniqueDays = Array.from(new Set(monthRecords.map(p => normalizeDateKey(p.tanggal)))).length;
-  const schoolDays = Math.max(uniqueDays, 1);
-
-  // Fast pre-indexing by student ID & NIS (O(M) single pass instead of O(N*M))
-  const recordsByStudentKey = new Map<string, Presensi[]>();
-  for (let i = 0; i < monthRecords.length; i++) {
-    const r = monthRecords[i];
-    if (r.siswaId) {
-      const arr = recordsByStudentKey.get(r.siswaId);
-      if (arr) arr.push(r);
-      else recordsByStudentKey.set(r.siswaId, [r]);
-    }
-    if (r.nis) {
-      const cleanNis = r.nis.trim();
-      const arr = recordsByStudentKey.get(`nis:${cleanNis}`);
-      if (arr) arr.push(r);
-      else recordsByStudentKey.set(`nis:${cleanNis}`, [r]);
-    }
-  }
-
-  return DAFTAR_KELAS.map((namaKelas) => {
-    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
-    const totalSiswa = classStudents.length;
-
-    let hadir = 0;
-    let terlambat = 0;
-    let sakit = 0;
-    let izin = 0;
-    let alfa = 0;
-
-    classStudents.forEach(siswa => {
-      let studentRecs = recordsByStudentKey.get(siswa.id);
-      if (!studentRecs && siswa.nis && siswa.nis.trim().length >= 4) {
-        const byNisArr = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
-        if (byNisArr) {
-          studentRecs = byNisArr.filter(r => !r.siswaId || r.siswaId === siswa.id || isSameClass(r.kelas, siswa.kelas));
-        }
-      }
-      if (!studentRecs) studentRecs = [];
-
-      const dateMap = new Map<string, Presensi>();
-      for (let j = 0; j < studentRecs.length; j++) {
-        const r = studentRecs[j];
-        const dKey = normalizeDateKey(r.tanggal);
-        const existing = dateMap.get(dKey);
-        if (isRecordNewer(r, existing)) {
-          dateMap.set(dKey, r);
-        }
-      }
-
-      dateMap.forEach(rec => {
-        switch (rec.status) {
-          case 'Hadir': hadir++; break;
-          case 'Terlambat': terlambat++; break;
-          case 'Sakit': sakit++; break;
-          case 'Izin': izin++; break;
-          case 'Alfa': alfa++; break;
-        }
-      });
-    });
-
-    const totalHadir = hadir + terlambat;
-    const sakitDanIzin = sakit + izin;
-    const totalPossibleSlots = totalSiswa * schoolDays;
-    const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
-    const totalTidakHadir = sakit + izin + alfa + belumAbsen;
-    const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
-    const totalTercatat = totalHadir + sakit + izin + alfa;
-    const isTuntas = totalPossibleSlots > 0 && belumAbsen === 0;
-    const isBerjalan = totalTercatat > 0 && belumAbsen > 0;
-    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
-      ? 'Tuntas' 
-      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
-    const statusKeterangan = `${persentase}% Rata-rata Bulanan (${totalHadir} Kehadiran)`;
-
-    return {
-      kelas: namaKelas,
-      waliKelas: getWaliKelasByKelas(namaKelas),
-      totalSiswa,
-      hadir,
-      terlambat,
-      sakit,
-      izin,
-      alfa,
-      sakitDanIzin,
-      belumAbsen,
-      totalTidakHadir,
-      totalHadir,
-      persentase,
-      statusAbsen,
-      statusKeterangan,
-      totalScanQR: totalHadir,
-      totalManualTap: sakit + izin + alfa
-    };
-  });
+  const ym = (yearMonthStr || '').slice(0, 7);
+  return calculatePeriodRombelSummary(
+    siswaList,
+    presensiList,
+    (d) => d.startsWith(ym),
+    'Bulanan',
+    settings
+  ).rombelList;
 };
 
 /**
  * Menghitung rekapitulasi kehadiran per rombel untuk periode SEMESTER
- * Semester 1 (Ganjil): Juli - Desember
- * Semester 2 (Genap): Januari - Juni
  */
 export const calculateSemesterRombelSummaryList = (
   siswaList: Siswa[],
   presensiList: Presensi[],
   semesterType: '1' | '2',
-  tahunAjaran: string = '2026/2027'
+  tahunAjaran: string = '2026/2027',
+  settings?: SystemSettings
 ): ClassRombelSummary[] => {
-  const parts = tahunAjaran.split('/');
-  const startYear = parseInt(parts[0]) || 2026;
-  const endYear = parseInt(parts[1]) || (startYear + 1);
-
-  // Prefix bulan target
-  const targetYearMonths = semesterType === '1'
-    ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
-    : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
-
-  const semesterRecords = presensiList.filter(p => {
-    if (!p.tanggal) return false;
-    const dKey = normalizeDateKey(p.tanggal);
-    return targetYearMonths.some(ym => dKey.startsWith(ym));
-  });
-
-  const uniqueDays = Array.from(new Set(semesterRecords.map(p => normalizeDateKey(p.tanggal)))).length;
-  const schoolDays = Math.max(uniqueDays, 1);
-
-  // Fast pre-indexing by student ID & NIS (O(M) single pass instead of O(N*M))
-  const recordsByStudentKey = new Map<string, Presensi[]>();
-  for (let i = 0; i < semesterRecords.length; i++) {
-    const r = semesterRecords[i];
-    if (r.siswaId) {
-      const arr = recordsByStudentKey.get(r.siswaId);
-      if (arr) arr.push(r);
-      else recordsByStudentKey.set(r.siswaId, [r]);
-    }
-    if (r.nis) {
-      const cleanNis = r.nis.trim();
-      const arr = recordsByStudentKey.get(`nis:${cleanNis}`);
-      if (arr) arr.push(r);
-      else recordsByStudentKey.set(`nis:${cleanNis}`, [r]);
-    }
-  }
-
-  return DAFTAR_KELAS.map((namaKelas) => {
-    const classStudents = siswaList.filter(s => isSameClass(s.kelas, namaKelas));
-    const totalSiswa = classStudents.length;
-
-    let hadir = 0;
-    let terlambat = 0;
-    let sakit = 0;
-    let izin = 0;
-    let alfa = 0;
-
-    classStudents.forEach(siswa => {
-      let studentRecs = recordsByStudentKey.get(siswa.id);
-      if (!studentRecs && siswa.nis && siswa.nis.trim().length >= 4) {
-        const byNisArr = recordsByStudentKey.get(`nis:${siswa.nis.trim()}`);
-        if (byNisArr) {
-          studentRecs = byNisArr.filter(r => !r.siswaId || r.siswaId === siswa.id || isSameClass(r.kelas, siswa.kelas));
-        }
-      }
-      if (!studentRecs) studentRecs = [];
-
-      const dateMap = new Map<string, Presensi>();
-      for (let j = 0; j < studentRecs.length; j++) {
-        const r = studentRecs[j];
-        const dKey = normalizeDateKey(r.tanggal);
-        const existing = dateMap.get(dKey);
-        if (isRecordNewer(r, existing)) {
-          dateMap.set(dKey, r);
-        }
-      }
-
-      dateMap.forEach(rec => {
-        switch (rec.status) {
-          case 'Hadir': hadir++; break;
-          case 'Terlambat': terlambat++; break;
-          case 'Sakit': sakit++; break;
-          case 'Izin': izin++; break;
-          case 'Alfa': alfa++; break;
-        }
-      });
-    });
-
-    const totalHadir = hadir + terlambat;
-    const sakitDanIzin = sakit + izin;
-    const totalPossibleSlots = totalSiswa * schoolDays;
-    const belumAbsen = Math.max(0, totalPossibleSlots - (totalHadir + sakit + izin + alfa));
-    const totalTidakHadir = sakit + izin + alfa + belumAbsen;
-    const persentase = totalPossibleSlots > 0 ? Math.min(100, Math.round((totalHadir / totalPossibleSlots) * 100)) : 0;
-    const totalTercatat = totalHadir + sakit + izin + alfa;
-    const isTuntas = totalPossibleSlots > 0 && belumAbsen === 0;
-    const isBerjalan = totalTercatat > 0 && belumAbsen > 0;
-    const statusAbsen: 'Tuntas' | 'Sedang Berjalan' | 'Belum Mulai' = isTuntas 
-      ? 'Tuntas' 
-      : (isBerjalan ? 'Sedang Berjalan' : 'Belum Mulai');
-    const statusKeterangan = `${persentase}% Rata-rata Semester (${totalHadir} Kehadiran)`;
-
-    return {
-      kelas: namaKelas,
-      waliKelas: getWaliKelasByKelas(namaKelas),
-      totalSiswa,
-      hadir,
-      terlambat,
-      sakit,
-      izin,
-      alfa,
-      sakitDanIzin,
-      belumAbsen,
-      totalTidakHadir,
-      totalHadir,
-      persentase,
-      statusAbsen,
-      statusKeterangan,
-      totalScanQR: totalHadir,
-      totalManualTap: sakit + izin + alfa
-    };
-  });
+  const targetYearMonths = getSemesterYearMonths(semesterType, tahunAjaran);
+  return calculatePeriodRombelSummary(
+    siswaList,
+    presensiList,
+    (d) => targetYearMonths.some((ym) => d.startsWith(ym)),
+    'Semester',
+    settings
+  ).rombelList;
 };
+
 
 

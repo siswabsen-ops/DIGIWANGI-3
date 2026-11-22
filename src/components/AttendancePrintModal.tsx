@@ -16,18 +16,18 @@ import { DIGIWANGI_LOGO_BASE64 } from '../assets/logoBase64';
 import { 
   buildDailyAttendanceIndex, 
   getAttendanceFromIndex, 
+  buildPeriodAttendanceLookup,
+  calculateStudentsMetricsFromLookup,
+  calculatePeriodRombelSummary,
+  getSemesterYearMonths,
   isSameClass,
-  isPresensiMatchSiswa,
   calculateAllRombelSummaryList,
-  calculateSemesterRombelSummaryList,
-  normalizeDateKey,
   getLocalDateString,
   formatDateIndoLong,
   formatMonthIndo,
   getMondayOfWeek,
   safeAddDays,
-  safeDateParts,
-  isRecordNewer
+  safeDateParts
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
 
@@ -94,11 +94,6 @@ export default function AttendancePrintModal({
     return calculateAllRombelSummaryList(siswaList, presensiList, targetDate, settings);
   }, [siswaList, presensiList, targetDate, settings]);
 
-  // Semester rombel summary list
-  const semesterRombelSummary = useMemo(() => {
-    return calculateSemesterRombelSummaryList(siswaList, presensiList, targetSemesterType, targetTahunAjaran);
-  }, [siswaList, presensiList, targetSemesterType, targetTahunAjaran]);
-
   // Weekly dates (timezone-safe UTC arithmetic)
   const weekDates = useMemo(() => {
     const monday = getMondayOfWeek(targetDate || getLocalDateString());
@@ -124,38 +119,47 @@ export default function AttendancePrintModal({
     return weekDates.map(w => buildDailyAttendanceIndex(presensiList, w.dateStr));
   }, [weekDates, presensiList]);
 
-  // Bulanan metrics
-  const bulananEffectiveDays = useMemo(() => {
-    const setDates = new Set<string>();
-    presensiList.forEach(p => {
-      const norm = normalizeDateKey(p.tanggal);
-      if (norm.startsWith(targetMonth)) {
-        setDates.add(norm);
-      }
-    });
-    return Math.max(1, setDates.size);
-  }, [presensiList, targetMonth]);
+  const weeklyEffectiveDays = useMemo(() => {
+    const weekSet = new Set(weekDates.map(w => w.dateStr));
+    return buildPeriodAttendanceLookup(siswaList, presensiList, d => weekSet.has(d)).effectiveDays;
+  }, [siswaList, presensiList, weekDates]);
 
-  // Semester metrics
-  const semesterEffectiveDays = useMemo(() => {
-    const parts = targetTahunAjaran.split('/');
-    const startYear = parseInt(parts[0]) || 2026;
-    const endYear = parseInt(parts[1]) || (startYear + 1);
+  // Bulanan canonical lookup & student metrics
+  const bulananLookup = useMemo(() => {
+    const ym = (targetMonth || '').slice(0, 7);
+    return buildPeriodAttendanceLookup(siswaList, presensiList, d => d.startsWith(ym));
+  }, [siswaList, presensiList, targetMonth]);
 
-    const targetYearMonths = targetSemesterType === '1'
-      ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
-      : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+  const bulananEffectiveDays = bulananLookup.effectiveDays;
 
-    const setDates = new Set<string>();
-    presensiList.forEach(p => {
-      if (!p.tanggal) return;
-      const norm = normalizeDateKey(p.tanggal);
-      if (targetYearMonths.some(ym => norm.startsWith(ym))) {
-        setDates.add(norm);
-      }
-    });
-    return Math.max(1, setDates.size);
-  }, [presensiList, targetTahunAjaran, targetSemesterType]);
+  const bulananStudentMetrics = useMemo(() => {
+    return calculateStudentsMetricsFromLookup(filteredStudents, bulananLookup);
+  }, [filteredStudents, bulananLookup]);
+
+  // Semester canonical summary & student metrics
+  const semesterTargetYearMonths = useMemo(() => {
+    return getSemesterYearMonths(targetSemesterType, targetTahunAjaran);
+  }, [targetSemesterType, targetTahunAjaran]);
+
+  const semesterPeriodSummary = useMemo(() => {
+    return calculatePeriodRombelSummary(
+      siswaList,
+      presensiList,
+      d => semesterTargetYearMonths.some(ym => d.startsWith(ym)),
+      'Semester',
+      settings
+    );
+  }, [siswaList, presensiList, semesterTargetYearMonths, settings]);
+
+  const semesterRombelSummary = semesterPeriodSummary.rombelList;
+  const semesterEffectiveDays = semesterPeriodSummary.effectiveDays;
+
+  const semesterStudentMetrics = useMemo(() => {
+    const lookup = buildPeriodAttendanceLookup(siswaList, presensiList, d =>
+      semesterTargetYearMonths.some(ym => d.startsWith(ym))
+    );
+    return calculateStudentsMetricsFromLookup(filteredStudents, lookup);
+  }, [filteredStudents, siswaList, presensiList, semesterTargetYearMonths]);
 
   const formattedDateIndo = useMemo(() => {
     return formatDateIndoLong(targetDate);
@@ -553,12 +557,12 @@ export default function AttendancePrintModal({
                 </thead>
                 <tbody>
                   {(() => {
-                    const activeDaysCount = Math.max(1, weekDates.filter((_, idx) => weeklyIndexes[idx].bySiswaId.size > 0).length);
+                    const activeDaysCount = weeklyEffectiveDays;
                     let totalHAll = 0, totalSAll = 0, totalIAll = 0, totalAAll = 0;
 
                     const studentRows = filteredStudents.map((siswa, idx) => {
                       let hCount = 0, sCount = 0, iCount = 0, aCount = 0;
-                      const dayStatuses = weekDates.map((w, dayIdx) => {
+                      const dayStatuses = weekDates.map((_w, dayIdx) => {
                         const record = getAttendanceFromIndex(siswa, weeklyIndexes[dayIdx]);
                         if (!record) return '-';
                         if (record.status === 'Hadir') { hCount++; return 'H'; }
@@ -651,57 +655,62 @@ export default function AttendancePrintModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((siswa, idx) => {
-                    const studentRecords = presensiList.filter(p => {
-                      if (!isPresensiMatchSiswa(p, siswa)) return false;
-                      const norm = normalizeDateKey(p.tanggal);
-                      return norm.startsWith(targetMonth);
+                  {(() => {
+                    let sumH = 0, sumT = 0, sumS = 0, sumI = 0, sumA = 0, sumM = 0;
+                    const rows = bulananStudentMetrics.map((m, idx) => {
+                      const { siswa, hadir, terlambat, sakit, izin, alfa, totalMasuk, persen } = m;
+                      sumH += hadir;
+                      sumT += terlambat;
+                      sumS += sakit;
+                      sumI += izin;
+                      sumA += alfa;
+                      sumM += totalMasuk;
+
+                      let predikat = 'Rendah';
+                      if (persen >= 90) predikat = 'Sangat Baik';
+                      else if (persen >= 80) predikat = 'Baik';
+                      else if (persen >= 60) predikat = 'Cukup';
+
+                      return (
+                        <tr key={siswa.id} className="border-b border-black text-black">
+                          <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
+                          <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
+                          <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
+                          <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
+                          <td className="border border-black py-1 px-2 text-center font-mono">{bulananEffectiveDays}</td>
+                          <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
+                          <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
+                          <td className="border border-black py-1 px-2 text-center">{sakit}</td>
+                          <td className="border border-black py-1 px-2 text-center">{izin}</td>
+                          <td className="border border-black py-1 px-2 text-center">{alfa}</td>
+                          <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
+                          <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
+                        </tr>
+                      );
                     });
-
-                    let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
-                    const dateMap = new Map<string, Presensi>();
-                    studentRecords.forEach(r => {
-                      const d = normalizeDateKey(r.tanggal);
-                      const existing = dateMap.get(d);
-                      if (isRecordNewer(r, existing)) {
-                        dateMap.set(d, r);
-                      }
-                    });
-
-                    dateMap.forEach(rec => {
-                      const status = rec.status;
-                      if (status === 'Hadir') hadir++;
-                      else if (status === 'Terlambat') terlambat++;
-                      else if (status === 'Sakit') sakit++;
-                      else if (status === 'Izin') izin++;
-                      else if (status === 'Alfa') alfa++;
-                    });
-
-                    const totalMasuk = hadir + terlambat;
-                    const persen = Math.min(100, Math.round((totalMasuk / bulananEffectiveDays) * 100));
-
-                    let predikat = 'Rendah';
-                    if (persen >= 90) predikat = 'Sangat Baik';
-                    else if (persen >= 80) predikat = 'Baik';
-                    else if (persen >= 60) predikat = 'Cukup';
+                    const totalSlots = bulananStudentMetrics.length * bulananEffectiveDays;
+                    const grandPct = totalSlots > 0 ? Math.min(100, Math.round((sumM / totalSlots) * 100)) : 0;
+                    const grandPred = grandPct >= 90 ? 'Sangat Baik' : grandPct >= 80 ? 'Baik' : grandPct >= 60 ? 'Cukup' : 'Rendah';
 
                     return (
-                      <tr key={siswa.id} className="border-b border-black text-black">
-                        <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
-                        <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
-                        <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
-                        <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
-                        <td className="border border-black py-1 px-2 text-center font-mono">{bulananEffectiveDays}</td>
-                        <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
-                        <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
-                        <td className="border border-black py-1 px-2 text-center">{sakit}</td>
-                        <td className="border border-black py-1 px-2 text-center">{izin}</td>
-                        <td className="border border-black py-1 px-2 text-center">{alfa}</td>
-                        <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
-                        <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
-                      </tr>
+                      <>
+                        {rows}
+                        <tr className="bg-slate-200 font-black border-t-2 border-black text-black">
+                          <td colSpan={4} className="border border-black py-1.5 px-2 text-center">
+                            TOTAL ({bulananStudentMetrics.length} Siswa)
+                          </td>
+                          <td className="border border-black py-1.5 px-2 text-center font-mono">{bulananEffectiveDays}</td>
+                          <td className="border border-black py-1.5 px-2 text-center">{sumH}</td>
+                          <td className="border border-black py-1.5 px-2 text-center">{sumT}</td>
+                          <td className="border border-black py-1.5 px-2 text-center">{sumS}</td>
+                          <td className="border border-black py-1.5 px-2 text-center">{sumI}</td>
+                          <td className="border border-black py-1.5 px-2 text-center">{sumA}</td>
+                          <td className="border border-black py-1.5 px-2 text-center">{grandPct}%</td>
+                          <td className="border border-black py-1.5 px-3 text-center">{grandPred}</td>
+                        </tr>
+                      </>
                     );
-                  })}
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -805,65 +814,65 @@ export default function AttendancePrintModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStudents.map((siswa, idx) => {
-                      const parts = targetTahunAjaran.split('/');
-                      const startYear = parseInt(parts[0]) || 2026;
-                      const endYear = parseInt(parts[1]) || (startYear + 1);
+                    {(() => {
+                      let sumH = 0, sumT = 0, sumS = 0, sumI = 0, sumA = 0, sumM = 0;
+                      const rows = semesterStudentMetrics.map((m, idx) => {
+                        const { siswa, hadir, terlambat, sakit, izin, alfa, totalMasuk, persen } = m;
+                        sumH += hadir;
+                        sumT += terlambat;
+                        sumS += sakit;
+                        sumI += izin;
+                        sumA += alfa;
+                        sumM += totalMasuk;
 
-                      const targetYearMonths = targetSemesterType === '1'
-                        ? ['07', '08', '09', '10', '11', '12'].map(m => `${startYear}-${m}`)
-                        : ['01', '02', '03', '04', '05', '06'].map(m => `${endYear}-${m}`);
+                        let predikat = 'Perlu Bimbingan (D)';
+                        if (persen >= 90) predikat = 'Sangat Baik (A)';
+                        else if (persen >= 80) predikat = 'Baik (B)';
+                        else if (persen >= 60) predikat = 'Cukup (C)';
 
-                      const studentRecords = presensiList.filter(p => {
-                        if (!isPresensiMatchSiswa(p, siswa) || !p.tanggal) return false;
-                        const norm = normalizeDateKey(p.tanggal);
-                        return targetYearMonths.some(ym => norm.startsWith(ym));
+                        return (
+                          <tr key={siswa.id} className="border-b border-black text-black">
+                            <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
+                            <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
+                            <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
+                            <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
+                            <td className="border border-black py-1 px-2 text-center font-mono">{semesterEffectiveDays}</td>
+                            <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
+                            <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
+                            <td className="border border-black py-1 px-2 text-center">{sakit}</td>
+                            <td className="border border-black py-1 px-2 text-center">{izin}</td>
+                            <td className="border border-black py-1 px-2 text-center">{alfa}</td>
+                            <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
+                            <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
+                          </tr>
+                        );
                       });
-
-                      let hadir = 0, terlambat = 0, sakit = 0, izin = 0, alfa = 0;
-                      const dateMap = new Map<string, Presensi>();
-                      studentRecords.forEach(r => {
-                        const d = normalizeDateKey(r.tanggal);
-                        const existing = dateMap.get(d);
-                        if (isRecordNewer(r, existing)) {
-                          dateMap.set(d, r);
-                        }
-                      });
-
-                      dateMap.forEach(rec => {
-                        const status = rec.status;
-                        if (status === 'Hadir') hadir++;
-                        else if (status === 'Terlambat') terlambat++;
-                        else if (status === 'Sakit') sakit++;
-                        else if (status === 'Izin') izin++;
-                        else if (status === 'Alfa') alfa++;
-                      });
-
-                      const totalMasuk = hadir + terlambat;
-                      const persen = Math.min(100, Math.round((totalMasuk / semesterEffectiveDays) * 100));
-
-                      let predikat = 'Perlu Bimbingan (D)';
-                      if (persen >= 90) predikat = 'Sangat Baik (A)';
-                      else if (persen >= 80) predikat = 'Baik (B)';
-                      else if (persen >= 60) predikat = 'Cukup (C)';
+                      const totalSlots = semesterStudentMetrics.length * semesterEffectiveDays;
+                      const grandPct = totalSlots > 0 ? Math.min(100, Math.round((sumM / totalSlots) * 100)) : 0;
+                      let grandPredikat = 'Perlu Bimbingan (D)';
+                      if (grandPct >= 90) grandPredikat = 'Sangat Baik (A)';
+                      else if (grandPct >= 80) grandPredikat = 'Baik (B)';
+                      else if (grandPct >= 60) grandPredikat = 'Cukup (C)';
 
                       return (
-                        <tr key={siswa.id} className="border-b border-black text-black">
-                          <td className="border border-black py-1 px-2 text-center font-bold">{idx + 1}</td>
-                          <td className="border border-black py-1 px-2 font-mono text-center">{siswa.nis || '-'}</td>
-                          <td className="border border-black py-1 px-3 font-bold text-left">{siswa.nama}</td>
-                          <td className="border border-black py-1 px-2 text-center">{siswa.kelas}</td>
-                          <td className="border border-black py-1 px-2 text-center font-mono">{semesterEffectiveDays}</td>
-                          <td className="border border-black py-1 px-2 text-center font-bold">{hadir}</td>
-                          <td className="border border-black py-1 px-2 text-center">{terlambat}</td>
-                          <td className="border border-black py-1 px-2 text-center">{sakit}</td>
-                          <td className="border border-black py-1 px-2 text-center">{izin}</td>
-                          <td className="border border-black py-1 px-2 text-center">{alfa}</td>
-                          <td className="border border-black py-1 px-2 text-center font-black">{persen}%</td>
-                          <td className="border border-black py-1 px-3 text-center font-bold">{predikat}</td>
-                        </tr>
+                        <>
+                          {rows}
+                          <tr className="bg-slate-200 font-black border-t-2 border-black text-black">
+                            <td colSpan={4} className="border border-black py-1.5 px-2 text-center">
+                              TOTAL ({semesterStudentMetrics.length} Siswa)
+                            </td>
+                            <td className="border border-black py-1.5 px-2 text-center font-mono">{semesterEffectiveDays}</td>
+                            <td className="border border-black py-1.5 px-2 text-center">{sumH}</td>
+                            <td className="border border-black py-1.5 px-2 text-center">{sumT}</td>
+                            <td className="border border-black py-1.5 px-2 text-center">{sumS}</td>
+                            <td className="border border-black py-1.5 px-2 text-center">{sumI}</td>
+                            <td className="border border-black py-1.5 px-2 text-center">{sumA}</td>
+                            <td className="border border-black py-1.5 px-2 text-center">{grandPct}%</td>
+                            <td className="border border-black py-1.5 px-3 text-center">{grandPredikat}</td>
+                          </tr>
+                        </>
                       );
-                    })}
+                    })()}
                   </tbody>
                 </table>
               )}
