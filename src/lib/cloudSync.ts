@@ -6,6 +6,11 @@ import {
   syncMasterWaliKelasToCloud as syncToFirestoreWaliKelas,
   saveSettingsToFirestore,
   subscribeToCloudSync as subscribeToFirestoreSync,
+  fetchCloudSyncStudentsOnce,
+  fetchCloudSyncPresensiOnce,
+  fetchSettingsFromFirestoreOnce,
+  fetchCloudSyncWaliKelasOnce,
+  fetchCloudSyncAccountsOnce,
   DeletedTombstone
 } from './firebase';
 
@@ -13,6 +18,7 @@ export interface CloudMasterPayload {
   version: number;
   updatedAt: string;
   students?: Siswa[];
+  studentsCatalogVersion?: number;
   waliKelas?: WaliKelas[];
   presensi?: Presensi[];
   deletedKeys?: Record<string, number> | DeletedTombstone[];
@@ -21,7 +27,7 @@ export interface CloudMasterPayload {
 }
 
 export interface SyncCallbacks {
-  onStudentsChange?: (students: Siswa[]) => void;
+  onStudentsChange?: (students: Siswa[], catalogVersion?: number) => void;
   onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
   onPresensiChange?: (presensi: Presensi[], updatedAt?: number, deletedKeys?: Record<string, number> | DeletedTombstone[]) => void;
   onSettingsChange?: (settings: SystemSettings) => void;
@@ -29,6 +35,11 @@ export interface SyncCallbacks {
 }
 
 let localSyncVersion = 0;
+
+function isJsonResponse(res: Response): boolean {
+  const ct = res.headers.get('content-type') || '';
+  return res.ok && ct.toLowerCase().includes('application/json');
+}
 
 /**
  * Mengambil master data lengkap dari server Cloud Run (/api/sync/data)
@@ -43,7 +54,7 @@ export async function fetchCloudMasterData(): Promise<CloudMasterPayload | null>
         'Cache-Control': 'no-cache'
       }
     });
-    if (!res.ok) return null;
+    if (!isJsonResponse(res)) return null;
     const data: CloudMasterPayload = await res.json();
     if (data && typeof data.version === 'number') {
       localSyncVersion = Math.max(localSyncVersion, data.version);
@@ -51,6 +62,41 @@ export async function fetchCloudMasterData(): Promise<CloudMasterPayload | null>
     return data;
   } catch (err) {
     console.warn('[CloudSync] Notice on fetchCloudMasterData:', err);
+    return null;
+  }
+}
+
+/**
+ * Fallback pembacaan master data langsung dari Cloud Firestore
+ * Digunakan otomatis saat berjalan di hosting statis seperti Vercel (https://digiwangi-3.vercel.app/)
+ */
+export async function fetchFirestoreMasterFallback(): Promise<CloudMasterPayload | null> {
+  try {
+    const [studentsDoc, presensiDoc, settingsDoc, waliKelasDoc, accountsDoc] = await Promise.all([
+      fetchCloudSyncStudentsOnce().catch(() => null),
+      fetchCloudSyncPresensiOnce().catch(() => null),
+      fetchSettingsFromFirestoreOnce().catch(() => null),
+      fetchCloudSyncWaliKelasOnce().catch(() => null),
+      fetchCloudSyncAccountsOnce().catch(() => null)
+    ]);
+
+    if (!studentsDoc && !presensiDoc && !settingsDoc && !waliKelasDoc && !accountsDoc) {
+      return null;
+    }
+
+    return {
+      version: localSyncVersion,
+      updatedAt: new Date().toISOString(),
+      students: studentsDoc?.data,
+      studentsCatalogVersion: studentsDoc?.catalogVersion,
+      presensi: presensiDoc?.data,
+      deletedKeys: presensiDoc?.deletedKeys,
+      settings: settingsDoc || undefined,
+      waliKelas: waliKelasDoc?.data,
+      accounts: accountsDoc?.data
+    };
+  } catch (err) {
+    console.warn('[CloudSync] Notice on fetchFirestoreMasterFallback:', err);
     return null;
   }
 }
@@ -310,9 +356,55 @@ export async function syncAccountsToCloud(accounts: { user: User; pin: string }[
 export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void {
   let isSubscribed = true;
   let isChecking = false;
+  let hasServerBackend: boolean | null = null;
+  let unsubFirestore: (() => void) | undefined;
+  let intervalId: ReturnType<typeof setInterval> | undefined;
+
+  const attachFirestore = (enableMasterDocListeners: boolean) => {
+    if (unsubFirestore) {
+      try { unsubFirestore(); } catch {}
+    }
+    try {
+      unsubFirestore = subscribeToFirestoreSync(
+        {
+          onPresensiChange: (pre, updatedAt, deletedKeys) => {
+            if (isSubscribed && pre && callbacks.onPresensiChange) {
+              callbacks.onPresensiChange(pre, updatedAt, deletedKeys);
+            }
+          },
+          onStudentsChange: (students, catalogVersion) => {
+            if (isSubscribed && students && callbacks.onStudentsChange) {
+              callbacks.onStudentsChange(students, catalogVersion);
+            }
+          },
+          onWaliKelasChange: (wk) => {
+            if (isSubscribed && wk && callbacks.onWaliKelasChange) {
+              callbacks.onWaliKelasChange(wk);
+            }
+          },
+          onSettingsChange: (s) => {
+            if (isSubscribed && s && callbacks.onSettingsChange) {
+              callbacks.onSettingsChange(s);
+            }
+          },
+          onAccountsChange: (acc) => {
+            if (isSubscribed && acc && callbacks.onAccountsChange) {
+              callbacks.onAccountsChange(acc);
+            }
+          }
+        },
+        { enableMasterDocListeners }
+      );
+    } catch (err) {
+      console.warn('[CloudSync] Firestore listener skipped:', err);
+    }
+  };
+
+  // Start with presensi listener; expand to all master docs immediately if server /api/sync/version is unavailable (Vercel)
+  attachFirestore(false);
 
   const checkVersionAndSync = async () => {
-    if (isChecking || !isSubscribed) return;
+    if (isChecking || !isSubscribed || hasServerBackend === false) return;
     isChecking = true;
 
     try {
@@ -320,15 +412,15 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
-      if (res.ok) {
+      if (isJsonResponse(res)) {
+        hasServerBackend = true;
         const { version } = await res.json();
         if (typeof version === 'number' && version > localSyncVersion) {
-          // Version changed on another device! Pull full master data
           const fullData = await fetchCloudMasterData();
           if (fullData && isSubscribed) {
             localSyncVersion = fullData.version;
             if (fullData.students && callbacks.onStudentsChange) {
-              callbacks.onStudentsChange(fullData.students);
+              callbacks.onStudentsChange(fullData.students, fullData.studentsCatalogVersion);
             }
             if (fullData.waliKelas && callbacks.onWaliKelasChange) {
               callbacks.onWaliKelasChange(fullData.waliKelas);
@@ -344,6 +436,16 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
             }
           }
         }
+      } else {
+        // Hosting statis (Vercel / CDN) tidak memiliki /api/sync/version -> aktifkan real-time Firestore penuh
+        hasServerBackend = false;
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = undefined;
+        }
+        if (isSubscribed) {
+          attachFirestore(true);
+        }
       }
     } catch {
       // Offline or temporary network blip
@@ -352,35 +454,33 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
     }
   };
 
-  // Poll interval 6 seconds for light network & battery consumption
-  const intervalId = setInterval(checkVersionAndSync, 6000);
+  // Probe immediately & poll every 6s when server backend is present
+  checkVersionAndSync();
+  intervalId = setInterval(checkVersionAndSync, 6000);
 
-  // Instant trigger when user returns to tab / unlocks Android screen
   const handleWindowFocus = () => {
-    checkVersionAndSync();
+    if (hasServerBackend === false) {
+      // Refresh settings/students once when returning to tab on Android/PC static build
+      fetchFirestoreMasterFallback().then((fb) => {
+        if (!fb || !isSubscribed) return;
+        if (fb.students && callbacks.onStudentsChange) callbacks.onStudentsChange(fb.students, fb.studentsCatalogVersion);
+        if (fb.waliKelas && callbacks.onWaliKelasChange) callbacks.onWaliKelasChange(fb.waliKelas);
+        if (fb.presensi && callbacks.onPresensiChange) callbacks.onPresensiChange(fb.presensi, undefined, fb.deletedKeys);
+        if (fb.settings && callbacks.onSettingsChange) callbacks.onSettingsChange(fb.settings);
+        if (fb.accounts && callbacks.onAccountsChange) callbacks.onAccountsChange(fb.accounts);
+      }).catch(() => {});
+    } else {
+      checkVersionAndSync();
+    }
   };
   if (typeof window !== 'undefined') {
     window.addEventListener('visibilitychange', handleWindowFocus);
     window.addEventListener('focus', handleWindowFocus);
   }
 
-  // Parallel Firestore listener (for Firestore live stream on sync/presensi)
-  let unsubFirestore: (() => void) | undefined;
-  try {
-    unsubFirestore = subscribeToFirestoreSync({
-      onPresensiChange: (pre, updatedAt, deletedKeys) => {
-        if (isSubscribed && pre && callbacks.onPresensiChange) {
-          callbacks.onPresensiChange(pre, updatedAt, deletedKeys);
-        }
-      }
-    });
-  } catch (err) {
-    console.warn('[CloudSync] Firestore listener skipped:', err);
-  }
-
   return () => {
     isSubscribed = false;
-    clearInterval(intervalId);
+    if (intervalId) clearInterval(intervalId);
     if (typeof window !== 'undefined') {
       window.removeEventListener('visibilitychange', handleWindowFocus);
       window.removeEventListener('focus', handleWindowFocus);
@@ -390,7 +490,7 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
 }
 
 /**
- * Paksa penyegaran data sekarang dari Cloud Master Data
+ * Paksa penyegaran data sekarang dari Cloud Master Data (Express Server atau Firestore Fallback)
  */
 export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
   try {
@@ -398,7 +498,7 @@ export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
     if (fullData) {
       localSyncVersion = fullData.version;
       if (fullData.students && callbacks.onStudentsChange) {
-        callbacks.onStudentsChange(fullData.students);
+        callbacks.onStudentsChange(fullData.students, fullData.studentsCatalogVersion);
       }
       if (fullData.waliKelas && callbacks.onWaliKelasChange) {
         callbacks.onWaliKelasChange(fullData.waliKelas);
@@ -411,6 +511,27 @@ export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
       }
       if (fullData.accounts && callbacks.onAccountsChange) {
         callbacks.onAccountsChange(fullData.accounts);
+      }
+      return true;
+    }
+
+    // Vercel / static host fallback via Firestore
+    const firestoreData = await fetchFirestoreMasterFallback();
+    if (firestoreData) {
+      if (firestoreData.students && callbacks.onStudentsChange) {
+        callbacks.onStudentsChange(firestoreData.students, firestoreData.studentsCatalogVersion);
+      }
+      if (firestoreData.waliKelas && callbacks.onWaliKelasChange) {
+        callbacks.onWaliKelasChange(firestoreData.waliKelas);
+      }
+      if (firestoreData.presensi && callbacks.onPresensiChange) {
+        callbacks.onPresensiChange(firestoreData.presensi, undefined, firestoreData.deletedKeys);
+      }
+      if (firestoreData.settings && callbacks.onSettingsChange) {
+        callbacks.onSettingsChange(firestoreData.settings);
+      }
+      if (firestoreData.accounts && callbacks.onAccountsChange) {
+        callbacks.onAccountsChange(firestoreData.accounts);
       }
       return true;
     }
@@ -431,33 +552,67 @@ export interface QRErrorLog {
   createdAt?: string;
 }
 
+const LOCAL_QR_ERRORS_KEY = 'karapres3_qr_errors_v1';
+
+function readLocalQrErrors(): QRErrorLog[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_QR_ERRORS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function writeLocalQrErrors(list: QRErrorLog[]) {
+  try {
+    localStorage.setItem(LOCAL_QR_ERRORS_KEY, JSON.stringify(list.slice(-200)));
+  } catch {}
+}
+
 export async function recordQRErrorToCloud(errorData: Partial<QRErrorLog>): Promise<QRErrorLog | null> {
+  const localEntry: QRErrorLog = {
+    id: errorData.id || `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: errorData.timestamp || new Date().toLocaleTimeString('id-ID'),
+    date: (errorData.date || new Date().toISOString().slice(0, 10)).slice(0, 10),
+    code: errorData.code || 'UNKNOWN',
+    reason: errorData.reason || 'QR Code tidak terdaftar',
+    operator: errorData.operator || 'Scanner Piket',
+    kelasHint: errorData.kelasHint,
+    createdAt: new Date().toISOString()
+  };
+
   try {
     const res = await fetch('/api/qr-errors', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(errorData)
+      body: JSON.stringify(localEntry)
     });
-    if (res.ok) {
+    if (isJsonResponse(res)) {
       const data = await res.json();
-      return data.error;
+      return data.error || localEntry;
     }
-  } catch (err) {
-    console.warn('[CloudSync] recordQRErrorToCloud notice:', err);
-  }
-  return null;
+  } catch {}
+
+  const existing = readLocalQrErrors();
+  existing.push(localEntry);
+  writeLocalQrErrors(existing);
+  return localEntry;
 }
 
 export async function fetchQRErrorsFromCloud(dateStr?: string): Promise<QRErrorLog[]> {
   try {
     const url = dateStr ? `/api/qr-errors?date=${encodeURIComponent(dateStr)}` : '/api/qr-errors';
     const res = await fetch(url);
-    if (res.ok) {
+    if (isJsonResponse(res)) {
       const data = await res.json();
-      return data.errors || [];
+      if (Array.isArray(data.errors)) return data.errors;
     }
-  } catch (err) {
-    console.warn('[CloudSync] fetchQRErrorsFromCloud notice:', err);
-  }
-  return [];
+  } catch {}
+
+  const localList = readLocalQrErrors();
+  return dateStr
+    ? localList.filter((e) => (e.date || '').slice(0, 10) === dateStr.slice(0, 10))
+    : localList;
 }

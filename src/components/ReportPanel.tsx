@@ -55,7 +55,7 @@ import {
   isRecordNewer
 } from '../lib/attendanceUtils';
 import { downloadSingleClassReport } from '../lib/attendanceReportExport';
-import { auditAndSyncSemesterPresensi } from '../lib/cloudSync';
+import { auditAndSyncSemesterPresensi, fetchQRErrorsFromCloud } from '../lib/cloudSync';
 import { getSchoolDaysRange, SEMESTER_1_START_DATE, CURRENT_SEMESTER_DATE } from '../lib/semesterPresensiGenerator';
 
 interface ReportPanelProps {
@@ -154,11 +154,10 @@ function ReportPanel({
 
   useEffect(() => {
     const loadQrErrors = () => {
-      fetch('/api/qr-errors')
-        .then((r) => r.json())
-        .then((d) => {
-          if (d?.errors && Array.isArray(d.errors)) {
-            setQrErrors(d.errors);
+      fetchQRErrorsFromCloud()
+        .then((errors) => {
+          if (Array.isArray(errors)) {
+            setQrErrors(errors);
           }
         })
         .catch(() => {});

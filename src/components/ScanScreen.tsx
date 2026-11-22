@@ -5,6 +5,7 @@ import { getLocalDateString, getLocalTimeString, getLatestAttendanceForStudent, 
 import { getWaliKelasObject } from '../lib/waliKelasData';
 import QRCodeRenderer from './QRCodeRenderer';
 import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
+import { recordQRErrorToCloud } from '../lib/cloudSync';
 // @ts-ignore
 import jsQR from 'jsqr';
 
@@ -348,18 +349,14 @@ function ScanScreen({
       });
       setScannedResult(null);
 
-      // Catat ke server database log QR Error
-      fetch('/api/qr-errors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: cleanDisplay,
-          reason: exactErrorWarning,
-          operator: currentUser.namaLengkap,
-          kelasHint: selectedSimKelas !== 'Semua Kelas' ? selectedSimKelas : undefined,
-          date: getLocalDateString(new Date()),
-          timestamp: getLocalTimeString(new Date())
-        })
+      // Catat ke server database log QR Error (dengan fallback LocalStorage untuk hosting statis)
+      recordQRErrorToCloud({
+        code: cleanDisplay,
+        reason: exactErrorWarning,
+        operator: currentUser.namaLengkap,
+        kelasHint: selectedSimKelas !== 'Semua Kelas' ? selectedSimKelas : undefined,
+        date: getLocalDateString(new Date()),
+        timestamp: getLocalTimeString(new Date())
       })
         .then(() => {
           if (typeof window !== 'undefined') {

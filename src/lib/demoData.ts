@@ -2,6 +2,8 @@ import { Siswa, User, SystemSettings, Presensi, ActivityLog, JadwalPresensi, DAF
 import realStudents from './realStudents.json';
 import { generateFullSemesterPresensi } from './semesterPresensiGenerator';
 
+export const STUDENT_CATALOG_VERSION = 26;
+
 export const DEFAULT_JADWAL_PRESENSI: JadwalPresensi[] = [
   {
     id: 'jdw-pagi-reguler',
@@ -111,12 +113,17 @@ export const SISWA_INITIAL: Siswa[] = (realStudents as any[]).map((s) => {
   return {
     id: s.id,
     nis: s.nis,
+    nisn: s.nisn,
+    nik: s.nik,
+    statusDapodik: s.statusDapodik,
+    qrIdentifierType: s.qrIdentifierType,
     nama: s.nama,
     kelas: mappedKelas,
     jenisKelamin: s.jenisKelamin,
     waOrangTua: s.waOrangTua,
     tempatLahir: s.tempatLahir,
-    tanggalLahir: s.tanggalLahir
+    tanggalLahir: s.tanggalLahir,
+    catatan: s.catatan
   };
 });
 

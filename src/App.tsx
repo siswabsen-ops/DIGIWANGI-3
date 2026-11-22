@@ -5,7 +5,8 @@ import {
   SETTINGS_INITIAL,
   LOGS_INITIAL,
   USER_DEMO_ACCOUNTS,
-  DAFTAR_WALI_KELAS
+  DAFTAR_WALI_KELAS,
+  STUDENT_CATALOG_VERSION
 } from './lib/demoData';
 import { HISTORICAL_ARCHIVE_END_DATE } from './lib/semesterPresensiGenerator';
 import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
@@ -14,6 +15,7 @@ import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normaliz
 import Header from './components/Header';
 import {
   fetchCloudMasterData,
+  fetchFirestoreMasterFallback,
   subscribeToMultiDeviceSync,
   syncStudentsToCloud,
   syncWaliKelasToCloud,
@@ -40,6 +42,7 @@ import {
   clearActivityLogsInFirestore,
   syncAllStudentsToFirestore,
   syncMasterStudentsToCloud,
+  syncMasterWaliKelasToCloud,
   syncMasterPresensiToCloud,
   syncMasterAccountsToCloud,
   fetchCloudSyncPresensiOnce,
@@ -80,18 +83,22 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // Real-time local state engine backed by LocalStorage
+  // Real-time local state engine backed by LocalStorage (auto-invalidates stale browser caches when catalog version advances)
   const [siswaList, setSiswaList] = useState<Siswa[]>(() => {
-    const cached = safeGetItem('karapres3_siswa_v5');
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch {}
+    const savedCatalogVer = Number(safeGetItem('karapres3_siswa_catalog_ver') || '0');
+    if (savedCatalogVer >= STUDENT_CATALOG_VERSION) {
+      const cached = safeGetItem('karapres3_siswa_v5');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        } catch {}
+      }
     }
     safeSetItem('karapres3_siswa_v5', JSON.stringify(SISWA_INITIAL));
+    safeSetItem('karapres3_siswa_catalog_ver', String(STUDENT_CATALOG_VERSION));
     return SISWA_INITIAL;
   });
 
@@ -361,39 +368,73 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Cloud Master Load on Mount (Server + Firestore 1-read hydration)
+    // 1. Initial Cloud Master Load on Mount (Server + Firestore 1-read hydration + Vercel static fallback)
     Promise.all([
       fetchCloudMasterData(),
       fetchCloudSyncPresensiOnce().catch(() => null),
       fetchSettingsFromFirestoreOnce().catch(() => null)
-    ]).then(([data, cloudSyncSnap, firestoreSettings]) => {
+    ]).then(async ([serverData, cloudSyncSnap, firestoreSettingsFromMount]) => {
       if (!isMounted) return;
 
+      const fallbackData = !serverData ? await fetchFirestoreMasterFallback().catch(() => null) : null;
+      if (!isMounted) return;
+
+      const data = serverData || fallbackData;
+      const firestoreSettings = firestoreSettingsFromMount || fallbackData?.settings || null;
+
       let activeStudents = latestSiswaRef.current;
-      if (data?.students && Array.isArray(data.students) && data.students.length > 0) {
-        activeStudents = data.students;
-        latestSiswaRef.current = data.students;
-        setSiswaList(data.students);
-        safeSetItem('karapres3_siswa_v5', JSON.stringify(data.students));
-        if (!safeGetItem('karapres3_students_429_synced')) {
-          syncMasterStudentsToCloud(data.students, 'Update Data Siswa PDF')
-            .then(() => safeSetItem('karapres3_students_429_synced', '1'))
-            .catch(() => {});
-        }
+      const cloudStudents = data?.students;
+      const cloudCatalogVer = data?.studentsCatalogVersion || 0;
+      const isCloudStudentsAuthoritative =
+        Array.isArray(cloudStudents) &&
+        cloudStudents.length > 0 &&
+        (cloudCatalogVer >= STUDENT_CATALOG_VERSION || cloudStudents.length >= SISWA_INITIAL.length);
+
+      if (isCloudStudentsAuthoritative) {
+        activeStudents = cloudStudents!;
+        latestSiswaRef.current = activeStudents;
+        setSiswaList(activeStudents);
+        safeSetItem('karapres3_siswa_v5', JSON.stringify(activeStudents));
+        safeSetItem('karapres3_siswa_catalog_ver', String(Math.max(STUDENT_CATALOG_VERSION, cloudCatalogVer)));
       }
 
-      if (data?.waliKelas && Array.isArray(data.waliKelas) && data.waliKelas.length > 0) {
-        setWaliKelasList(data.waliKelas);
-        safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(data.waliKelas));
+      if (
+        (cloudCatalogVer < STUDENT_CATALOG_VERSION || !cloudStudents || cloudStudents.length < SISWA_INITIAL.length) &&
+        !safeGetItem('karapres3_students_429_synced_v26')
+      ) {
+        syncMasterStudentsToCloud(activeStudents, 'Sync Katalog PDF 429 Siswa')
+          .then(() => safeSetItem('karapres3_students_429_synced_v26', '1'))
+          .catch(() => {});
+      }
+
+      const incomingWaliKelas = data?.waliKelas;
+      const isWaliKelasValid =
+        Array.isArray(incomingWaliKelas) &&
+        incomingWaliKelas.length >= 12 &&
+        !incomingWaliKelas.some((w) => w.noWa && (w.noWa.startsWith('08122334455') || w.noWa === '081299887766'));
+
+      if (isWaliKelasValid) {
+        setWaliKelasList(incomingWaliKelas!);
+        safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
+      } else if (!safeGetItem('karapres3_wali_kelas_12_synced')) {
+        const wkToPush =
+          serverData?.waliKelas && serverData.waliKelas.length >= 12
+            ? serverData.waliKelas
+            : DAFTAR_WALI_KELAS;
+        syncMasterWaliKelasToCloud(wkToPush, 'Sync 12 Wali Kelas Resmi')
+          .then(() => safeSetItem('karapres3_wali_kelas_12_synced', '1'))
+          .catch(() => {});
       }
 
       mergeIncomingDeletedKeys(data?.deletedKeys);
       mergeIncomingDeletedKeys(cloudSyncSnap?.deletedKeys);
 
-      const serverPresensi = Array.isArray(data?.presensi) ? data!.presensi : [];
-      const firestorePresensi = Array.isArray(cloudSyncSnap?.data) ? cloudSyncSnap!.data : [];
+      const serverPresensi = Array.isArray(serverData?.presensi) ? serverData!.presensi : [];
+      const firestorePresensi = Array.isArray(cloudSyncSnap?.data)
+        ? cloudSyncSnap!.data
+        : (Array.isArray(fallbackData?.presensi) ? fallbackData!.presensi : []);
 
-      if (serverPresensi.length >= 1000) {
+      if (serverPresensi.length >= 1000 || firestorePresensi.length >= 400) {
         const merged = mergePresensiLists(
           latestPresensiRef.current,
           [...serverPresensi, ...firestorePresensi],
@@ -404,7 +445,10 @@ export default function App() {
         setPresensiList(merged);
         persistPresensiToStorage(merged);
 
-        const serverHasMissingFirestore = firestorePresensi.length > 0 && !arePresensiListsEqual(merged, serverPresensi);
+        const serverHasMissingFirestore =
+          Boolean(serverData) &&
+          firestorePresensi.length > 0 &&
+          !arePresensiListsEqual(merged, serverPresensi);
         if (serverHasMissingFirestore) {
           syncPresensiToCloud(merged, 'Cloud Merge Sync', toTombstoneArray(deletedTombstonesRef.current)).catch(() => {});
         }
@@ -431,15 +475,21 @@ export default function App() {
         }).catch(() => {});
       }
 
-      // Timestamp-based arbitration for System Settings & Shift Schedules
-      const serverSettings = data?.settings;
+      // Timestamp-based arbitration for System Settings & Shift Schedules (works cleanly with or without Express server)
+      const serverSettings = serverData?.settings;
       const serverTs = typeof serverSettings?.updatedAt === 'number' ? serverSettings.updatedAt : 0;
       const firestoreTs = typeof firestoreSettings?.updatedAt === 'number' ? firestoreSettings.updatedAt : 0;
       const localCurrent = latestSettingsRef.current;
       const localTs = typeof localCurrent?.updatedAt === 'number' ? localCurrent.updatedAt : 0;
       const persistentLogo = safeGetItem(APP_LOGO_STORAGE_KEY) || localCurrent?.appLogoUrl || undefined;
 
-      if (firestoreSettings && firestoreTs > serverTs && firestoreTs >= localTs) {
+      const shouldAdoptFirestore =
+        Boolean(firestoreSettings) &&
+        (!serverSettings
+          ? (firestoreTs >= localTs || localTs === 0)
+          : (firestoreTs > serverTs && firestoreTs >= localTs));
+
+      if (shouldAdoptFirestore && firestoreSettings) {
         const mergedRemote: SystemSettings = {
           ...SETTINGS_INITIAL,
           ...firestoreSettings,
@@ -448,8 +498,10 @@ export default function App() {
         latestSettingsRef.current = mergedRemote;
         setSettings(mergedRemote);
         safeSetItem('karapres3_settings', JSON.stringify(mergedRemote));
-        syncSettingsToCloud(mergedRemote, 'Cloud Settings Recovery').catch(() => {});
-      } else if (serverSettings && (serverTs >= localTs || localTs === 0)) {
+        if (serverData) {
+          syncSettingsToCloud(mergedRemote, 'Cloud Settings Recovery').catch(() => {});
+        }
+      } else if (serverSettings && serverTs >= firestoreTs && (serverTs >= localTs || localTs === 0)) {
         const mergedServer: SystemSettings = {
           ...SETTINGS_INITIAL,
           ...serverSettings,
@@ -458,7 +510,12 @@ export default function App() {
         latestSettingsRef.current = mergedServer;
         setSettings(mergedServer);
         safeSetItem('karapres3_settings', JSON.stringify(mergedServer));
-      } else if (localTs > serverTs && localCurrent) {
+        if (serverTs > firestoreTs && !safeGetItem(`karapres3_settings_synced_ts_${serverTs}`)) {
+          saveSettingsToFirestore(mergedServer)
+            .then(() => safeSetItem(`karapres3_settings_synced_ts_${serverTs}`, '1'))
+            .catch(() => {});
+        }
+      } else if (localTs > serverTs && localTs > firestoreTs && localCurrent) {
         syncSettingsToCloud(localCurrent, 'Local Settings Push').catch(() => {});
       }
 
@@ -470,17 +527,28 @@ export default function App() {
 
     // 2. Real-time multi-device subscription (Server sync version + Firestore live)
     const unsubMultiDevice = subscribeToMultiDeviceSync({
-      onStudentsChange: (incomingStudents) => {
+      onStudentsChange: (incomingStudents, catalogVersion) => {
         if (!isMounted) return;
-        if (incomingStudents && Array.isArray(incomingStudents) && incomingStudents.length > 0) {
+        const isAuthoritative =
+          incomingStudents &&
+          Array.isArray(incomingStudents) &&
+          incomingStudents.length > 0 &&
+          ((catalogVersion || 0) >= STUDENT_CATALOG_VERSION || incomingStudents.length >= SISWA_INITIAL.length);
+        if (isAuthoritative) {
           latestSiswaRef.current = incomingStudents;
           setSiswaList(incomingStudents);
           safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
+          safeSetItem('karapres3_siswa_catalog_ver', String(Math.max(STUDENT_CATALOG_VERSION, catalogVersion || 0)));
         }
       },
       onWaliKelasChange: (incomingWaliKelas) => {
         if (!isMounted) return;
-        if (incomingWaliKelas && Array.isArray(incomingWaliKelas) && incomingWaliKelas.length > 0) {
+        const isValidWk =
+          incomingWaliKelas &&
+          Array.isArray(incomingWaliKelas) &&
+          incomingWaliKelas.length >= 12 &&
+          !incomingWaliKelas.some((w) => w.noWa && (w.noWa.startsWith('08122334455') || w.noWa === '081299887766'));
+        if (isValidWk) {
           setWaliKelasList(incomingWaliKelas);
           safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
         }
@@ -511,14 +579,14 @@ export default function App() {
         if (incomingSettings) {
           const currentTs = typeof latestSettingsRef.current?.updatedAt === 'number' ? latestSettingsRef.current.updatedAt : 0;
           const incomingTs = typeof incomingSettings.updatedAt === 'number' ? incomingSettings.updatedAt : 0;
-          if (currentTs > 0 && incomingTs > 0 && incomingTs < currentTs) {
+          if (currentTs > 0 && incomingTs < currentTs) {
             return;
           }
           if (incomingSettings.appLogoUrl) {
             safeSetItem(APP_LOGO_STORAGE_KEY, incomingSettings.appLogoUrl);
           }
           const persistentLogo = incomingSettings.appLogoUrl || latestSettingsRef.current?.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
-          const nextSettings: SystemSettings = { ...incomingSettings, appLogoUrl: persistentLogo };
+          const nextSettings: SystemSettings = { ...SETTINGS_INITIAL, ...incomingSettings, appLogoUrl: persistentLogo };
           latestSettingsRef.current = nextSettings;
           setSettings(nextSettings);
           safeSetItem('karapres3_settings', JSON.stringify(nextSettings));
@@ -797,14 +865,24 @@ export default function App() {
     setIsSyncing(true);
     try {
       const refreshed = await forceSyncNow({
-        onStudentsChange: (incomingStudents) => {
-          if (incomingStudents && incomingStudents.length > 0) {
+        onStudentsChange: (incomingStudents, catalogVersion) => {
+          const isAuthoritative =
+            incomingStudents &&
+            incomingStudents.length > 0 &&
+            ((catalogVersion || 0) >= STUDENT_CATALOG_VERSION || incomingStudents.length >= SISWA_INITIAL.length);
+          if (isAuthoritative) {
+            latestSiswaRef.current = incomingStudents;
             setSiswaList(incomingStudents);
             safeSetItem('karapres3_siswa_v5', JSON.stringify(incomingStudents));
+            safeSetItem('karapres3_siswa_catalog_ver', String(Math.max(STUDENT_CATALOG_VERSION, catalogVersion || 0)));
           }
         },
         onWaliKelasChange: (incomingWaliKelas) => {
-          if (incomingWaliKelas && incomingWaliKelas.length > 0) {
+          const isValidWk =
+            incomingWaliKelas &&
+            incomingWaliKelas.length >= 12 &&
+            !incomingWaliKelas.some((w) => w.noWa && (w.noWa.startsWith('08122334455') || w.noWa === '081299887766'));
+          if (isValidWk) {
             setWaliKelasList(incomingWaliKelas);
             safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
           }
@@ -825,8 +903,19 @@ export default function App() {
         },
         onSettingsChange: (incomingSettings) => {
           if (incomingSettings) {
-            setSettings(incomingSettings);
-            safeSetItem('karapres3_settings', JSON.stringify(incomingSettings));
+            const currentTs = typeof latestSettingsRef.current?.updatedAt === 'number' ? latestSettingsRef.current.updatedAt : 0;
+            const incomingTs = typeof incomingSettings.updatedAt === 'number' ? incomingSettings.updatedAt : 0;
+            if (currentTs > 0 && incomingTs < currentTs) {
+              return;
+            }
+            if (incomingSettings.appLogoUrl) {
+              safeSetItem(APP_LOGO_STORAGE_KEY, incomingSettings.appLogoUrl);
+            }
+            const persistentLogo = incomingSettings.appLogoUrl || latestSettingsRef.current?.appLogoUrl || safeGetItem(APP_LOGO_STORAGE_KEY) || undefined;
+            const nextSettings: SystemSettings = { ...SETTINGS_INITIAL, ...incomingSettings, appLogoUrl: persistentLogo };
+            latestSettingsRef.current = nextSettings;
+            setSettings(nextSettings);
+            safeSetItem('karapres3_settings', JSON.stringify(nextSettings));
           }
         },
         onAccountsChange: (incomingAccounts) => {

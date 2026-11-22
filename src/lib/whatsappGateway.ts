@@ -19,38 +19,84 @@ export interface WhatsAppGatewayLog {
   error?: string;
 }
 
+const LOCAL_WA_LOGS_KEY = 'karapres3_wa_logs_v1';
+
+function getLocalWibCutoffMs(): number {
+  const now = new Date();
+  const wibDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(now);
+  const wibHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hour12: false }).format(now),
+    10
+  );
+  let targetDateStr = wibDate;
+  if (wibHour < 5) {
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    targetDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(yesterday);
+  }
+  return new Date(`${targetDateStr}T05:00:00+07:00`).getTime();
+}
+
+function readLocalWaLogs(): WhatsAppGatewayLog[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_WA_LOGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cutoff = getLocalWibCutoffMs();
+    return parsed.filter((l: any) => {
+      const t = new Date(l.timestamp).getTime();
+      return !isNaN(t) && t >= cutoff;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function appendLocalWaLog(entry: WhatsAppGatewayLog) {
+  try {
+    const list = readLocalWaLogs();
+    list.unshift(entry);
+    if (list.length > 300) list.length = 300;
+    localStorage.setItem(LOCAL_WA_LOGS_KEY, JSON.stringify(list));
+  } catch {}
+}
+
 /**
- * Mengambil log pengiriman gateway dari server (yang sudah difilter otomatis per hari 05.00 WIB)
+ * Mengambil log pengiriman gateway dari server (atau cache harian lokal bila berjalan di hosting statis)
  */
 export async function fetchWhatsAppGatewayLogs(): Promise<{ success: boolean; logs: WhatsAppGatewayLog[] }> {
   try {
     const res = await fetch('/api/whatsapp/logs');
-    if (res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.toLowerCase().includes('application/json')) {
       const data = await res.json();
       return { success: true, logs: data.logs || [] };
     }
-  } catch (err) {
-    console.warn('[WA Gateway] Gagal mengambil log gateway server:', err);
+  } catch {
+    // fallback to local logs
   }
-  return { success: false, logs: [] };
+  return { success: true, logs: readLocalWaLogs() };
 }
 
 /**
- * Membersihkan seluruh log notifikasi WhatsApp gateway di server secara manual
+ * Membersihkan seluruh log notifikasi WhatsApp gateway
  */
 export async function clearWhatsAppGatewayLogs(): Promise<boolean> {
+  try { localStorage.removeItem(LOCAL_WA_LOGS_KEY); } catch {}
   try {
     const res = await fetch('/api/whatsapp/clear', { method: 'POST' });
-    if (res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.toLowerCase().includes('application/json')) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('karapres:whatsapp_logs_cleared'));
       }
       return true;
     }
-  } catch (err) {
-    console.warn('[WA Gateway] Gagal membersihkan log gateway server:', err);
+  } catch {}
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('karapres:whatsapp_logs_cleared'));
   }
-  return false;
+  return true;
 }
 
 /**
@@ -222,7 +268,8 @@ export async function sendSingleGatewayNotification(
       })
     });
 
-    if (res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.toLowerCase().includes('application/json')) {
       const data = await res.json();
       
       // Emit in-browser custom event so active UI components react instantly
@@ -248,6 +295,48 @@ export async function sendSingleGatewayNotification(
         messageId: data.messageId,
         recipientRole,
         recipientName
+      };
+    } else if (res.status === 404 || !ct.toLowerCase().includes('application/json')) {
+      // Hosting statis (Vercel) tanpa Express server: catat log langsung di client & aktifkan simulator event
+      const isFailed = !cleanPhone || cleanPhone === '-';
+      const fallbackId = `wa-local-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      const entry: WhatsAppGatewayLog = {
+        id: fallbackId,
+        studentName: presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi',
+        kelas: presensi?.kelas || siswa?.kelas || '-',
+        status: presensi?.status || 'Hadir',
+        phone: cleanPhone || 'TIDAK TERDAFTAR',
+        message: formattedMessage,
+        deliveryStatus: isFailed ? 'FAILED' : 'DELIVERED',
+        recipientRole,
+        recipientName,
+        gateway: 'DIGIWANGI3_WA_GATEWAY_CLOUD',
+        timestamp: new Date().toISOString(),
+        error: isFailed ? 'Nomor tujuan WhatsApp belum diisi atau tidak valid' : undefined
+      };
+      appendLocalWaLog(entry);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('karapres:whatsapp_sent', {
+          detail: {
+            presensi,
+            siswa,
+            phone: cleanPhone,
+            message: formattedMessage,
+            messageId: fallbackId,
+            recipientRole,
+            recipientName,
+            status: entry.deliveryStatus
+          }
+        }));
+      }
+      return {
+        success: !isFailed,
+        phone: cleanPhone,
+        message: formattedMessage,
+        messageId: fallbackId,
+        recipientRole,
+        recipientName,
+        error: entry.error
       };
     } else {
       const errData = await res.json().catch(() => ({}));

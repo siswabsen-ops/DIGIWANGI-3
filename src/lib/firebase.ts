@@ -485,6 +485,7 @@ export interface CloudSyncPayload<T> {
   updatedAt: number;
   updatedBy?: string;
   total?: number;
+  catalogVersion?: number;
   deletedKeys?: DeletedTombstone[];
 }
 
@@ -498,7 +499,8 @@ export const syncMasterStudentsToCloud = async (students: Siswa[], updatedBy?: s
       data: cleaned,
       updatedAt: Date.now(),
       updatedBy: updatedBy || 'Client Device',
-      total: cleaned.length
+      total: cleaned.length,
+      catalogVersion: 26
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -577,6 +579,51 @@ export const fetchCloudSyncPresensiOnce = async (): Promise<CloudSyncPayload<Pre
   }
 };
 
+// Fetch sync/students ONCE (1 single read unit) for Vercel / static host hydration
+export const fetchCloudSyncStudentsOnce = async (): Promise<CloudSyncPayload<Siswa[]> | null> => {
+  if (getIsReadQuotaExhausted()) return null;
+  try {
+    const snap = await getDoc(doc(db, 'sync', 'students'));
+    if (!snap.exists()) return null;
+    const payload = snap.data() as CloudSyncPayload<Siswa[]>;
+    if (!payload || !Array.isArray(payload.data)) return null;
+    return payload;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, 'sync/students');
+    return null;
+  }
+};
+
+// Fetch sync/wali_kelas ONCE
+export const fetchCloudSyncWaliKelasOnce = async (): Promise<CloudSyncPayload<WaliKelas[]> | null> => {
+  if (getIsReadQuotaExhausted()) return null;
+  try {
+    const snap = await getDoc(doc(db, 'sync', 'wali_kelas'));
+    if (!snap.exists()) return null;
+    const payload = snap.data() as CloudSyncPayload<WaliKelas[]>;
+    if (!payload || !Array.isArray(payload.data)) return null;
+    return payload;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, 'sync/wali_kelas');
+    return null;
+  }
+};
+
+// Fetch sync/accounts ONCE
+export const fetchCloudSyncAccountsOnce = async (): Promise<CloudSyncPayload<{ user: User; pin: string }[]> | null> => {
+  if (getIsReadQuotaExhausted()) return null;
+  try {
+    const snap = await getDoc(doc(db, 'sync', 'accounts'));
+    if (!snap.exists()) return null;
+    const payload = snap.data() as CloudSyncPayload<{ user: User; pin: string }[]>;
+    if (!payload || !Array.isArray(payload.data)) return null;
+    return payload;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, 'sync/accounts');
+    return null;
+  }
+};
+
 // Push master accounts dataset to Cloud Sync doc
 export const syncMasterAccountsToCloud = async (accounts: { user: User; pin: string }[]) => {
   if (getIsWriteQuotaExhausted()) return;
@@ -608,54 +655,112 @@ export const syncMasterWaliKelasToCloud = async (waliKelasList: WaliKelas[], upd
   }
 };
 
-// Real-time multi-device subscription (1 listener on sync/presensi to minimize read unit usage)
-export const subscribeToCloudSync = (callbacks: {
-  onStudentsChange?: (students: Siswa[]) => void;
-  onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
-  onPresensiChange?: (presensi: Presensi[], updatedAt?: number, deletedKeys?: DeletedTombstone[]) => void;
-  onSettingsChange?: (settings: SystemSettings) => void;
-  onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
-  onStatusChange?: (status: 'connected' | 'offline' | 'syncing') => void;
-}) => {
+// Real-time multi-device subscription (sync/presensi always; master docs also subscribed when no Express server backend is present, e.g. Vercel)
+export const subscribeToCloudSync = (
+  callbacks: {
+    onStudentsChange?: (students: Siswa[], catalogVersion?: number) => void;
+    onWaliKelasChange?: (waliKelas: WaliKelas[]) => void;
+    onPresensiChange?: (presensi: Presensi[], updatedAt?: number, deletedKeys?: DeletedTombstone[]) => void;
+    onSettingsChange?: (settings: SystemSettings) => void;
+    onAccountsChange?: (accounts: { user: User; pin: string }[]) => void;
+    onStatusChange?: (status: 'connected' | 'offline' | 'syncing') => void;
+  },
+  options?: { enableMasterDocListeners?: boolean }
+) => {
   if (getIsReadQuotaExhausted()) {
     callbacks.onStatusChange?.('offline');
     return () => {};
   }
 
-  let unsubPresensi: (() => void) | undefined;
-  try {
-    unsubPresensi = onSnapshot(doc(db, 'sync', 'presensi'), (snapshot) => {
-      if (snapshot.exists()) {
-        const payload = snapshot.data() as CloudSyncPayload<Presensi[]>;
-        if (Array.isArray(payload?.data)) {
-          callbacks.onPresensiChange?.(payload.data, payload.updatedAt, payload.deletedKeys);
-          callbacks.onStatusChange?.('connected');
-        }
-      }
-    }, (err) => {
-      if (isQuotaError(err)) {
-        const errStr = (err instanceof Error ? err.message : String(err)).toLowerCase();
-        if (errStr.includes('write units')) {
-          setWriteQuotaExhausted(true);
-        } else {
-          setReadQuotaExhausted(true);
-        }
-        try { unsubPresensi?.(); } catch {}
-        callbacks.onStatusChange?.('offline');
-        console.warn('[Firestore Quota Guard] Snapshot listener at sync/presensi reached read quota. Running via High-Speed Server Sync.');
-      } else if (isUnavailableOrOfflineError(err)) {
-        callbacks.onStatusChange?.('offline');
-        console.warn('[Firestore Network] Backend unreachable temporarily on sync/presensi. Operating smoothly via High-Speed Server Sync.');
+  const unsubs: (() => void)[] = [];
+  const handleListenerError = (err: unknown, path: string) => {
+    if (isQuotaError(err)) {
+      const errStr = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (errStr.includes('write units')) {
+        setWriteQuotaExhausted(true);
       } else {
-        handleFirestoreError(err, OperationType.GET, 'sync/presensi');
+        setReadQuotaExhausted(true);
       }
-    });
+      unsubs.forEach((u) => { try { u(); } catch {} });
+      callbacks.onStatusChange?.('offline');
+      console.warn(`[Firestore Quota Guard] Snapshot listener at ${path} reached read quota. Running via Server Sync / Local Engine.`);
+    } else if (isUnavailableOrOfflineError(err)) {
+      callbacks.onStatusChange?.('offline');
+      console.warn(`[Firestore Network] Backend unreachable temporarily on ${path}.`);
+    } else {
+      handleFirestoreError(err, OperationType.GET, path);
+    }
+  };
+
+  try {
+    unsubs.push(
+      onSnapshot(doc(db, 'sync', 'presensi'), (snapshot) => {
+        if (snapshot.exists()) {
+          const payload = snapshot.data() as CloudSyncPayload<Presensi[]>;
+          if (Array.isArray(payload?.data)) {
+            callbacks.onPresensiChange?.(payload.data, payload.updatedAt, payload.deletedKeys);
+            callbacks.onStatusChange?.('connected');
+          }
+        }
+      }, (err) => handleListenerError(err, 'sync/presensi'))
+    );
+
+    if (options?.enableMasterDocListeners) {
+      if (callbacks.onSettingsChange) {
+        unsubs.push(
+          onSnapshot(doc(db, 'settings', 'system'), (snapshot) => {
+            if (snapshot.exists()) {
+              callbacks.onSettingsChange?.(snapshot.data() as SystemSettings);
+              callbacks.onStatusChange?.('connected');
+            }
+          }, (err) => handleListenerError(err, 'settings/system'))
+        );
+      }
+      if (callbacks.onStudentsChange) {
+        unsubs.push(
+          onSnapshot(doc(db, 'sync', 'students'), (snapshot) => {
+            if (snapshot.exists()) {
+              const payload = snapshot.data() as CloudSyncPayload<Siswa[]>;
+              if (Array.isArray(payload?.data)) {
+                callbacks.onStudentsChange?.(payload.data, payload.catalogVersion);
+              }
+            }
+          }, (err) => handleListenerError(err, 'sync/students'))
+        );
+      }
+      if (callbacks.onWaliKelasChange) {
+        unsubs.push(
+          onSnapshot(doc(db, 'sync', 'wali_kelas'), (snapshot) => {
+            if (snapshot.exists()) {
+              const payload = snapshot.data() as CloudSyncPayload<WaliKelas[]>;
+              if (Array.isArray(payload?.data)) {
+                callbacks.onWaliKelasChange?.(payload.data);
+              }
+            }
+          }, (err) => handleListenerError(err, 'sync/wali_kelas'))
+        );
+      }
+      if (callbacks.onAccountsChange) {
+        unsubs.push(
+          onSnapshot(doc(db, 'sync', 'accounts'), (snapshot) => {
+            if (snapshot.exists()) {
+              const payload = snapshot.data() as CloudSyncPayload<{ user: User; pin: string }[]>;
+              if (Array.isArray(payload?.data)) {
+                callbacks.onAccountsChange?.(payload.data);
+              }
+            }
+          }, (err) => handleListenerError(err, 'sync/accounts'))
+        );
+      }
+    }
   } catch (err) {
-    handleFirestoreError(err, OperationType.GET, 'sync/presensi');
+    handleFirestoreError(err, OperationType.GET, 'sync/*');
   }
 
   return () => {
-    try { unsubPresensi?.(); } catch {}
+    unsubs.forEach((u) => {
+      try { u(); } catch {}
+    });
   };
 };
 
