@@ -51,17 +51,38 @@ function ScanScreen({
   const handleScanIdentifyRef = useRef<any>(null);
   const inputTimingRef = useRef<{ lastTime: number; rapidCount: number }>({ lastTime: 0, rapidCount: 0 });
 
+  // Reactive WIB today string so kept-open kiosk tabs roll over cleanly at midnight
+  const [activeTodayDate, setActiveTodayDate] = useState<string>(() => getLocalDateString());
+
+  useEffect(() => {
+    const syncDate = () => {
+      const next = getLocalDateString();
+      setActiveTodayDate((prev) => (prev === next ? prev : next));
+    };
+    const timer = setInterval(syncDate, 60000);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', syncDate);
+      window.addEventListener('visibilitychange', syncDate);
+    }
+    return () => {
+      clearInterval(timer);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', syncDate);
+        window.removeEventListener('visibilitychange', syncDate);
+      }
+    };
+  }, []);
+
   // Fast deterministic O(1) today attendance lookup index
   const todayAttendanceIndex = useMemo(() => {
-    return buildDailyAttendanceIndex(recentPresensi, getLocalDateString());
-  }, [recentPresensi]);
+    return buildDailyAttendanceIndex(recentPresensi, activeTodayDate);
+  }, [recentPresensi, activeTodayDate]);
 
   // Display only recent 30 scans of today to prevent rendering thousands of elements
   const displayRecentPresensi = useMemo(() => {
-    const todayDate = getLocalDateString();
-    const todayList = recentPresensi.filter((p) => isPresensiDateMatch(p.tanggal, todayDate));
+    const todayList = recentPresensi.filter((p) => isPresensiDateMatch(p.tanggal, activeTodayDate));
     return todayList.slice(-30);
-  }, [recentPresensi]);
+  }, [recentPresensi, activeTodayDate]);
 
   // Fast filtered simulation pupils list
   const filteredSimSiswa = useMemo(() => {
@@ -497,12 +518,14 @@ function ScanScreen({
   const handleVirtualScan = (siswa: Siswa, forcedStatus?: StatusKehadiran) => {
     setScannerStatus('SCANNING');
     const qrIdentifier = getStudentQRIdentifier(siswa);
+    const resolvedByCode = findStudentByCode(siswaList, qrIdentifier);
+    const safeScanCode = resolvedByCode && resolvedByCode.id !== siswa.id ? siswa.id : qrIdentifier;
     if (virtualScanTimeoutRef.current) {
       clearTimeout(virtualScanTimeoutRef.current);
     }
     virtualScanTimeoutRef.current = setTimeout(() => {
       virtualScanTimeoutRef.current = null;
-      handleScanIdentifyRef.current?.(qrIdentifier, forcedStatus, 'QR_SCAN');
+      handleScanIdentifyRef.current?.(safeScanCode, forcedStatus, 'QR_SCAN');
     }, 300); // Quick split-second visual laser delay
   };
 

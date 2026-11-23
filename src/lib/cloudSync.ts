@@ -8,11 +8,13 @@ import {
   subscribeToCloudSync as subscribeToFirestoreSync,
   fetchCloudSyncStudentsOnce,
   fetchCloudSyncPresensiOnce,
+  fetchAllLivePresensiShardsOnce,
   fetchSettingsFromFirestoreOnce,
   fetchCloudSyncWaliKelasOnce,
   fetchCloudSyncAccountsOnce,
   DeletedTombstone
 } from './firebase';
+import { getLocalDateString, mergePresensiLists } from './attendanceUtils';
 
 export interface CloudMasterPayload {
   version: number;
@@ -70,27 +72,53 @@ export async function fetchCloudMasterData(): Promise<CloudMasterPayload | null>
  * Fallback pembacaan master data langsung dari Cloud Firestore
  * Digunakan otomatis saat berjalan di hosting statis seperti Vercel (https://digiwangi-3.vercel.app/)
  */
-export async function fetchFirestoreMasterFallback(): Promise<CloudMasterPayload | null> {
+export async function fetchFirestoreMasterFallback(activeDate?: string): Promise<CloudMasterPayload | null> {
   try {
-    const [studentsDoc, presensiDoc, settingsDoc, waliKelasDoc, accountsDoc] = await Promise.all([
+    const targetToday = activeDate || getLocalDateString();
+    const [studentsDoc, presensiDoc, shardData, settingsDoc, waliKelasDoc, accountsDoc] = await Promise.all([
       fetchCloudSyncStudentsOnce().catch(() => null),
       fetchCloudSyncPresensiOnce().catch(() => null),
+      fetchAllLivePresensiShardsOnce(targetToday).catch(() => ({ records: [] as Presensi[], deletedKeys: {} as Record<string, number> })),
       fetchSettingsFromFirestoreOnce().catch(() => null),
       fetchCloudSyncWaliKelasOnce().catch(() => null),
       fetchCloudSyncAccountsOnce().catch(() => null)
     ]);
 
-    if (!studentsDoc && !presensiDoc && !settingsDoc && !waliKelasDoc && !accountsDoc) {
+    const hasShardPresensi = Boolean(shardData && (shardData.records.length > 0 || Object.keys(shardData.deletedKeys).length > 0));
+    if (!studentsDoc && !presensiDoc && !hasShardPresensi && !settingsDoc && !waliKelasDoc && !accountsDoc) {
       return null;
     }
+
+    const mergedDeletedKeys: Record<string, number> = {};
+    if (Array.isArray(presensiDoc?.deletedKeys)) {
+      for (const item of presensiDoc!.deletedKeys) {
+        if (item && typeof item.key === 'string' && typeof item.ts === 'number') {
+          mergedDeletedKeys[item.key] = Math.max(mergedDeletedKeys[item.key] || 0, item.ts);
+        }
+      }
+    }
+    if (shardData?.deletedKeys) {
+      for (const [k, ts] of Object.entries(shardData.deletedKeys)) {
+        if (typeof ts === 'number') {
+          mergedDeletedKeys[k] = Math.max(mergedDeletedKeys[k] || 0, ts);
+        }
+      }
+    }
+
+    const combinedPresensi = mergePresensiLists(
+      presensiDoc?.data || [],
+      shardData?.records || [],
+      studentsDoc?.data,
+      mergedDeletedKeys
+    );
 
     return {
       version: localSyncVersion,
       updatedAt: new Date().toISOString(),
       students: studentsDoc?.data,
       studentsCatalogVersion: studentsDoc?.catalogVersion,
-      presensi: presensiDoc?.data,
-      deletedKeys: presensiDoc?.deletedKeys,
+      presensi: combinedPresensi,
+      deletedKeys: mergedDeletedKeys,
       settings: settingsDoc || undefined,
       waliKelas: waliKelasDoc?.data,
       accounts: accountsDoc?.data
@@ -353,12 +381,16 @@ export async function syncAccountsToCloud(accounts: { user: User; pin: string }[
  * Berlangganan sinkronisasi multi-perangkat real-time (PC, Android, Tablet)
  * Memeriksa pembaruan versi setiap 2.5 detik dan memperbarui state secara instan
  */
-export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void {
+export function subscribeToMultiDeviceSync(
+  callbacks: SyncCallbacks,
+  options?: { activeDate?: string }
+): () => void {
   let isSubscribed = true;
   let isChecking = false;
   let hasServerBackend: boolean | null = null;
   let unsubFirestore: (() => void) | undefined;
   let intervalId: ReturnType<typeof setInterval> | undefined;
+  const activeDate = options?.activeDate || getLocalDateString();
 
   const attachFirestore = (enableMasterDocListeners: boolean) => {
     if (unsubFirestore) {
@@ -393,7 +425,7 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
             }
           }
         },
-        { enableMasterDocListeners }
+        { enableMasterDocListeners, activeDate }
       );
     } catch (err) {
       console.warn('[CloudSync] Firestore listener skipped:', err);
@@ -459,9 +491,10 @@ export function subscribeToMultiDeviceSync(callbacks: SyncCallbacks): () => void
   intervalId = setInterval(checkVersionAndSync, 6000);
 
   const handleWindowFocus = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     if (hasServerBackend === false) {
-      // Refresh settings/students once when returning to tab on Android/PC static build
-      fetchFirestoreMasterFallback().then((fb) => {
+      // Refresh shards/settings/students once when returning to tab on Android/PC static build
+      fetchFirestoreMasterFallback(activeDate).then((fb) => {
         if (!fb || !isSubscribed) return;
         if (fb.students && callbacks.onStudentsChange) callbacks.onStudentsChange(fb.students, fb.studentsCatalogVersion);
         if (fb.waliKelas && callbacks.onWaliKelasChange) callbacks.onWaliKelasChange(fb.waliKelas);

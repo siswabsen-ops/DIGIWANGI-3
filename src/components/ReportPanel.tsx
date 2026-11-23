@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, memo } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { 
   Calendar, 
   Download, 
@@ -132,6 +132,33 @@ function ReportPanel({
   const [bulananMonth, setBulananMonth] = useState<string>(() => {
     return getLocalDateString().slice(0, 7);
   });
+
+  // Auto-advance default date/week/month only if user stayed on yesterday's date past midnight WIB
+  const lastObservedTodayRef = useRef<string>(getLocalDateString());
+  useEffect(() => {
+    const checkDateRollover = () => {
+      const currentToday = getLocalDateString();
+      const prevToday = lastObservedTodayRef.current;
+      if (currentToday !== prevToday) {
+        lastObservedTodayRef.current = currentToday;
+        setHarianDate((d) => (d === prevToday ? currentToday : d));
+        setMingguanDate((w) => (w === getMondayOfWeek(prevToday) ? getMondayOfWeek(currentToday) : w));
+        setBulananMonth((m) => (m === prevToday.slice(0, 7) ? currentToday.slice(0, 7) : m));
+      }
+    };
+    const timer = setInterval(checkDateRollover, 60000);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', checkDateRollover);
+      window.addEventListener('visibilitychange', checkDateRollover);
+    }
+    return () => {
+      clearInterval(timer);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', checkDateRollover);
+        window.removeEventListener('visibilitychange', checkDateRollover);
+      }
+    };
+  }, []);
 
   // 4. SEMESTER STATE
   const [semesterTahunAjaran, setSemesterTahunAjaran] = useState<string>('2026/2027');

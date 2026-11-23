@@ -30,10 +30,13 @@ import {
 import { sendDualWhatsAppNotification, sendAutomaticWhatsAppNotification } from './lib/whatsappGateway';
 import { 
   ensureAuthenticated, 
+  validateFirestoreConnection,
   saveSiswaToFirestore, 
   deleteSiswaFromFirestore, 
   savePresensiToFirestore, 
+  savePresensiShardToFirestore,
   deletePresensiFromFirestore, 
+  deletePresensiShardFromFirestore,
   clearPresensiInFirestore, 
   saveAccountToFirestore, 
   deleteAccountFromFirestore, 
@@ -46,6 +49,7 @@ import {
   syncMasterPresensiToCloud,
   syncMasterAccountsToCloud,
   fetchCloudSyncPresensiOnce,
+  fetchAllLivePresensiShardsOnce,
   fetchSettingsFromFirestoreOnce,
   DeletedTombstone,
   getIsQuotaExhausted
@@ -140,26 +144,18 @@ export default function App() {
   };
 
   const persistPresensiToStorage = (records: Presensi[]) => {
-    const sorted = records
-      .filter((p) => p && p.tanggal && !isSyntheticDemoPresensi(p))
+    // Arsip historis Jul-Okt 2026 selalu tersedia instan dari PRESENSI_INITIAL di bundle;
+    // LocalStorage hanya perlu menyimpan rekaman live & perubahan non-sintetis agar selalu ringan & bebas kuota penuh.
+    const liveOrCustom = records
+      .filter((p) => p && p.tanggal && (!isSyntheticDemoPresensi(p) || normalizeDateKey(p.tanggal) > HISTORICAL_ARCHIVE_END_DATE))
       .slice()
       .sort((a, b) => normalizeDateKey(a.tanggal).localeCompare(normalizeDateKey(b.tanggal)));
 
-    const liveRecords = sorted.filter((p) => normalizeDateKey(p.tanggal) > HISTORICAL_ARCHIVE_END_DATE);
-    const archiveRecords = sorted.filter((p) => normalizeDateKey(p.tanggal) <= HISTORICAL_ARCHIVE_END_DATE);
+    if (safeSetItem(PRESENSI_STORAGE_KEY, JSON.stringify(liveOrCustom))) return;
 
-    // Simpan hingga 2200 rekaman terbaru (seluruh bulan berjalan + arsip lengkap); pangkas hanya arsip terlama bila kuota penuh
-    const maxTotal = 2200;
-    const candidate = sorted.length > maxTotal
-      ? [...archiveRecords.slice(-(maxTotal - liveRecords.length)), ...liveRecords]
-      : sorted;
-
-    if (safeSetItem(PRESENSI_STORAGE_KEY, JSON.stringify(candidate))) return;
-
-    const fallbackCounts = [1200, 700, 300];
+    const fallbackCounts = [2000, 1000, 500];
     for (const cap of fallbackCounts) {
-      const archiveCap = Math.max(0, cap - liveRecords.length);
-      const smaller = [...archiveRecords.slice(-archiveCap), ...liveRecords];
+      const smaller = liveOrCustom.slice(-cap);
       if (safeSetItem(PRESENSI_STORAGE_KEY, JSON.stringify(smaller))) return;
     }
   };
@@ -187,20 +183,17 @@ export default function App() {
 
   const [presensiList, setPresensiList] = useState<Presensi[]>(() => {
     const tombstones = loadDeletedTombstones();
+    let cachedLive: Presensi[] = [];
     const cached = safeGetItem(PRESENSI_STORAGE_KEY);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = parsed.filter((p: Presensi) => !isSyntheticDemoPresensi(p));
-          const hasLive = cleaned.some((p: Presensi) => normalizeDateKey(p.tanggal) > HISTORICAL_ARCHIVE_END_DATE);
-          if (cleaned.length >= 400 || hasLive) {
-            return mergePresensiLists([], cleaned, undefined, tombstones);
-          }
+          cachedLive = parsed.filter((p: Presensi) => p && p.tanggal && !isSyntheticDemoPresensi(p));
         }
       } catch {}
     }
-    const initialMerged = mergePresensiLists([], PRESENSI_INITIAL, undefined, tombstones);
+    const initialMerged = mergePresensiLists(PRESENSI_INITIAL, cachedLive, SISWA_INITIAL, tombstones);
     persistPresensiToStorage(initialMerged);
     return initialMerged;
   });
@@ -293,13 +286,34 @@ export default function App() {
   // Navigation tab for overall app modules
   const [currentView, setCurrentView] = useState<'scan' | 'manajemen' | 'laporan' | 'panduan'>('scan');
 
+  // Track reactive WIB date key so midnight rollover re-attaches daily shards & slices automatically
+  const [todayKey, setTodayKey] = useState<string>(() => getLocalDateString());
+
+  useEffect(() => {
+    const syncTodayKey = () => {
+      const nextToday = getLocalDateString();
+      setTodayKey((prev) => (prev === nextToday ? prev : nextToday));
+    };
+    const interval = setInterval(syncTodayKey, 60000);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', syncTodayKey);
+      window.addEventListener('visibilitychange', syncTodayKey);
+    }
+    return () => {
+      clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', syncTodayKey);
+        window.removeEventListener('visibilitychange', syncTodayKey);
+      }
+    };
+  }, []);
+
   // Lightweight slice of recent records for instant ScanScreen and live WhatsApp Simulator
   const recentPresensiSlice = useMemo(() => {
-    const today = getLocalDateString();
-    const todayRecs = presensiList.filter(p => p && p.tanggal && normalizeDateKey(p.tanggal) === today);
-    const otherRecs = presensiList.filter(p => !p || !p.tanggal || normalizeDateKey(p.tanggal) !== today);
+    const todayRecs = presensiList.filter(p => p && p.tanggal && normalizeDateKey(p.tanggal) === todayKey);
+    const otherRecs = presensiList.filter(p => !p || !p.tanggal || normalizeDateKey(p.tanggal) !== todayKey);
     return [...otherRecs.slice(-400), ...todayRecs];
-  }, [presensiList]);
+  }, [presensiList, todayKey]);
 
   // Trigger sync state variables
   const [isSyncing, setIsSyncing] = useState(false);
@@ -367,16 +381,19 @@ export default function App() {
   // Multi-Device Cloud Synchronizer (Instant sync across Android, PC, Laptop, Tablet)
   useEffect(() => {
     let isMounted = true;
+    const bootToday = getLocalDateString();
+    validateFirestoreConnection().catch(() => {});
 
-    // 1. Initial Cloud Master Load on Mount (Server + Firestore 1-read hydration + Vercel static fallback)
+    // 1. Initial Cloud Master Load on Mount (Server + Firestore shards/collection recovery + Vercel static fallback)
     Promise.all([
       fetchCloudMasterData(),
       fetchCloudSyncPresensiOnce().catch(() => null),
+      fetchAllLivePresensiShardsOnce(bootToday).catch(() => ({ records: [] as Presensi[], deletedKeys: {} as Record<string, number> })),
       fetchSettingsFromFirestoreOnce().catch(() => null)
-    ]).then(async ([serverData, cloudSyncSnap, firestoreSettingsFromMount]) => {
+    ]).then(async ([serverData, cloudSyncSnap, shardSnap, firestoreSettingsFromMount]) => {
       if (!isMounted) return;
 
-      const fallbackData = !serverData ? await fetchFirestoreMasterFallback().catch(() => null) : null;
+      const fallbackData = !serverData ? await fetchFirestoreMasterFallback(bootToday).catch(() => null) : null;
       if (!isMounted) return;
 
       const data = serverData || fallbackData;
@@ -428,51 +445,33 @@ export default function App() {
 
       mergeIncomingDeletedKeys(data?.deletedKeys);
       mergeIncomingDeletedKeys(cloudSyncSnap?.deletedKeys);
+      mergeIncomingDeletedKeys(shardSnap?.deletedKeys);
 
       const serverPresensi = Array.isArray(serverData?.presensi) ? serverData!.presensi : [];
       const firestorePresensi = Array.isArray(cloudSyncSnap?.data)
         ? cloudSyncSnap!.data
         : (Array.isArray(fallbackData?.presensi) ? fallbackData!.presensi : []);
+      const shardRecords = Array.isArray(shardSnap?.records) ? shardSnap.records : [];
 
-      if (serverPresensi.length >= 1000 || firestorePresensi.length >= 400) {
-        const merged = mergePresensiLists(
-          latestPresensiRef.current,
-          [...serverPresensi, ...firestorePresensi],
-          activeStudents,
-          deletedTombstonesRef.current
-        );
+      const merged = mergePresensiLists(
+        mergePresensiLists(PRESENSI_INITIAL, latestPresensiRef.current, activeStudents, deletedTombstonesRef.current),
+        [...serverPresensi, ...firestorePresensi, ...shardRecords],
+        activeStudents,
+        deletedTombstonesRef.current
+      );
+
+      if (!arePresensiListsEqual(merged, latestPresensiRef.current)) {
         latestPresensiRef.current = merged;
         setPresensiList(merged);
         persistPresensiToStorage(merged);
+      }
 
-        const serverHasMissingFirestore =
-          Boolean(serverData) &&
-          firestorePresensi.length > 0 &&
-          !arePresensiListsEqual(merged, serverPresensi);
-        if (serverHasMissingFirestore) {
-          syncPresensiToCloud(merged, 'Cloud Merge Sync', toTombstoneArray(deletedTombstonesRef.current)).catch(() => {});
-        }
-      } else {
-        const seedInput = mergePresensiLists(
-          latestPresensiRef.current,
-          [...serverPresensi, ...firestorePresensi],
-          activeStudents,
-          deletedTombstonesRef.current
-        );
-        auditAndSyncSemesterPresensi(seedInput, activeStudents).then((auditRes) => {
-          if (!isMounted) return;
-          if (auditRes?.synchronizedRecords?.length) {
-            const merged = mergePresensiLists(
-              auditRes.synchronizedRecords,
-              seedInput,
-              activeStudents,
-              deletedTombstonesRef.current
-            );
-            latestPresensiRef.current = merged;
-            setPresensiList(merged);
-            persistPresensiToStorage(merged);
-          }
-        }).catch(() => {});
+      const serverHasMissingCloud =
+        Boolean(serverData) &&
+        (firestorePresensi.length > 0 || shardRecords.length > 0) &&
+        !arePresensiListsEqual(merged, serverPresensi);
+      if (serverHasMissingCloud) {
+        syncPresensiToCloud(merged, 'Cloud Merge Sync', toTombstoneArray(deletedTombstonesRef.current)).catch(() => {});
       }
 
       // Timestamp-based arbitration for System Settings & Shift Schedules (works cleanly with or without Express server)
@@ -525,7 +524,14 @@ export default function App() {
       }
     });
 
-    // 2. Real-time multi-device subscription (Server sync version + Firestore live)
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Real-time multi-device subscription (auto re-attaches daily shard listener if date rolls over past midnight WIB)
+  useEffect(() => {
+    let isMounted = true;
     const unsubMultiDevice = subscribeToMultiDeviceSync({
       onStudentsChange: (incomingStudents, catalogVersion) => {
         if (!isMounted) return;
@@ -599,13 +605,13 @@ export default function App() {
           safeSetItem('karapres3_accounts_v4', JSON.stringify(incomingAccounts));
         }
       }
-    });
+    }, { activeDate: todayKey });
 
     return () => {
       isMounted = false;
       unsubMultiDevice();
     };
-  }, []);
+  }, [todayKey]);
 
   // Sync state modifications to Web Storage
   useEffect(() => {
@@ -1099,11 +1105,18 @@ export default function App() {
   const handleAddPresensi = useCallback((newPresensi: Presensi) => {
     const targetNormDate = normalizeDateKey(newPresensi.tanggal);
     const activeStudents = latestSiswaRef.current;
-    const matchedSiswa = activeStudents.find(s => 
-      s.id === newPresensi.siswaId || 
-      (s.nis && newPresensi.nis && s.nis.trim().length >= 4 && s.nis.trim() === newPresensi.nis.trim()) ||
-      (s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() && s.kelas === newPresensi.kelas)
-    );
+
+    // Sequential student resolution: prioritize explicit siswaId FIRST (prevents duplicate-NIS collisions like sis-362/sis-429 & sis-401/sis-409)
+    const matchedSiswa =
+      (newPresensi.siswaId ? activeStudents.find((s) => s.id === newPresensi.siswaId) : undefined) ||
+      (newPresensi.nis && newPresensi.nis.trim().length >= 4
+        ? activeStudents.find((s) => s.nis && s.nis.trim() === newPresensi.nis.trim())
+        : undefined) ||
+      activeStudents.find(
+        (s) =>
+          s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() &&
+          s.kelas === newPresensi.kelas
+      );
 
     const canonicalSiswaId = matchedSiswa?.id || newPresensi.siswaId;
     const canonicalId = newPresensi.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(newPresensi.id)
@@ -1127,7 +1140,7 @@ export default function App() {
     if (newPresensi.siswaId) {
       delete deletedTombstonesRef.current[`${newPresensi.siswaId}__${targetNormDate}`];
     }
-    if (enrichedPresensi.nis && enrichedPresensi.nis.trim().length >= 4) {
+    if (!matchedSiswa && enrichedPresensi.nis && enrichedPresensi.nis.trim().length >= 4) {
       delete deletedTombstonesRef.current[`${enrichedPresensi.nis.trim()}__${targetNormDate}`];
     }
     persistDeletedTombstones(deletedTombstonesRef.current);
@@ -1144,7 +1157,9 @@ export default function App() {
 
     const operatorName = currentUser?.namaLengkap || 'Scanner Piket';
     const tombstones = toTombstoneArray(deletedTombstonesRef.current);
+    // Write atomically to both per-record doc AND daily shard (zero debounce, zero cross-device overwrite)
     savePresensiToFirestore(enrichedPresensi).catch(() => {});
+    savePresensiShardToFirestore(enrichedPresensi).catch(() => {});
     recordSinglePresensiToCloud(enrichedPresensi, operatorName).catch(() => {});
     syncMasterPresensiToCloud(updatedList, operatorName, tombstones).catch(() => {});
 
@@ -1163,7 +1178,7 @@ export default function App() {
     const nowTs = Date.now();
     const sid = siswa.id || siswa.nis || siswa.nama;
     deletedTombstonesRef.current[`${sid}__${normDate}`] = nowTs;
-    if (siswa.nis && siswa.nis.trim().length >= 4) {
+    if (!siswa.id && siswa.nis && siswa.nis.trim().length >= 4) {
       deletedTombstonesRef.current[`${siswa.nis.trim()}__${normDate}`] = nowTs;
     }
     persistDeletedTombstones(deletedTombstonesRef.current);
@@ -1194,6 +1209,9 @@ export default function App() {
     const operatorName = currentUser?.namaLengkap || 'Wali Kelas';
     const tombstones = toTombstoneArray(deletedTombstonesRef.current);
     deletePresensiFromFirestore(recordId, siswa.id, normDate).catch(() => {});
+    if (siswa.id) {
+      deletePresensiShardFromFirestore(siswa.id, normDate).catch(() => {});
+    }
     deleteSinglePresensiFromCloud(
       { recordId, siswaId: siswa.id, tanggal: normDate },
       operatorName
@@ -1656,10 +1674,29 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  clearPresensiInFirestore(presensiList);
-                  addActivityLog('Reset Presensi', 'Melakukan pembersihan total riwayat presensi hari ini.');
+                  const targetToday = getLocalDateString();
+                  const nowTs = Date.now();
+                  const todayRemoved = latestPresensiRef.current.filter((p) => normalizeDateKey(p.tanggal) === targetToday);
+                  todayRemoved.forEach((p) => {
+                    if (p.siswaId) {
+                      deletedTombstonesRef.current[`${p.siswaId}__${targetToday}`] = nowTs;
+                    }
+                  });
+                  persistDeletedTombstones(deletedTombstonesRef.current);
+
+                  const remaining = latestPresensiRef.current.filter((p) => normalizeDateKey(p.tanggal) !== targetToday);
+                  latestPresensiRef.current = remaining;
+                  persistPresensiToStorage(remaining);
+                  setPresensiList(remaining);
+
+                  clearPresensiInFirestore(todayRemoved, targetToday).catch(() => {});
+                  const tombstones = toTombstoneArray(deletedTombstonesRef.current);
+                  syncMasterPresensiToCloud(remaining, currentUser?.namaLengkap || 'Admin', tombstones).catch(() => {});
+                  syncPresensiToCloud(remaining, currentUser?.namaLengkap || 'Admin', tombstones).catch(() => {});
+
+                  addActivityLog('Reset Presensi', `Melakukan pembersihan riwayat presensi tanggal ${targetToday}.`);
                   setShowClearPresensiConfirm(false);
-                  triggerNotice('Semua data presensi harian berhasil diset ulang.');
+                  triggerNotice('Semua data presensi harian hari ini berhasil diset ulang.');
                 }}
                 className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl py-2.5 font-bold text-xs transition-all shadow-md cursor-pointer"
               >
