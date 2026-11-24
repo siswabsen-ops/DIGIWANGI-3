@@ -447,12 +447,6 @@ function ReportPanel({
     return list;
   }, [harianReportDataRaw, statusFilter, sesiFilter, settings, selectedKelas]);
 
-  const shouldPaginateHarian = selectedKelas === 'Semua Kelas' && !searchQuery.trim() && statusFilter === 'semua';
-
-  const displayedHarianRows = useMemo(() => {
-    return shouldPaginateHarian ? harianReportData.slice(0, harianPageLimit) : harianReportData;
-  }, [harianReportData, harianPageLimit, shouldPaginateHarian]);
-
   // Harian Statistics Summary for the active selection
   const harianStats = useMemo(() => {
     const total = harianReportDataRaw.length;
@@ -489,6 +483,13 @@ function ReportPanel({
 
     return { total, hadir, terlambat, sakit, izin, alfa, belumAbsen, sudahAbsen, totalHadirSemua, totalTidakHadir, percentage, totalPagi, totalSiang };
   }, [harianReportDataRaw, settings]);
+
+  const shouldPaginateHarian = selectedKelas === 'Semua Kelas' && !searchQuery.trim() && statusFilter === 'semua';
+  const effectiveHarianLimit = Math.max(harianPageLimit, harianStats.sudahAbsen);
+
+  const displayedHarianRows = useMemo(() => {
+    return shouldPaginateHarian ? harianReportData.slice(0, effectiveHarianLimit) : harianReportData;
+  }, [harianReportData, effectiveHarianLimit, shouldPaginateHarian]);
 
   // MINGGUAN: Calculate student matrix for Monday - Friday (Instant indexed execution)
   const mingguanEffectiveDays = useMemo(() => {
@@ -1753,13 +1754,21 @@ function ReportPanel({
                       })}
                     </tbody>
                   </table>
-                  {shouldPaginateHarian && harianReportData.length > harianPageLimit && (
-                    <div className="p-3 text-center bg-slate-50 border-t border-slate-100">
+                  {shouldPaginateHarian && harianReportData.length > effectiveHarianLimit && (
+                    <div className="p-3 flex flex-wrap items-center justify-center gap-2 bg-slate-50 border-t border-slate-100">
                       <button
-                        onClick={() => setHarianPageLimit(prev => prev + 50)}
+                        type="button"
+                        onClick={() => setHarianPageLimit(effectiveHarianLimit + 50)}
                         className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer border border-slate-200 shadow-2xs"
                       >
-                        Tampilkan 50 Data Lagi (Menampilkan {displayedHarianRows.length} dari {harianReportData.length} siswa)
+                        Tampilkan 50 Data Lagi ({displayedHarianRows.length} / {harianReportData.length} siswa)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHarianPageLimit(harianReportData.length)}
+                        className="bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer shadow-2xs"
+                      >
+                        Tampilkan Semua ({harianReportData.length} Siswa)
                       </button>
                     </div>
                   )}

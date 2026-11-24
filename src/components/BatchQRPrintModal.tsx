@@ -64,7 +64,7 @@ export default function BatchQRPrintModal({
 
       for (const student of filteredSiswa) {
         try {
-          const qrPayload = getStudentQRIdentifier(student);
+          const qrPayload = getStudentQRIdentifier(student, siswaList);
           const url = await QRCode.toDataURL(qrPayload, {
             width: 280,
             margin: 1.5,
@@ -107,7 +107,8 @@ export default function BatchQRPrintModal({
         filteredSiswa,
         (current, total, name) => {
           setDownloadProgress({ current, total, name });
-        }
+        },
+        siswaList
       );
       setDownloadSuccessMsg(`Berhasil mengunduh paket ZIP QR Code ${selectedKelas} (${filteredSiswa.length} siswa)!`);
       setTimeout(() => setDownloadSuccessMsg(''), 4000);
@@ -122,7 +123,7 @@ export default function BatchQRPrintModal({
 
   const handleDownloadSingleCard = async (siswa: Siswa) => {
     try {
-      await downloadSingleStudentQR(siswa);
+      await downloadSingleStudentQR(siswa, siswaList);
     } catch (err) {
       console.error('Gagal mengunduh kartu siswa:', err);
     }
@@ -148,7 +149,7 @@ export default function BatchQRPrintModal({
       .map((siswa) => {
         const qrUrl = qrMap[siswa.id || siswa.nis] || '';
         const isBelumDapodik = siswa.statusDapodik === 'Belum Dapodik';
-        const qrCodeIdentifier = getStudentQRIdentifier(siswa);
+        const qrCodeIdentifier = getStudentQRIdentifier(siswa, siswaList);
 
         return `
         <div class="card-item">
@@ -520,7 +521,7 @@ export default function BatchQRPrintModal({
               {filteredSiswa.map((siswa) => {
                 const qrUrl = qrMap[siswa.id || siswa.nis];
                 const isBelumDapodik = siswa.statusDapodik === 'Belum Dapodik';
-                const qrCodeIdentifier = getStudentQRIdentifier(siswa);
+                const qrCodeIdentifier = getStudentQRIdentifier(siswa, siswaList);
 
                 return (
                   <div

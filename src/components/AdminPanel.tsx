@@ -251,7 +251,7 @@ function AdminPanel({
 
   const handleDownloadSingleStudentQR = async (siswa: Siswa) => {
     try {
-      await downloadSingleStudentQR(siswa);
+      await downloadSingleStudentQR(siswa, siswaList);
       displayNotice('success', `QR Code ${siswa.nama} berhasil diunduh (PNG).`);
     } catch (err: any) {
       console.error('Gagal mengunduh QR siswa:', err);
@@ -1522,7 +1522,7 @@ function AdminPanel({
                       {/* Virtual QR Code canvas container target inside print frame */}
                       <div id="qrcode-print-canvas-area">
                         <QRCodeRenderer 
-                          value={getStudentQRIdentifier(selectedPrintSiswa)} 
+                          value={getStudentQRIdentifier(selectedPrintSiswa, siswaList)} 
                           label={selectedPrintSiswa.statusDapodik === 'Belum Dapodik' ? `NIK: ${selectedPrintSiswa.nik || selectedPrintSiswa.nis}` : `NIS: ${selectedPrintSiswa.nis}`}
                         />
                       </div>

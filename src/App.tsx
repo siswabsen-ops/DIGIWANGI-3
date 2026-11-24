@@ -37,9 +37,7 @@ import {
   validateFirestoreConnection,
   saveSiswaToFirestore, 
   deleteSiswaFromFirestore, 
-  savePresensiToFirestore, 
   savePresensiShardToFirestore,
-  deletePresensiFromFirestore, 
   deletePresensiShardFromFirestore,
   clearPresensiInFirestore, 
   saveAccountToFirestore, 
@@ -48,12 +46,11 @@ import {
   syncAllStudentsToFirestore,
   syncMasterStudentsToCloud,
   syncMasterWaliKelasToCloud,
-  syncMasterPresensiToCloud,
-  fetchCloudSyncPresensiOnce,
-  fetchAllLivePresensiShardsOnce,
+  fetchTodayShardOnce,
   fetchSettingsFromFirestoreOnce,
   DeletedTombstone,
-  getIsQuotaExhausted
+  getIsReadQuotaExhausted,
+  getIsWriteQuotaExhausted
 } from './lib/firebase';
 import {
   googleSignIn,
@@ -394,16 +391,25 @@ export default function App() {
     const bootToday = getLocalDateString();
     validateFirestoreConnection().catch(() => {});
 
-    // 1. Initial Cloud Master Load on Mount (Server + Firestore shards/collection recovery + Vercel static fallback)
-    Promise.all([
-      fetchCloudMasterData(),
-      fetchCloudSyncPresensiOnce().catch(() => null),
-      fetchAllLivePresensiShardsOnce(bootToday).catch(() => ({ records: [] as Presensi[], deletedKeys: {} as Record<string, number> })),
-      fetchSettingsFromFirestoreOnce().catch(() => null)
-    ]).then(async ([serverData, cloudSyncSnap, shardSnap, firestoreSettingsFromMount]) => {
+    // 1. Initial Cloud Master Load on Mount (Express server-first; single-read today shard recovery; Firestore fallback on static host)
+    (async () => {
+      const serverData = await fetchCloudMasterData();
       if (!isMounted) return;
 
-      const fallbackData = !serverData ? await fetchFirestoreMasterFallback(bootToday).catch(() => null) : null;
+      let fallbackData: Awaited<ReturnType<typeof fetchFirestoreMasterFallback>> = null;
+      let shardSnap: { records: Presensi[]; deletedKeys: Record<string, number> } | null = null;
+      let firestoreSettingsFromMount: SystemSettings | null = null;
+
+      if (!serverData) {
+        fallbackData = await fetchFirestoreMasterFallback(bootToday).catch(() => null);
+      } else if (!getIsReadQuotaExhausted()) {
+        const [todayShard, remoteSettings] = await Promise.all([
+          fetchTodayShardOnce(bootToday).catch(() => ({ records: [] as Presensi[], deletedKeys: {} as Record<string, number> })),
+          fetchSettingsFromFirestoreOnce().catch(() => null)
+        ]);
+        shardSnap = todayShard;
+        firestoreSettingsFromMount = remoteSettings;
+      }
       if (!isMounted) return;
 
       const data = serverData || fallbackData;
@@ -452,14 +458,11 @@ export default function App() {
       }
 
       mergeIncomingDeletedKeys(data?.deletedKeys);
-      mergeIncomingDeletedKeys(cloudSyncSnap?.deletedKeys);
       mergeIncomingDeletedKeys(shardSnap?.deletedKeys);
 
       const serverPresensi = Array.isArray(serverData?.presensi) ? serverData!.presensi : [];
-      const firestorePresensi = Array.isArray(cloudSyncSnap?.data)
-        ? cloudSyncSnap!.data
-        : (Array.isArray(fallbackData?.presensi) ? fallbackData!.presensi : []);
-      const shardRecords = Array.isArray(shardSnap?.records) ? shardSnap.records : [];
+      const firestorePresensi = Array.isArray(fallbackData?.presensi) ? fallbackData!.presensi : [];
+      const shardRecords = Array.isArray(shardSnap?.records) ? shardSnap!.records : [];
 
       const merged = mergePresensiLists(
         mergePresensiLists(PRESENSI_INITIAL, latestPresensiRef.current, activeStudents, deletedTombstonesRef.current),
@@ -535,7 +538,7 @@ export default function App() {
         setAccountsList(data.accounts);
         safeSetItem('karapres3_accounts_v4', JSON.stringify(data.accounts));
       }
-    });
+    })();
 
     return () => {
       isMounted = false;
@@ -1146,13 +1149,10 @@ export default function App() {
     setPresensiList(nextList);
 
     const operatorName = currentUser?.namaLengkap || 'Operator WA Gateway';
-    const tombstones = toTombstoneArray(deletedTombstonesRef.current);
     changedRecords.slice(0, 60).forEach((rec) => {
-      savePresensiToFirestore(rec).catch(() => {});
       savePresensiShardToFirestore(rec).catch(() => {});
       recordSinglePresensiToCloud(rec, operatorName).catch(() => {});
     });
-    syncMasterPresensiToCloud(nextList, operatorName, tombstones).catch(() => {});
   }, [currentUser]);
 
   // Record a scanned or manually marked attendance (100% atomic, side-effect-free state update)
@@ -1201,12 +1201,9 @@ export default function App() {
     setPresensiList(updatedList);
 
     const operatorName = currentUser?.namaLengkap || 'Scanner Piket';
-    const tombstones = toTombstoneArray(deletedTombstonesRef.current);
-    // Write atomically to both per-record doc AND daily shard (zero debounce, zero cross-device overwrite)
-    savePresensiToFirestore(enrichedPresensi).catch(() => {});
+    // Atomic 1-doc daily shard write + instant Express server sync (cuts Firestore writes by ~85% per scan)
     savePresensiShardToFirestore(enrichedPresensi).catch(() => {});
     recordSinglePresensiToCloud(enrichedPresensi, operatorName).catch(() => {});
-    syncMasterPresensiToCloud(updatedList, operatorName, tombstones).catch(() => {});
 
     // Automatically dispatch WhatsApp notification directly & exclusively to Parents and sync honest delivery status
     sendAutomaticWhatsAppNotification(enrichedPresensi, matchedSiswa, settings)
@@ -1240,9 +1237,10 @@ export default function App() {
           latestPresensiRef.current = syncedList;
           persistPresensiToStorage(syncedList);
           setPresensiList(syncedList);
-          savePresensiToFirestore(syncedRecord).catch(() => {});
-          savePresensiShardToFirestore(syncedRecord).catch(() => {});
           recordSinglePresensiToCloud(syncedRecord, operatorName).catch(() => {});
+          if (mappedStatus === 'Terkirim') {
+            savePresensiShardToFirestore(syncedRecord).catch(() => {});
+          }
         }
       })
       .catch((err) => {
@@ -1288,8 +1286,6 @@ export default function App() {
     setPresensiList(updatedList);
 
     const operatorName = currentUser?.namaLengkap || 'Wali Kelas';
-    const tombstones = toTombstoneArray(deletedTombstonesRef.current);
-    deletePresensiFromFirestore(recordId, siswa.id, normDate).catch(() => {});
     if (siswa.id) {
       deletePresensiShardFromFirestore(siswa.id, normDate).catch(() => {});
     }
@@ -1297,7 +1293,6 @@ export default function App() {
       { recordId, siswaId: siswa.id, tanggal: normDate },
       operatorName
     ).catch(() => {});
-    syncMasterPresensiToCloud(updatedList, operatorName, tombstones).catch(() => {});
 
     addActivityLog('Reset Presensi Siswa', `Mengembalikan status presensi ${siswa.nama} (${siswa.kelas}) tanggal ${normDate} menjadi Belum Absen.`);
     triggerNotice(`Status presensi ${siswa.nama} dikembalikan menjadi Belum Absen.`, 'info');
@@ -1313,7 +1308,7 @@ export default function App() {
     setShowClearPresensiConfirm(true);
   };
 
-  const isQuotaExhausted = getIsQuotaExhausted();
+  const isQuotaExhausted = getIsReadQuotaExhausted() || getIsWriteQuotaExhausted();
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-blue-200">

@@ -23,7 +23,7 @@ export function triggerFileDownload(blob: Blob, filename: string) {
 /**
  * Generate a high quality student QR card on an offscreen HTML5 canvas
  */
-export async function generateStudentQRCardCanvas(siswa: Siswa): Promise<HTMLCanvasElement> {
+export async function generateStudentQRCardCanvas(siswa: Siswa, allStudents?: Siswa[]): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
   const width = 600;
   const height = 820;
@@ -63,7 +63,7 @@ export async function generateStudentQRCardCanvas(siswa: Siswa): Promise<HTMLCan
   ctx.fillText('SDN 3 KARAMATWANGI', width / 2, 95);
 
   // Generate QR Code Image data
-  const qrPayload = getStudentQRIdentifier(siswa);
+  const qrPayload = getStudentQRIdentifier(siswa, allStudents);
   const qrDataUrl = await QRCode.toDataURL(qrPayload, {
     width: 380,
     margin: 1.5,
@@ -157,8 +157,8 @@ export async function generateStudentQRCardCanvas(siswa: Siswa): Promise<HTMLCan
 /**
  * Download a single student QR card as PNG
  */
-export async function downloadSingleStudentQR(siswa: Siswa) {
-  const canvas = await generateStudentQRCardCanvas(siswa);
+export async function downloadSingleStudentQR(siswa: Siswa, allStudents?: Siswa[]) {
+  const canvas = await generateStudentQRCardCanvas(siswa, allStudents);
   canvas.toBlob((blob) => {
     if (!blob) return;
     const cleanName = siswa.nama.replace(/[^a-zA-Z0-9]/g, '_');
@@ -174,8 +174,10 @@ export async function downloadSingleStudentQR(siswa: Siswa) {
 export async function downloadClassQRZip(
   targetKelas: string,
   siswaList: Siswa[],
-  onProgress?: (current: number, total: number, currentName: string) => void
+  onProgress?: (current: number, total: number, currentName: string) => void,
+  allStudents?: Siswa[]
 ): Promise<void> {
+  const catalogForUniqueness = allStudents && allStudents.length > 0 ? allStudents : siswaList;
   const studentsToExport = siswaList.filter((s) => {
     if (targetKelas === 'Semua Kelas' || !targetKelas) return true;
     return s.kelas.trim().toLowerCase() === targetKelas.trim().toLowerCase();
@@ -200,7 +202,7 @@ export async function downloadClassQRZip(
   for (let i = 0; i < studentsToExport.length; i++) {
     const student = studentsToExport[i];
     const indexStr = String(i + 1).padStart(2, '0');
-    const qrPayload = getStudentQRIdentifier(student);
+    const qrPayload = getStudentQRIdentifier(student, catalogForUniqueness);
 
     if (onProgress) {
       onProgress(i + 1, studentsToExport.length, student.nama);
@@ -220,7 +222,7 @@ export async function downloadClassQRZip(
     ]);
 
     // Render Canvas
-    const canvas = await generateStudentQRCardCanvas(student);
+    const canvas = await generateStudentQRCardCanvas(student, catalogForUniqueness);
     
     // Convert to PNG blob/arrayBuffer
     const pngBase64 = canvas.toDataURL('image/png').split(',')[1];

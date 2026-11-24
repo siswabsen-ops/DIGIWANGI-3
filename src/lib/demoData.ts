@@ -1,6 +1,8 @@
 import { Siswa, User, SystemSettings, Presensi, ActivityLog, JadwalPresensi, DAFTAR_KELAS, WaliKelas } from '../types';
 import realStudents from './realStudents.json';
+import livePresensiSeed from './livePresensiSeed.json';
 import { generateFullSemesterPresensi } from './semesterPresensiGenerator';
+import { mergePresensiLists } from './attendanceUtils';
 
 export const STUDENT_CATALOG_VERSION = 26;
 
@@ -42,6 +44,23 @@ export const DEFAULT_JADWAL_PRESENSI: JadwalPresensi[] = [
     jamPulang: '16:30',
     isAktif: true,
     keterangan: 'Jadwal presensi shift siang untuk kelas 1A sampai 6B'
+  },
+  {
+    id: 'jdw-1795376933198',
+    nama: 'Jadwal Siang Kelas 1–6',
+    tipe: 'Pagi',
+    kelas: [
+      'Kelas 4-A', 'Kelas 4-B',
+      'Kelas 5-A', 'Kelas 5-B',
+      'Kelas 6-A', 'Kelas 6-B',
+      'Kelas 1-B', 'Kelas 2-B', 'Kelas 3-B'
+    ],
+    hari: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+    jamMasuk: '07:00',
+    jamToleransi: '07:30',
+    jamPulang: '12:30',
+    isAktif: true,
+    keterangan: 'Jadwal presensi shift siang untuk seluruh kelas 1 sampai 6 (1A–6B)'
   }
 ];
 
@@ -156,7 +175,8 @@ Semoga selamat sampai di rumah. Terima kasih.`,
   isGoogleConnected: true,
   isWhatsAppConnected: true,
   waApiKey: 'KARA3_WS_GATEWAY_v2',
-  serverWaNumber: '08214134551'
+  serverWaNumber: '08214134551',
+  updatedAt: 1795381983784
 };
 
 // Log awal untuk realistis harian
@@ -267,5 +287,9 @@ const getTodayDateStr = (): string => {
 
 const todayDate = getTodayDateStr();
 
-export const PRESENSI_INITIAL: Presensi[] = generateFullSemesterPresensi(SISWA_INITIAL);
+export const PRESENSI_INITIAL: Presensi[] = mergePresensiLists(
+  generateFullSemesterPresensi(SISWA_INITIAL),
+  livePresensiSeed as Presensi[],
+  SISWA_INITIAL
+);
 

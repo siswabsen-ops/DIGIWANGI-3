@@ -227,7 +227,7 @@ function GuruPanel({
       setQrProgress({ current: 0, total: classStudents.length, name: 'Memulai pengemasan...' });
       await downloadClassQRZip(targetedKelas, classStudents, (current, total, name) => {
         setQrProgress({ current, total, name });
-      });
+      }, siswaList);
       setSuccessMsg(`Berhasil mengunduh paket ZIP QR Code ${targetedKelas} (${classStudents.length} siswa)!`);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
@@ -241,7 +241,7 @@ function GuruPanel({
 
   const handleDownloadSingleQR = async (siswa: Siswa) => {
     try {
-      await downloadSingleStudentQR(siswa);
+      await downloadSingleStudentQR(siswa, siswaList);
       setSuccessMsg(`QR Code ${siswa.nama} berhasil diunduh.`);
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {

@@ -297,6 +297,214 @@ if (!fs.existsSync(PRESENSI_FILE)) {
 async function startServer() {
   const app = express();
 
+  const BASE_FIRESTORE_REST =
+    "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1";
+  let firestoreQuotaCooldownUntil = 0;
+  const isFirestoreCooldownActive = () => Date.now() < firestoreQuotaCooldownUntil;
+  const markFirestoreQuotaCooldown = () => {
+    firestoreQuotaCooldownUntil = Date.now() + 10 * 60 * 1000;
+  };
+
+  const fromFirestoreValue = (val: any): any => {
+    if (!val || typeof val !== "object") return val;
+    if ("stringValue" in val) return val.stringValue;
+    if ("integerValue" in val) return Number(val.integerValue);
+    if ("doubleValue" in val) return Number(val.doubleValue);
+    if ("booleanValue" in val) return Boolean(val.booleanValue);
+    if ("nullValue" in val) return null;
+    if ("timestampValue" in val) return val.timestampValue;
+    if ("arrayValue" in val) {
+      return Array.isArray(val.arrayValue?.values) ? val.arrayValue.values.map(fromFirestoreValue) : [];
+    }
+    if ("mapValue" in val) {
+      const out: Record<string, any> = {};
+      const fields = val.mapValue?.fields || {};
+      for (const k of Object.keys(fields)) {
+        out[k] = fromFirestoreValue(fields[k]);
+      }
+      return out;
+    }
+    return val;
+  };
+
+  const toFirestoreValue = (val: any): any => {
+    if (val === null || val === undefined) return { nullValue: null };
+    if (typeof val === "boolean") return { booleanValue: val };
+    if (typeof val === "number") {
+      if (!Number.isFinite(val)) return { nullValue: null };
+      return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+    }
+    if (typeof val === "string") return { stringValue: val };
+    if (Array.isArray(val)) {
+      return { arrayValue: { values: val.filter((v) => v !== undefined).map(toFirestoreValue) } };
+    }
+    if (typeof val === "object") {
+      const fields: Record<string, any> = {};
+      for (const [k, v] of Object.entries(val)) {
+        if (v !== undefined) fields[k] = toFirestoreValue(v);
+      }
+      return { mapValue: { fields } };
+    }
+    return { stringValue: String(val) };
+  };
+
+  const decodeDocFields = (fields: any): Record<string, any> => {
+    const out: Record<string, any> = {};
+    if (!fields || typeof fields !== "object") return out;
+    for (const k of Object.keys(fields)) out[k] = fromFirestoreValue(fields[k]);
+    return out;
+  };
+
+  const encodeDocFields = (obj: Record<string, any>): Record<string, any> => {
+    const fields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined) fields[k] = toFirestoreValue(v);
+    }
+    return fields;
+  };
+
+  const sanitizeShardRecordForRest = (p: any, normDate: string) => ({
+    id: String(p.id || `pr-${p.siswaId || p.nis || "sis"}-${normDate}`),
+    siswaId: p.siswaId ? String(p.siswaId) : undefined,
+    nis: p.nis ? String(p.nis) : undefined,
+    nama: String(p.nama || ""),
+    kelas: String(p.kelas || ""),
+    tanggal: normDate,
+    waktu: String(p.waktu || ""),
+    status: String(p.status || "Hadir"),
+    metode: String(p.metode || "QR_SCAN"),
+    waSentStatus: p.waSentStatus ? String(p.waSentStatus) : "Pending",
+    waOrangTua: p.waOrangTua ? String(p.waOrangTua) : undefined,
+    catatan: p.catatan ? String(p.catatan) : undefined,
+    updatedAt: typeof p.updatedAt === "number" ? p.updatedAt : Date.now()
+  });
+
+  const pushShardsToFirestoreOnce = async (targetDates?: string[], includeSettings = false): Promise<{ pushedDates: string[]; skippedCooldown: boolean }> => {
+    if (isFirestoreCooldownActive()) {
+      return { pushedDates: [], skippedCooldown: true };
+    }
+
+    const todayWib = getLocalDateString(new Date());
+    const datesToPush = Array.from(
+      new Set((targetDates && targetDates.length > 0 ? targetDates : [todayWib]).map(normalizeDateKey).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))
+    );
+
+    const allPresensi = getCachedPresensi();
+    const tombstones = getDeletedTombstoneMap();
+    const pushedDates: string[] = [];
+
+    for (const d of datesToPush) {
+      if (isFirestoreCooldownActive()) break;
+
+      const dayRecords: Record<string, any> = {};
+      for (const p of allPresensi) {
+        if (normalizeDateKey(p.tanggal) === d) {
+          const recKey = String(p.siswaId || p.nis || p.id || "").trim();
+          if (recKey) {
+            dayRecords[recKey] = sanitizeShardRecordForRest(p, d);
+          }
+        }
+      }
+
+      const dayDeleted: Record<string, number> = {};
+      for (const [k, ts] of Object.entries(tombstones)) {
+        if (k.endsWith(`__${d}`)) {
+          const sid = k.slice(0, k.length - d.length - 2);
+          if (sid) dayDeleted[sid] = typeof ts === "number" ? ts : Date.now();
+        }
+      }
+
+      try {
+        const shardPayload = encodeDocFields({
+          tanggal: d,
+          records: dayRecords,
+          deleted: dayDeleted,
+          updatedAt: Date.now(),
+          updatedBy: "Server Express Bridge"
+        });
+        const mask = ["tanggal", "records", "deleted", "updatedAt", "updatedBy"]
+          .map((f) => `updateMask.fieldPaths=${encodeURIComponent(f)}`)
+          .join("&");
+
+        const resp = await fetch(`${BASE_FIRESTORE_REST}/documents/sync/day_${d}?${mask}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fields: shardPayload }),
+          signal: AbortSignal.timeout(7000)
+        }).catch(() => null);
+
+        if (resp?.status === 429) {
+          markFirestoreQuotaCooldown();
+          return { pushedDates, skippedCooldown: true };
+        }
+        if (resp && resp.ok) {
+          pushedDates.push(d);
+          const idxResp = await fetch(
+            `${BASE_FIRESTORE_REST}/documents/sync/day_index?updateMask.fieldPaths=${encodeURIComponent(`dates.${d}`)}&updateMask.fieldPaths=updatedAt`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fields: {
+                  dates: { mapValue: { fields: { [d]: { booleanValue: true } } } },
+                  updatedAt: { integerValue: String(Date.now()) }
+                }
+              }),
+              signal: AbortSignal.timeout(6000)
+            }
+          ).catch(() => null);
+          if (idxResp?.status === 429) {
+            markFirestoreQuotaCooldown();
+            return { pushedDates, skippedCooldown: true };
+          }
+        }
+      } catch {
+        // Non-blocking shard push
+      }
+    }
+
+    if (includeSettings && !isFirestoreCooldownActive()) {
+      const localSettings = readJsonFile<any>(SETTINGS_FILE, null);
+      if (localSettings && typeof localSettings === "object") {
+        try {
+          const settingsResp = await fetch(`${BASE_FIRESTORE_REST}/documents/settings/system`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fields: encodeDocFields(localSettings) }),
+            signal: AbortSignal.timeout(7000)
+          }).catch(() => null);
+          if (settingsResp?.status === 429) {
+            markFirestoreQuotaCooldown();
+            return { pushedDates, skippedCooldown: true };
+          }
+        } catch {
+          // Non-blocking settings push
+        }
+      }
+    }
+
+    return { pushedDates, skippedCooldown: false };
+  };
+
+  let pendingSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingShardDates = new Set<string>();
+  let pendingSyncSettings = false;
+
+  const scheduleFirestoreShardSync = (dateKey?: string, includeSettings = false) => {
+    if (isFirestoreCooldownActive()) return;
+    if (dateKey) pendingShardDates.add(normalizeDateKey(dateKey));
+    if (includeSettings) pendingSyncSettings = true;
+    if (pendingSyncTimer) return;
+    pendingSyncTimer = setTimeout(() => {
+      pendingSyncTimer = null;
+      const dates = Array.from(pendingShardDates);
+      const syncSettings = pendingSyncSettings;
+      pendingShardDates.clear();
+      pendingSyncSettings = false;
+      pushShardsToFirestoreOnce(dates, syncSettings).catch(() => {});
+    }, 5000);
+  };
+
   // Allow ample JSON body for bulk student & attendance lists
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -448,6 +656,7 @@ async function startServer() {
 
       saveCachedPresensi(updatedRecords);
       incrementSyncVersion(`Record Presensi: ${normalizedRecord.nama} (${normalizedRecord.kelas} - ${normalizedRecord.status}) by ${updatedBy || 'Scanner'}`);
+      scheduleFirestoreShardSync(normDate, false);
       res.json({ success: true, version: syncVersion, total: updatedRecords.length, record: normalizedRecord });
     } catch (err: any) {
       console.error("[Server Presensi Record Error]:", err);
@@ -498,6 +707,7 @@ async function startServer() {
 
       saveCachedPresensi(filtered);
       incrementSyncVersion(`Reset Presensi (${resolvedSiswaId || recordId} on ${normDate}) by ${updatedBy || 'Wali Kelas'}`);
+      scheduleFirestoreShardSync(normDate, false);
       res.json({ success: true, version: syncVersion, total: filtered.length });
     } catch (err: any) {
       console.error("[Server Presensi Delete Error]:", err);
@@ -560,7 +770,19 @@ async function startServer() {
     };
     writeJsonFile(SETTINGS_FILE, savedSettings);
     incrementSyncVersion(`Update Settings by ${updatedBy || 'user'}`);
+    scheduleFirestoreShardSync(undefined, true);
     res.json({ success: true, version: syncVersion, settings: savedSettings });
+  });
+
+  app.post("/api/sync/push-firestore", async (req, res) => {
+    try {
+      const targetDates = Array.isArray(req.body?.dates) ? req.body.dates : undefined;
+      const includeSettings = req.body?.includeSettings !== false;
+      const result = await pushShardsToFirestoreOnce(targetDates, includeSettings);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to push shards to Firestore" });
+    }
   });
 
   // 7. Sync Operator Accounts
@@ -1063,36 +1285,8 @@ async function startServer() {
   }
 
   // Non-blocking startup Firestore REST hydration when local live records are missing
-  const fromFirestoreValue = (val: any): any => {
-    if (!val || typeof val !== "object") return val;
-    if ("stringValue" in val) return val.stringValue;
-    if ("integerValue" in val) return Number(val.integerValue);
-    if ("doubleValue" in val) return Number(val.doubleValue);
-    if ("booleanValue" in val) return Boolean(val.booleanValue);
-    if ("nullValue" in val) return null;
-    if ("timestampValue" in val) return val.timestampValue;
-    if ("arrayValue" in val) {
-      return Array.isArray(val.arrayValue?.values) ? val.arrayValue.values.map(fromFirestoreValue) : [];
-    }
-    if ("mapValue" in val) {
-      const out: Record<string, any> = {};
-      const fields = val.mapValue?.fields || {};
-      for (const k of Object.keys(fields)) {
-        out[k] = fromFirestoreValue(fields[k]);
-      }
-      return out;
-    }
-    return val;
-  };
-
   const hydrateFromFirestoreOnce = async () => {
-    const baseFirestore = "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1";
-    const decodeDocFields = (fields: any): Record<string, any> => {
-      const out: Record<string, any> = {};
-      if (!fields || typeof fields !== "object") return out;
-      for (const k of Object.keys(fields)) out[k] = fromFirestoreValue(fields[k]);
-      return out;
-    };
+    if (isFirestoreCooldownActive()) return;
 
     try {
       const incomingCloudRecords: any[] = [];
@@ -1101,11 +1295,16 @@ async function startServer() {
       const yDt = new Date(Date.UTC(ty || 2026, (tm || 1) - 1, (td || 1) - 1));
       const yesterdayWib = `${yDt.getUTCFullYear()}-${String(yDt.getUTCMonth() + 1).padStart(2, "0")}-${String(yDt.getUTCDate()).padStart(2, "0")}`;
 
-      // 1. Fetch sync/presensi + sync/day_index in parallel
+      // 1. Fetch sync/presensi + sync/day_index in parallel (2 reads)
       const [syncPresensiResp, dayIndexResp] = await Promise.all([
-        fetch(`${baseFirestore}/documents/sync/presensi`, { signal: AbortSignal.timeout(7000) }).catch(() => null),
-        fetch(`${baseFirestore}/documents/sync/day_index`, { signal: AbortSignal.timeout(7000) }).catch(() => null)
+        fetch(`${BASE_FIRESTORE_REST}/documents/sync/presensi`, { signal: AbortSignal.timeout(7000) }).catch(() => null),
+        fetch(`${BASE_FIRESTORE_REST}/documents/sync/day_index`, { signal: AbortSignal.timeout(7000) }).catch(() => null)
       ]);
+
+      if (syncPresensiResp?.status === 429 || dayIndexResp?.status === 429) {
+        markFirestoreQuotaCooldown();
+        return;
+      }
 
       if (syncPresensiResp && syncPresensiResp.ok) {
         const docJson = await syncPresensiResp.json();
@@ -1132,7 +1331,7 @@ async function startServer() {
         }
       }
 
-      // 2. Fetch all indexed daily shards (sync/day_{YYYY-MM-DD})
+      // 2. Fetch recent indexed daily shards (last 30 days)
       const shardDatesSet = new Set<string>([todayWib, yesterdayWib]);
       if (dayIndexResp && dayIndexResp.ok) {
         const idxJson = await dayIndexResp.json();
@@ -1144,20 +1343,31 @@ async function startServer() {
         }
       }
 
-      const shardDates = Array.from(shardDatesSet).sort().slice(-90);
+      const foundShardDates = new Set<string>();
+      const shardDates = Array.from(shardDatesSet).sort().slice(-30);
       for (let i = 0; i < shardDates.length; i += 8) {
+        if (isFirestoreCooldownActive()) return;
         const chunk = shardDates.slice(i, i + 8);
         const shardResps = await Promise.all(
-          chunk.map((d) =>
-            fetch(`${baseFirestore}/documents/sync/day_${d}`, { signal: AbortSignal.timeout(6000) })
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null)
-          )
+          chunk.map(async (d) => {
+            try {
+              const r = await fetch(`${BASE_FIRESTORE_REST}/documents/sync/day_${d}`, { signal: AbortSignal.timeout(6000) });
+              if (r.status === 429) {
+                markFirestoreQuotaCooldown();
+                return null;
+              }
+              return r.ok ? await r.json() : null;
+            } catch {
+              return null;
+            }
+          })
         );
+        if (isFirestoreCooldownActive()) return;
         for (const sJson of shardResps) {
           const sFields = sJson?.fields;
           if (!sFields) continue;
-          const shardDate = sFields.tanggal ? fromFirestoreValue(sFields.tanggal) : "";
+          const shardDate = sFields.tanggal ? normalizeDateKey(String(fromFirestoreValue(sFields.tanggal))) : "";
+          if (shardDate) foundShardDates.add(shardDate);
           const recsObj = sFields.records ? fromFirestoreValue(sFields.records) : {};
           const delsObj = sFields.deleted ? fromFirestoreValue(sFields.deleted) : {};
           if (delsObj && typeof delsObj === "object" && shardDate) {
@@ -1175,9 +1385,12 @@ async function startServer() {
         }
       }
 
-      // 3. Also query recent direct presensi docs for today & yesterday to recover any orphaned gate scans
+      // 3. Only query direct presensi docs for today/yesterday if their shard doc was missing
       for (const targetD of [todayWib, yesterdayWib]) {
-        const qResp = await fetch(`${baseFirestore}/documents:runQuery`, {
+        if (isFirestoreCooldownActive()) return;
+        if (foundShardDates.has(targetD)) continue;
+
+        const qResp = await fetch(`${BASE_FIRESTORE_REST}/documents:runQuery`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1195,6 +1408,10 @@ async function startServer() {
           }),
           signal: AbortSignal.timeout(6000)
         }).catch(() => null);
+        if (qResp?.status === 429) {
+          markFirestoreQuotaCooldown();
+          return;
+        }
         if (qResp && qResp.ok) {
           const rows: any = await qResp.json().catch(() => []);
           if (Array.isArray(rows)) {
@@ -1219,7 +1436,12 @@ async function startServer() {
       }
 
       // 4. Hydrate settings/system when missing locally or when Firestore holds a strictly newer timestamp
-      const settingsResp = await fetch(`${baseFirestore}/documents/settings/system`, { signal: AbortSignal.timeout(7000) }).catch(() => null);
+      if (isFirestoreCooldownActive()) return;
+      const settingsResp = await fetch(`${BASE_FIRESTORE_REST}/documents/settings/system`, { signal: AbortSignal.timeout(7000) }).catch(() => null);
+      if (settingsResp?.status === 429) {
+        markFirestoreQuotaCooldown();
+        return;
+      }
       if (settingsResp && settingsResp.ok) {
         const settingsJson = await settingsResp.json();
         const sFields = settingsJson?.fields;
@@ -1232,6 +1454,20 @@ async function startServer() {
             writeJsonFile(SETTINGS_FILE, remoteSettings);
             incrementSyncVersion("Hydrate System Settings from Firestore");
             console.log(`[Cloud Settings] Terhidrasi dari Firestore settings/system.`);
+          }
+        }
+      }
+
+      // 5. Replicate local live records/settings to Firestore shards if shards were missing and quota allows
+      if (!isFirestoreCooldownActive()) {
+        const missingShardDates = [todayWib, yesterdayWib].filter((d) => !foundShardDates.has(d));
+        if (missingShardDates.length > 0) {
+          const existingLocal = getCachedPresensi();
+          const datesWithLocal = missingShardDates.filter((d) =>
+            existingLocal.some((p: any) => normalizeDateKey(p.tanggal) === d)
+          );
+          if (datesWithLocal.length > 0) {
+            pushShardsToFirestoreOnce(datesWithLocal, true).catch(() => {});
           }
         }
       }

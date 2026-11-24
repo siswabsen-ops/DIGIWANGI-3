@@ -145,9 +145,11 @@ function ScanScreen({
 
         if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
           const video = videoRef.current;
-          // Downsample block: using standard sizes for jsQR makes processing lightning fast
-          const width = 480;
-          const height = 360;
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 480;
+          const scale = Math.min(1, 640 / Math.max(vw, vh));
+          const width = Math.max(1, Math.round(vw * scale));
+          const height = Math.max(1, Math.round(vh * scale));
           canvas.width = width;
           canvas.height = height;
 
@@ -251,13 +253,19 @@ function ScanScreen({
       setScannerStatus('SCANNING');
       setErrorMsg('');
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
         setCameraStream(stream);
       } catch (err) {
         console.warn('Webcam access was restricted, fallback to simulator webcam stream', err);
-        setErrorMsg('Webcam asli terbatasi (atau dijalankan di sandbox). Kami mensimulasikan feed kamera sekolah dengan laser target.');
+        setErrorMsg('Webcam asli terbatasi atau izin kamera belum diberikan. Anda tetap dapat menggunakan scanner USB/Bluetooth atau simulasi kartu.');
       }
     }
   };
@@ -526,9 +534,9 @@ function ScanScreen({
   // Direct barcode card scan via clicking student cards
   const handleVirtualScan = (siswa: Siswa, forcedStatus?: StatusKehadiran) => {
     setScannerStatus('SCANNING');
-    const qrIdentifier = getStudentQRIdentifier(siswa);
+    const qrIdentifier = getStudentQRIdentifier(siswa, siswaList);
     const resolvedByCode = findStudentByCode(siswaList, qrIdentifier);
-    const safeScanCode = resolvedByCode && resolvedByCode.id !== siswa.id ? siswa.id : qrIdentifier;
+    const safeScanCode = resolvedByCode && resolvedByCode.id !== siswa.id ? `ID:${siswa.id}` : qrIdentifier;
     if (virtualScanTimeoutRef.current) {
       clearTimeout(virtualScanTimeoutRef.current);
     }
@@ -1023,13 +1031,20 @@ function ScanScreen({
             })}
 
             {filteredSimSiswa.length > simLimit && (
-              <div className="pt-2 text-center">
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSimLimit(prev => prev + 30)}
+                  onClick={() => setSimLimit(prev => prev + 50)}
                   className="text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 py-1.5 px-3 rounded-xl transition cursor-pointer"
                 >
-                  Tampilkan Murid Lainnya ({simLimit} dari {filteredSimSiswa.length})
+                  +50 Murid ({Math.min(simLimit, filteredSimSiswa.length)} / {filteredSimSiswa.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSimLimit(filteredSimSiswa.length)}
+                  className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 py-1.5 px-3 rounded-xl transition cursor-pointer"
+                >
+                  Tampilkan Semua ({filteredSimSiswa.length})
                 </button>
               </div>
             )}

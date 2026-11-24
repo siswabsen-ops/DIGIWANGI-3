@@ -573,7 +573,26 @@ const parseDayShardData = (
   return { records, deletedKeys };
 };
 
-// Fetch all live presensi shards + today's direct presensi collection docs (strict quota-safe: avoids scanning thousands of older docs per load)
+// Fetch today's single daily shard ONLY (1 single read unit) for lightweight cross-device recovery on Express host
+export const fetchTodayShardOnce = async (
+  todayDate: string = getLocalDateString()
+): Promise<{ records: Presensi[]; deletedKeys: Record<string, number> }> => {
+  const records: Presensi[] = [];
+  const deletedKeys: Record<string, number> = {};
+  if (getIsReadQuotaExhausted()) return { records, deletedKeys };
+  const normToday = normalizeDateKey(todayDate) || getLocalDateString();
+  try {
+    const snap = await getDoc(doc(db, 'sync', getDayShardDocId(normToday)));
+    if (snap.exists()) {
+      return parseDayShardData(snap.data() as DayShardPayload, normToday);
+    }
+  } catch (err) {
+    if (isQuotaError(err)) setReadQuotaExhausted(true);
+  }
+  return { records, deletedKeys };
+};
+
+// Fetch live presensi shards (strict quota-safe: avoids scanning collection('presensi') whenever daily shard already exists)
 export const fetchAllLivePresensiShardsOnce = async (
   todayDate: string = getLocalDateString(),
   liveSinceDate: string = '2026-11-01'
@@ -588,7 +607,8 @@ export const fetchAllLivePresensiShardsOnce = async (
   const normYesterday = `${yDt.getUTCFullYear()}-${String(yDt.getUTCMonth() + 1).padStart(2, '0')}-${String(yDt.getUTCDate()).padStart(2, '0')}`;
 
   try {
-    const [indexSnap, todayShardSnap, todayCollectionSnap] = await Promise.all([
+    // Only 2 Firestore reads upfront (day_index + today shard). Never scan presensi collection unless today shard is missing!
+    const [indexSnap, todayShardSnap] = await Promise.all([
       getDoc(doc(db, 'sync', 'day_index')).catch((err) => {
         if (isQuotaError(err)) setReadQuotaExhausted(true);
         return null;
@@ -596,20 +616,11 @@ export const fetchAllLivePresensiShardsOnce = async (
       getDoc(doc(db, 'sync', getDayShardDocId(normToday))).catch((err) => {
         if (isQuotaError(err)) setReadQuotaExhausted(true);
         return null;
-      }),
-      getDocs(
-        query(
-          collection(db, 'presensi'),
-          where('tanggal', '==', normToday),
-          limit(500)
-        )
-      ).catch((err) => {
-        if (isQuotaError(err)) setReadQuotaExhausted(true);
-        return null;
       })
     ]);
 
     const todayShardKeys = new Set<string>();
+    const hasTodayShard = Boolean(todayShardSnap && todayShardSnap.exists());
     if (todayShardSnap && todayShardSnap.exists()) {
       const parsed = parseDayShardData(todayShardSnap.data() as DayShardPayload, normToday);
       for (const r of parsed.records) {
@@ -619,7 +630,17 @@ export const fetchAllLivePresensiShardsOnce = async (
       Object.assign(allDeletedKeys, parsed.deletedKeys);
     }
 
-    // Fetch all other active live dates indexed in day_index (~1 read per active day instead of 2000+ collection reads)
+    let todayCollectionSnap: Awaited<ReturnType<typeof getDocs>> | null = null;
+    if (!hasTodayShard && !getIsReadQuotaExhausted()) {
+      todayCollectionSnap = await getDocs(
+        query(collection(db, 'presensi'), where('tanggal', '==', normToday), limit(500))
+      ).catch((err) => {
+        if (isQuotaError(err)) setReadQuotaExhausted(true);
+        return null;
+      });
+    }
+
+    // Fetch up to 30 recent active live dates indexed in day_index (~1 read per active day)
     const datesToFetch: string[] = [];
     let hasYesterdayInIndex = false;
     if (indexSnap && indexSnap.exists()) {
@@ -629,7 +650,7 @@ export const fetchAllLivePresensiShardsOnce = async (
         Object.keys(datesMap)
           .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d !== normToday && d >= liveSinceDate)
           .sort()
-          .slice(-90)
+          .slice(-30)
           .forEach((d) => datesToFetch.push(d));
       }
     }
@@ -757,39 +778,22 @@ export const deletePresensiFromFirestore = async (
 export const clearPresensiInFirestore = async (presensiList: Presensi[], targetDate?: string) => {
   if (getIsWriteQuotaExhausted()) return;
   const normTarget = targetDate ? normalizeDateKey(targetDate) : '';
-  const toDelete = presensiList.filter((p) => {
-    if (!p || isSyntheticDemoPresensi(p)) return false;
-    if (normTarget) return normalizeDateKey(p.tanggal) === normTarget;
-    return true;
-  });
-
-  const chunkSize = 400;
-  for (let i = 0; i < toDelete.length; i += chunkSize) {
-    if (getIsWriteQuotaExhausted()) return;
-    const chunk = toDelete.slice(i, i + chunkSize);
-    const ok = await runSafeFirestoreWrite(
-      async () => {
-        const batch = writeBatch(db);
-        chunk.forEach((p) => {
-          if (p.id) batch.delete(doc(db, 'presensi', sanitizeFirestoreDocId(p.id, 'pr')));
-        });
-        await batch.commit();
-      },
-      OperationType.DELETE,
-      'presensi/*'
-    );
-    if (!ok) return;
-  }
-
-  if (normTarget && !getIsWriteQuotaExhausted()) {
+  if (normTarget) {
     const shardId = getDayShardDocId(normTarget);
+    const nowTs = Date.now();
+    const deletedMap: Record<string, number> = {};
+    presensiList.forEach((p) => {
+      if (p && !isSyntheticDemoPresensi(p) && normalizeDateKey(p.tanggal) === normTarget && p.siswaId) {
+        deletedMap[getShardRecordFieldKey(p.siswaId)] = nowTs;
+      }
+    });
     await runSafeFirestoreWrite(
       () =>
         setDoc(doc(db, 'sync', shardId), {
           tanggal: normTarget,
-          updatedAt: Date.now(),
+          updatedAt: nowTs,
           records: {},
-          deleted: {}
+          deleted: deletedMap
         }),
       OperationType.DELETE,
       `sync/${shardId}`
