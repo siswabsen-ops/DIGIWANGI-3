@@ -38,6 +38,7 @@ import {
   saveSiswaToFirestore, 
   deleteSiswaFromFirestore, 
   savePresensiShardToFirestore,
+  saveBatchPresensiShardsToFirestore,
   deletePresensiShardFromFirestore,
   clearPresensiInFirestore, 
   saveAccountToFirestore, 
@@ -169,8 +170,11 @@ export default function App() {
         x.tanggal !== y.tanggal ||
         x.waktu !== y.waktu ||
         x.status !== y.status ||
+        x.shift !== y.shift ||
         x.metode !== y.metode ||
         x.keterangan !== y.keterangan ||
+        x.waStatus !== y.waStatus ||
+        x.pesanTerkirim !== y.pesanTerkirim ||
         x.updatedAt !== y.updatedAt
       ) {
         return false;
@@ -1149,10 +1153,8 @@ export default function App() {
     setPresensiList(nextList);
 
     const operatorName = currentUser?.namaLengkap || 'Operator WA Gateway';
-    changedRecords.slice(0, 60).forEach((rec) => {
-      savePresensiShardToFirestore(rec).catch(() => {});
-      recordSinglePresensiToCloud(rec, operatorName).catch(() => {});
-    });
+    saveBatchPresensiShardsToFirestore(changedRecords).catch(() => {});
+    syncPresensiToCloud(changedRecords, operatorName).catch(() => {});
   }, [currentUser]);
 
   // Record a scanned or manually marked attendance (100% atomic, side-effect-free state update)
@@ -1503,6 +1505,7 @@ export default function App() {
                       currentUser={currentUser}
                       onAddPresensi={handleAddPresensi}
                       onDeletePresensi={handleDeletePresensi}
+                      onUpdatePresensiWaStatus={handleUpdatePresensiWaStatus}
                     />
                   )}
 

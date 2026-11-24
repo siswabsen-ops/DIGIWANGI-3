@@ -202,8 +202,11 @@ function arePresensiArraysEqual(a: any[], b: any[]): boolean {
       x.tanggal !== y.tanggal ||
       x.waktu !== y.waktu ||
       x.status !== y.status ||
+      x.shift !== y.shift ||
       x.metode !== y.metode ||
       x.keterangan !== y.keterangan ||
+      x.waStatus !== y.waStatus ||
+      x.pesanTerkirim !== y.pesanTerkirim ||
       x.updatedAt !== y.updatedAt
     ) {
       return false;
@@ -367,15 +370,19 @@ async function startServer() {
     id: String(p.id || `pr-${p.siswaId || p.nis || "sis"}-${normDate}`),
     siswaId: p.siswaId ? String(p.siswaId) : undefined,
     nis: p.nis ? String(p.nis) : undefined,
+    nik: p.nik ? String(p.nik) : undefined,
     nama: String(p.nama || ""),
     kelas: String(p.kelas || ""),
     tanggal: normDate,
     waktu: String(p.waktu || ""),
     status: String(p.status || "Hadir"),
+    shift: p.shift ? String(p.shift) : undefined,
+    waStatus: p.waStatus ? String(p.waStatus) : "Pending",
+    pesanTerkirim: p.pesanTerkirim ? String(p.pesanTerkirim) : undefined,
+    operator: p.operator ? String(p.operator) : undefined,
     metode: String(p.metode || "QR_SCAN"),
-    waSentStatus: p.waSentStatus ? String(p.waSentStatus) : "Pending",
-    waOrangTua: p.waOrangTua ? String(p.waOrangTua) : undefined,
-    catatan: p.catatan ? String(p.catatan) : undefined,
+    metodeLabel: p.metodeLabel ? String(p.metodeLabel) : undefined,
+    keterangan: p.keterangan ? String(p.keterangan) : undefined,
     updatedAt: typeof p.updatedAt === "number" ? p.updatedAt : Date.now()
   });
 
@@ -799,15 +806,34 @@ async function startServer() {
 
   const SERVER_WA_GATEWAY_NUMBER = "08214134551";
   const PLACEHOLDER_WA_KEYS = new Set(["", "KARA3_WS_GATEWAY_v2", "DEMO_KEY"]);
+  const KNOWN_SERVER_INTL_PREFIXES = ["966", "971", "974", "886", "852", "60", "65", "62", "61", "81", "82", "44"];
 
   function formatServerWaPhone(raw?: string): string {
     if (!raw) return "";
     const trimmed = String(raw).trim();
     if (!trimmed || trimmed === "-" || trimmed.toUpperCase() === "TIDAK TERDAFTAR") return "";
+    const hasExplicitPlus = trimmed.startsWith("+");
     let clean = trimmed.replace(/\D/g, "");
     if (clean.length < 9) return "";
-    if (clean.startsWith("0")) clean = "62" + clean.slice(1);
-    else if (!clean.startsWith("62")) clean = "62" + clean;
+
+    if (clean.startsWith("00") && clean.length >= 11) {
+      clean = clean.slice(2);
+    }
+
+    if (hasExplicitPlus) {
+      if (clean.startsWith("0")) clean = "62" + clean.slice(1);
+    } else if (clean.startsWith("0")) {
+      clean = "62" + clean.slice(1);
+    } else if (clean.startsWith("62")) {
+      // Indonesian 62 format
+    } else if (KNOWN_SERVER_INTL_PREFIXES.some((p) => clean.startsWith(p)) && clean.length >= 10) {
+      // Preserved international number (e.g. Saudi Arabia 966...)
+    } else if (clean.startsWith("1") && clean.length === 11) {
+      // North America 1...
+    } else {
+      clean = "62" + clean;
+    }
+
     if (clean.length < 10 || clean.length > 16 || clean === "6281234567890") return "";
     return clean;
   }
@@ -1002,6 +1028,68 @@ async function startServer() {
 
   setInterval(purgeOldWhatsAppLogs, 60000);
 
+  function syncWaStatusIntoCachedPresensi(
+    updates: Array<{ id?: string; siswaId?: string; tanggal?: string; waStatus: "Pending" | "Terkirim" | "Gagal"; phone: string; error?: string }>
+  ) {
+    if (!updates || updates.length === 0) return;
+    const byId = new Map<string, { waStatus: "Pending" | "Terkirim" | "Gagal"; phone: string; error?: string }>();
+    const byKey = new Map<string, { waStatus: "Pending" | "Terkirim" | "Gagal"; phone: string; error?: string }>();
+
+    for (const u of updates) {
+      if (u.id) byId.set(u.id, { waStatus: u.waStatus, phone: u.phone, error: u.error });
+      if (u.siswaId && u.tanggal) {
+        byKey.set(`${u.siswaId}__${normalizeDateKey(u.tanggal)}`, { waStatus: u.waStatus, phone: u.phone, error: u.error });
+      }
+    }
+
+    const existing = getCachedPresensi();
+    const touchedDates = new Set<string>();
+    const nowTs = Date.now();
+    let changed = false;
+
+    const updated = existing.map((p: any) => {
+      const hit = byId.get(p.id) || (p.siswaId && p.tanggal ? byKey.get(`${p.siswaId}__${normalizeDateKey(p.tanggal)}`) : undefined);
+      if (!hit) return p;
+      const nextPesan =
+        hit.waStatus === "Terkirim"
+          ? `Terkirim ke WA Ortu (${hit.phone})`
+          : hit.waStatus === "Gagal"
+          ? (hit.error || (hit.phone ? `Gagal kirim ke (${hit.phone})` : "No WA Orang Tua belum diisi"))
+          : `Siap kirim ke WA Ortu (${hit.phone})`;
+      if (p.waStatus === hit.waStatus && p.pesanTerkirim === nextPesan) return p;
+      changed = true;
+      if (p.tanggal) touchedDates.add(normalizeDateKey(p.tanggal));
+      return {
+        ...p,
+        waStatus: hit.waStatus,
+        pesanTerkirim: nextPesan,
+        updatedAt: nowTs
+      };
+    });
+
+    if (changed) {
+      saveCachedPresensi(updated);
+      incrementSyncVersion(`Update WA Delivery Status (${touchedDates.size} day(s))`);
+      touchedDates.forEach((d) => scheduleFirestoreShardSync(d, false));
+    }
+  }
+
+  // 7b. Expose active gateway capability (without exposing secret keys)
+  app.get("/api/whatsapp/status", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    const config = resolveServerGatewayConfig();
+    const hasToken = Boolean(config.apiKey) && !PLACEHOLDER_WA_KEYS.has(config.apiKey);
+    const hasWebhook = config.provider === "webhook" && Boolean(config.gatewayUrl);
+    const apiConfigured = config.provider !== "direct" && (hasToken || hasWebhook);
+    res.json({
+      success: true,
+      hasBackend: true,
+      apiConfigured,
+      provider: config.provider,
+      serverWaNumber: config.serverWaNumber
+    });
+  });
+
   // 8. Automatic WhatsApp Gateway notification dispatch
   app.post("/api/whatsapp/send-gateway", async (req, res) => {
     try {
@@ -1037,6 +1125,17 @@ async function startServer() {
         existingLogs.unshift(failLog);
         if (existingLogs.length > 400) existingLogs.length = 400;
         writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
+
+        if (presensi?.id || (presensi?.siswaId && presensi?.tanggal)) {
+          syncWaStatusIntoCachedPresensi([{
+            id: presensi.id,
+            siswaId: presensi.siswaId,
+            tanggal: presensi.tanggal,
+            waStatus: "Gagal",
+            phone: "",
+            error: failLog.error
+          }]);
+        }
 
         res.json({
           success: false,
@@ -1081,6 +1180,23 @@ async function startServer() {
       if (existingLogs.length > 400) existingLogs.length = 400;
       writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
 
+      if (presensi?.id || (presensi?.siswaId && presensi?.tanggal)) {
+        const mappedWaStatus: "Pending" | "Terkirim" | "Gagal" =
+          dispatchRes.deliveryStatus === "DELIVERED"
+            ? "Terkirim"
+            : dispatchRes.deliveryStatus === "FAILED"
+            ? "Gagal"
+            : "Pending";
+        syncWaStatusIntoCachedPresensi([{
+          id: presensi.id,
+          siswaId: presensi.siswaId,
+          tanggal: presensi.tanggal,
+          waStatus: mappedWaStatus,
+          phone: cleanPhone,
+          error: dispatchRes.error
+        }]);
+      }
+
       res.json({
         success: dispatchRes.deliveryStatus !== "FAILED",
         messageId,
@@ -1115,7 +1231,8 @@ async function startServer() {
       let sentApi = 0;
       let queuedDirect = 0;
       let failedCount = 0;
-      const results: Array<{ phone: string; deliveryStatus: string; gateway: string; error?: string }> = [];
+      const results: Array<{ id?: string; siswaId?: string; tanggal?: string; messageId?: string; phone: string; deliveryStatus: string; gateway: string; error?: string }> = [];
+      const presensiUpdates: Array<{ id?: string; siswaId?: string; tanggal?: string; waStatus: "Pending" | "Terkirim" | "Gagal"; phone: string; error?: string }> = [];
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
@@ -1128,8 +1245,9 @@ async function startServer() {
 
         if (!cleanPhone) {
           failedCount++;
+          const failId = `wa-bcast-fail-${Date.now()}-${i}`;
           const failEntry = {
-            id: `wa-bcast-fail-${Date.now()}-${i}`,
+            id: failId,
             serverWaNumber: config.serverWaNumber,
             recipientRole: "orang_tua",
             recipientName: recipientName || `Orang Tua ${studentName}`,
@@ -1144,7 +1262,8 @@ async function startServer() {
             error: "Nomor WA Orang Tua belum diisi atau tidak valid"
           };
           existingLogs.unshift(failEntry);
-          results.push({ phone: "", deliveryStatus: "FAILED", gateway: "VALIDATION", error: failEntry.error });
+          results.push({ id: presensi?.id, siswaId: presensi?.siswaId, tanggal: presensi?.tanggal, messageId: failId, phone: "", deliveryStatus: "FAILED", gateway: "VALIDATION", error: failEntry.error });
+          presensiUpdates.push({ id: presensi?.id, siswaId: presensi?.siswaId, tanggal: presensi?.tanggal, waStatus: "Gagal", phone: "", error: failEntry.error });
           continue;
         }
 
@@ -1172,7 +1291,15 @@ async function startServer() {
           error: dispatchRes.error
         };
         existingLogs.unshift(logEntry);
-        results.push({ phone: cleanPhone, deliveryStatus: dispatchRes.deliveryStatus, gateway: dispatchRes.gateway, error: dispatchRes.error });
+        results.push({ id: presensi?.id, siswaId: presensi?.siswaId, tanggal: presensi?.tanggal, messageId, phone: cleanPhone, deliveryStatus: dispatchRes.deliveryStatus, gateway: dispatchRes.gateway, error: dispatchRes.error });
+
+        const mappedStatus: "Pending" | "Terkirim" | "Gagal" =
+          dispatchRes.deliveryStatus === "DELIVERED"
+            ? "Terkirim"
+            : dispatchRes.deliveryStatus === "FAILED"
+            ? "Gagal"
+            : "Pending";
+        presensiUpdates.push({ id: presensi?.id, siswaId: presensi?.siswaId, tanggal: presensi?.tanggal, waStatus: mappedStatus, phone: cleanPhone, error: dispatchRes.error });
 
         if (dispatchRes.deliveryStatus === "DELIVERED") {
           sentApi++;
@@ -1183,12 +1310,13 @@ async function startServer() {
         }
 
         if (dispatchRes.deliveryStatus === "DELIVERED" && i < items.length - 1) {
-          await new Promise((r) => setTimeout(r, 120));
+          await new Promise((r) => setTimeout(r, 100));
         }
       }
 
       if (existingLogs.length > 500) existingLogs.length = 500;
       writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
+      syncWaStatusIntoCachedPresensi(presensiUpdates);
 
       res.json({
         success: true,

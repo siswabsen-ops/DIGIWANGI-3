@@ -109,27 +109,80 @@ export async function clearWhatsAppGatewayLogs(): Promise<boolean> {
   return true;
 }
 
+const KNOWN_INTL_PREFIXES = ['966', '971', '974', '886', '852', '60', '65', '62', '61', '81', '82', '44'];
+
 /**
- * Standardize Indonesian phone numbers to WhatsApp international format (628...).
+ * Standardize Indonesian (628...) and explicit international (+966..., 966..., +60...) phone numbers for WhatsApp.
  * Returns '' if missing, empty, or invalid (< 10 digits).
  */
 export function formatPhoneForWhatsApp(rawPhone?: string): string {
   if (!rawPhone) return '';
   const trimmed = String(rawPhone).trim();
   if (!trimmed || trimmed === '-' || trimmed.toUpperCase() === 'TIDAK TERDAFTAR') return '';
+  const hasExplicitPlus = trimmed.startsWith('+');
   let clean = trimmed.replace(/\D/g, '');
   if (clean.length < 9) return '';
-  if (clean.startsWith('0')) {
-    clean = '62' + clean.substring(1);
-  } else if (!clean.startsWith('62')) {
+
+  // Strip 00 international dial prefix (e.g. 0062... or 00966...)
+  if (clean.startsWith('00') && clean.length >= 11) {
+    clean = clean.slice(2);
+  }
+
+  if (hasExplicitPlus) {
+    // Keep international numbers starting with + after stripping non-digits; fix +08... edge case
+    if (clean.startsWith('0')) {
+      clean = '62' + clean.slice(1);
+    }
+  } else if (clean.startsWith('0')) {
+    clean = '62' + clean.slice(1);
+  } else if (clean.startsWith('62')) {
+    // Already Indonesian 62 format
+  } else if (KNOWN_INTL_PREFIXES.some((prefix) => clean.startsWith(prefix)) && clean.length >= 10) {
+    // Already includes known international country code (e.g., 966500391529)
+  } else if (clean.startsWith('1') && clean.length === 11) {
+    // US/Canada 1XXXXXXXXXX
+  } else {
+    // Indonesian mobile written without leading 0 (e.g., 81234567890)
     clean = '62' + clean;
   }
-  if (clean.length < 10 || clean.length > 16) return '';
+
+  if (clean.length < 10 || clean.length > 16 || clean === '6281234567890') return '';
   return clean;
 }
 
 export function hasValidParentPhone(rawPhone?: string): boolean {
   return formatPhoneForWhatsApp(rawPhone).length >= 10;
+}
+
+export interface ServerGatewayStatus {
+  hasBackend: boolean;
+  apiConfigured: boolean;
+  provider: string;
+  serverWaNumber: string;
+}
+
+export async function fetchServerGatewayStatus(): Promise<ServerGatewayStatus> {
+  try {
+    const res = await fetch('/api/whatsapp/status', { cache: 'no-store' });
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.toLowerCase().includes('application/json')) {
+      const data = await res.json();
+      return {
+        hasBackend: Boolean(data.hasBackend ?? true),
+        apiConfigured: Boolean(data.apiConfigured),
+        provider: String(data.provider || 'direct'),
+        serverWaNumber: String(data.serverWaNumber || SERVER_WA_GATEWAY_NUMBER)
+      };
+    }
+  } catch {
+    // Static host (Vercel) or offline
+  }
+  return {
+    hasBackend: false,
+    apiConfigured: false,
+    provider: 'direct',
+    serverWaNumber: SERVER_WA_GATEWAY_NUMBER
+  };
 }
 
 /**
@@ -787,7 +840,18 @@ export async function broadcastAllClassesToParents(
     return { total: 0, sentApi: 0, queuedDirect: 0, failed: 0, directQueue: [], updatedWaStatuses: [] };
   }
 
-  const prepared = targetRecords.map((p) => {
+  // Deduplicate by siswaId + tanggal so collective broadcast never sends duplicate messages to the same parent
+  const dedupedRecords: Presensi[] = [];
+  const seenKeys = new Set<string>();
+  for (const rec of targetRecords) {
+    if (!rec) continue;
+    const key = `${rec.siswaId || rec.id}__${normalizeDateKey(rec.tanggal)}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    dedupedRecords.push(rec);
+  }
+
+  const prepared = dedupedRecords.map((p) => {
     const matchedSiswa = resolveStudentForRecord(p, siswaList);
     const parentPhone = resolveParentPhoneForRecord(p, matchedSiswa, siswaList);
     const message = formatWhatsAppAttendanceMessage(p, matchedSiswa, settings);
@@ -800,77 +864,203 @@ export async function broadcastAllClassesToParents(
     };
   });
 
-  const apiConfigured = isGatewayApiConfigured(settings);
+  const clientApiConfigured = isGatewayApiConfigured(settings);
+  const serverStatus = await fetchServerGatewayStatus();
+  const effectiveApiConfigured = clientApiConfigured || serverStatus.apiConfigured;
+
   const directQueue: DirectQueueItem[] = [];
   const updatedWaStatuses: BroadcastResult['updatedWaStatuses'] = [];
 
-  // Coba kirim via batch API backend dulu jika tersedia dan bukan direct mode (atau server punya env token)
-  if (apiConfigured) {
-    try {
-      const res = await fetch('/api/whatsapp/broadcast-parents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: prepared,
-          gatewayConfig: settings
-            ? {
-                provider: settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct'),
-                apiKey: settings.waApiKey,
-                gatewayUrl: settings.waGatewayUrl,
-                serverWaNumber: settings.serverWaNumber
-              }
-            : undefined
-        })
-      });
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.toLowerCase().includes('application/json')) {
+  // Gunakan batch chunk backend agar proses 50-429 siswa punya live progress & bebas timeout proxy
+  if (effectiveApiConfigured && serverStatus.hasBackend) {
+    const CHUNK_SIZE = 15;
+    let sentApi = 0;
+    let queuedDirect = 0;
+    let failed = 0;
+    let backendChunkFailed = false;
+    let processedCount = 0;
+
+    for (let offset = 0; offset < prepared.length; offset += CHUNK_SIZE) {
+      const chunk = prepared.slice(offset, offset + CHUNK_SIZE);
+      if (onProgress && chunk[0]) {
+        onProgress({
+          current: offset + 1,
+          total: prepared.length,
+          studentName: chunk[0].presensi.nama,
+          kelas: chunk[0].presensi.kelas,
+          phone: chunk[0].phone || 'Belum ada No WA'
+        });
+      }
+
+      try {
+        const res = await fetch('/api/whatsapp/broadcast-parents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: chunk,
+            gatewayConfig: settings
+              ? {
+                  provider: settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct'),
+                  apiKey: settings.waApiKey,
+                  gatewayUrl: settings.waGatewayUrl,
+                  serverWaNumber: settings.serverWaNumber
+                }
+              : undefined
+          })
+        });
+        const ct = res.headers.get('content-type') || '';
+        if (!res.ok || !ct.toLowerCase().includes('application/json')) {
+          backendChunkFailed = true;
+          break;
+        }
         const data = await res.json();
-        const serverResults = Array.isArray(data.results) ? data.results : null;
-        if (serverResults) {
-          serverResults.forEach((r: any, idx: number) => {
-            const src = prepared[idx];
-            if (!src) return;
-            const waStatus: 'Pending' | 'Terkirim' | 'Gagal' =
-              r.deliveryStatus === 'DELIVERED' || r.deliveryStatus === 'SENT'
-                ? 'Terkirim'
-                : r.deliveryStatus === 'FAILED'
-                ? 'Gagal'
-                : 'Pending';
-            updatedWaStatuses.push({
+        const serverResults = Array.isArray(data.results) ? data.results : [];
+        for (let idx = 0; idx < chunk.length; idx++) {
+          const src = chunk[idx];
+          const r = serverResults[idx] || {};
+          const waStatus: 'Pending' | 'Terkirim' | 'Gagal' =
+            r.deliveryStatus === 'DELIVERED' || r.deliveryStatus === 'SENT'
+              ? 'Terkirim'
+              : r.deliveryStatus === 'FAILED'
+              ? 'Gagal'
+              : 'Pending';
+          if (waStatus === 'Terkirim') sentApi++;
+          else if (waStatus === 'Gagal') failed++;
+          else queuedDirect++;
+
+          updatedWaStatuses.push({
+            id: src.presensi.id,
+            siswaId: src.presensi.siswaId,
+            tanggal: src.presensi.tanggal,
+            waStatus,
+            phone: src.phone
+          });
+          if (waStatus === 'Pending' && src.phone) {
+            directQueue.push({
               id: src.presensi.id,
-              siswaId: src.presensi.siswaId,
-              tanggal: src.presensi.tanggal,
-              waStatus,
-              phone: src.phone
+              presensi: src.presensi,
+              siswa: src.siswa,
+              phone: src.phone,
+              message: src.message,
+              waUrl: getDirectWhatsAppUrl(src.phone, src.message)
             });
-            if (waStatus === 'Pending' && src.phone) {
-              directQueue.push({
-                id: src.presensi.id,
-                presensi: src.presensi,
-                siswa: src.siswa,
-                phone: src.phone,
-                message: src.message,
-                waUrl: getDirectWhatsAppUrl(src.phone, src.message)
-              });
-            }
+          }
+          processedCount++;
+        }
+
+        if (onProgress && chunk[chunk.length - 1]) {
+          onProgress({
+            current: processedCount,
+            total: prepared.length,
+            studentName: chunk[chunk.length - 1].presensi.nama,
+            kelas: chunk[chunk.length - 1].presensi.kelas,
+            phone: chunk[chunk.length - 1].phone || 'Belum ada No WA'
           });
         }
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('karapres:whatsapp_broadcast_complete', { detail: data }));
-        }
-        return {
-          total: data.total ?? prepared.length,
-          sentApi: data.sentApi ?? data.sent ?? 0,
-          queuedDirect: data.queuedDirect ?? directQueue.length,
-          failed: data.failed ?? 0,
-          directQueue,
-          updatedWaStatuses
-        };
+      } catch (err) {
+        console.warn('[WA Gateway] Server chunk broadcast fallback:', err);
+        backendChunkFailed = true;
+        break;
       }
-    } catch (err) {
-      console.warn('[WA Gateway] Server batch broadcast fallback to sequential:', err);
     }
+
+    if (!backendChunkFailed) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('karapres:whatsapp_broadcast_complete', {
+          detail: { total: prepared.length, sentApi, queuedDirect, failed }
+        }));
+      }
+      return {
+        total: prepared.length,
+        sentApi,
+        queuedDirect,
+        failed,
+        directQueue,
+        updatedWaStatuses
+      };
+    }
+
+    // Fallback: process any remaining unprocessed items below
+    for (let i = processedCount; i < prepared.length; i++) {
+      const item = prepared[i];
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: prepared.length,
+          studentName: item.presensi.nama,
+          kelas: item.presensi.kelas,
+          phone: item.phone || 'Belum ada No WA'
+        });
+      }
+      if (!item.phone) {
+        failed++;
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Gagal',
+          phone: ''
+        });
+        continue;
+      }
+      const r = await sendSingleGatewayNotification(
+        item.presensi,
+        item.siswa,
+        item.phone,
+        item.message,
+        'orang_tua',
+        item.recipientName,
+        settings
+      );
+      if (r.deliveryStatus === 'DELIVERED' || r.deliveryStatus === 'SENT') {
+        sentApi++;
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Terkirim',
+          phone: item.phone
+        });
+      } else if (r.deliveryStatus === 'PENDING') {
+        queuedDirect++;
+        directQueue.push({
+          id: item.presensi.id,
+          presensi: item.presensi,
+          siswa: item.siswa,
+          phone: item.phone,
+          message: item.message,
+          waUrl: getDirectWhatsAppUrl(item.phone, item.message)
+        });
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Pending',
+          phone: item.phone
+        });
+      } else {
+        failed++;
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Gagal',
+          phone: item.phone
+        });
+      }
+    }
+
+    return {
+      total: prepared.length,
+      sentApi,
+      queuedDirect,
+      failed,
+      directQueue,
+      updatedWaStatuses
+    };
   }
+
+  const apiConfigured = effectiveApiConfigured;
 
   let sentApi = 0;
   let queuedDirect = 0;

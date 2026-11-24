@@ -13,7 +13,10 @@ import {
   Loader2,
   QrCode,
   RotateCcw,
-  Lock
+  Lock,
+  Send,
+  Smartphone,
+  ExternalLink
 } from 'lucide-react';
 import {
   Siswa,
@@ -37,7 +40,18 @@ import {
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
-import { formatPhoneForWhatsApp, isGatewayApiConfigured } from '../lib/whatsappGateway';
+import {
+  formatPhoneForWhatsApp,
+  isGatewayApiConfigured,
+  fetchServerGatewayStatus,
+  broadcastAllClassesToParents,
+  sendSingleGatewayNotification,
+  formatWhatsAppAttendanceMessage,
+  getDirectWhatsAppUrl,
+  resolveParentPhoneForRecord,
+  BroadcastProgress,
+  DirectQueueItem
+} from '../lib/whatsappGateway';
 
 interface GuruPanelProps {
   siswaList: Siswa[];
@@ -47,6 +61,9 @@ interface GuruPanelProps {
   currentUser: { namaLengkap: string; role: string; kelasSpesifik?: string };
   onAddPresensi: (presensi: Presensi) => void;
   onDeletePresensi?: (siswa: Siswa, targetDate: string, recordId?: string) => void;
+  onUpdatePresensiWaStatus?: (
+    updates: Array<{ id: string; siswaId: string; tanggal: string; waStatus: 'Pending' | 'Terkirim' | 'Gagal'; phone: string }>
+  ) => void;
 }
 
 function GuruPanel({
@@ -57,6 +74,7 @@ function GuruPanel({
   currentUser,
   onAddPresensi,
   onDeletePresensi,
+  onUpdatePresensiWaStatus,
 }: GuruPanelProps) {
   const isRestrictedToOwnClass =
     currentUser.role === 'guru' &&
@@ -82,9 +100,22 @@ function GuruPanel({
     }
   }, [isRestrictedToOwnClass, currentUser.kelasSpesifik]);
 
-  // QR Download States
+  // QR Download & Class WA Broadcast States
   const [isDownloadingQR, setIsDownloadingQR] = useState(false);
   const [qrProgress, setQrProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [serverApiConfigured, setServerApiConfigured] = useState(false);
+  const [isBroadcastingClass, setIsBroadcastingClass] = useState(false);
+  const [classBroadcastProgress, setClassBroadcastProgress] = useState<BroadcastProgress | null>(null);
+  const [classDirectQueue, setClassDirectQueue] = useState<DirectQueueItem[]>([]);
+  const [sentQueueIds, setSentQueueIds] = useState<Record<string, boolean>>({});
+  const [activeQueueIndex, setActiveQueueIndex] = useState(0);
+  const [sendingStudentId, setSendingStudentId] = useState<string | null>(null);
+
+  const apiModeActive = isGatewayApiConfigured(settings) || serverApiConfigured;
+
+  useEffect(() => {
+    fetchServerGatewayStatus().then((st) => setServerApiConfigured(st.apiConfigured)).catch(() => {});
+  }, []);
 
   const targetedKelas = isRestrictedToOwnClass && currentUser.kelasSpesifik
     ? currentUser.kelasSpesifik
@@ -247,6 +278,151 @@ function GuruPanel({
     } catch (err) {
       console.error('Gagal unduh QR:', err);
     }
+  };
+
+  // Daftar catatan presensi kelas yang sudah tercatat pada tanggal terpilih
+  const classMarkedRecords = useMemo(() => {
+    const list: Presensi[] = [];
+    for (const s of classStudents) {
+      const reg = getAttendanceFromIndex(s, dailyIndex);
+      if (reg) list.push(reg);
+    }
+    return list;
+  }, [classStudents, dailyIndex]);
+
+  const handleSendSingleStudentWa = async (siswa: Siswa, registered: Presensi) => {
+    const parentPhone = resolveParentPhoneForRecord(registered, siswa, siswaList);
+    if (!parentPhone) {
+      setSuccessMsg(`Nomor WA Orang Tua ${siswa.nama} belum terdaftar atau belum valid.`);
+      setTimeout(() => setSuccessMsg(''), 3500);
+      return;
+    }
+    const msg = formatWhatsAppAttendanceMessage(registered, siswa, settings);
+    if (apiModeActive) {
+      setSendingStudentId(siswa.id);
+      try {
+        const res = await sendSingleGatewayNotification(
+          registered,
+          siswa,
+          parentPhone,
+          msg,
+          'orang_tua',
+          `Orang Tua / Wali Murid dari ${siswa.nama}`,
+          settings
+        );
+        const nextStatus: 'Pending' | 'Terkirim' | 'Gagal' =
+          res.deliveryStatus === 'DELIVERED' || res.deliveryStatus === 'SENT'
+            ? 'Terkirim'
+            : res.deliveryStatus === 'FAILED'
+            ? 'Gagal'
+            : 'Pending';
+        onUpdatePresensiWaStatus?.([{
+          id: registered.id,
+          siswaId: registered.siswaId,
+          tanggal: registered.tanggal,
+          waStatus: nextStatus,
+          phone: parentPhone
+        }]);
+        setSuccessMsg(
+          nextStatus === 'Terkirim'
+            ? `✓ Notifikasi WA ${siswa.nama} terkirim via API ke +${parentPhone}`
+            : nextStatus === 'Gagal'
+            ? `Gagal kirim WA ke +${parentPhone}: ${res.error || 'Periksa konfigurasi gateway'}`
+            : `Notifikasi WA ${siswa.nama} (+${parentPhone}) masuk antrean.`
+        );
+        setTimeout(() => setSuccessMsg(''), 4000);
+      } finally {
+        setSendingStudentId(null);
+      }
+    } else {
+      const waUrl = getDirectWhatsAppUrl(parentPhone, msg);
+      if (waUrl && typeof window !== 'undefined') {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      }
+      onUpdatePresensiWaStatus?.([{
+        id: registered.id,
+        siswaId: registered.siswaId,
+        tanggal: registered.tanggal,
+        waStatus: 'Terkirim',
+        phone: parentPhone
+      }]);
+      setSuccessMsg(`✓ Membuka WhatsApp Orang Tua ${siswa.nama} (+${parentPhone}) dan menandai Terkirim.`);
+      setTimeout(() => setSuccessMsg(''), 3500);
+    }
+  };
+
+  const handleBroadcastClassWa = async () => {
+    if (isBroadcastingClass || classMarkedRecords.length === 0) return;
+    setIsBroadcastingClass(true);
+    setClassDirectQueue([]);
+    setSentQueueIds({});
+    setActiveQueueIndex(0);
+    setClassBroadcastProgress({
+      current: 0,
+      total: classMarkedRecords.length,
+      studentName: 'Menyiapkan data siswa...',
+      kelas: targetedKelas,
+      phone: ''
+    });
+
+    try {
+      const res = await broadcastAllClassesToParents(classMarkedRecords, siswaList, settings, (prog) => {
+        setClassBroadcastProgress(prog);
+      });
+      if (res.updatedWaStatuses.length > 0 && onUpdatePresensiWaStatus) {
+        onUpdatePresensiWaStatus(res.updatedWaStatuses);
+      }
+      if (res.directQueue.length > 0) {
+        setClassDirectQueue(res.directQueue);
+        setActiveQueueIndex(0);
+      }
+      const parts: string[] = [];
+      if (res.sentApi > 0) parts.push(`${res.sentApi} Terkirim via API`);
+      if (res.queuedDirect > 0) parts.push(`${res.queuedDirect} Siap Antrean WA`);
+      if (res.failed > 0) parts.push(`${res.failed} Tanpa No WA / Gagal`);
+      setSuccessMsg(`Broadcast WA ${targetedKelas}: ${parts.join(' • ')}`);
+      setTimeout(() => setSuccessMsg(''), 6000);
+    } catch (err) {
+      console.error('Gagal broadcast WA kelas:', err);
+      setSuccessMsg(`Terjadi kendala saat broadcast WA untuk ${targetedKelas}.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } finally {
+      setIsBroadcastingClass(false);
+      setClassBroadcastProgress(null);
+    }
+  };
+
+  const handleMarkClassQueueItemSent = (item: DirectQueueItem, idx: number) => {
+    setSentQueueIds((prev) => ({ ...prev, [item.id]: true }));
+    onUpdatePresensiWaStatus?.([{
+      id: item.presensi.id,
+      siswaId: item.presensi.siswaId,
+      tanggal: item.presensi.tanggal,
+      waStatus: 'Terkirim',
+      phone: item.phone
+    }]);
+    if (idx + 1 < classDirectQueue.length) {
+      setActiveQueueIndex(idx + 1);
+    }
+  };
+
+  const handleMarkAllClassQueueSent = () => {
+    if (classDirectQueue.length === 0) return;
+    const nextSent: Record<string, boolean> = {};
+    const updates = classDirectQueue.map((item) => {
+      nextSent[item.id] = true;
+      return {
+        id: item.presensi.id,
+        siswaId: item.presensi.siswaId,
+        tanggal: item.presensi.tanggal,
+        waStatus: 'Terkirim' as const,
+        phone: item.phone
+      };
+    });
+    setSentQueueIds((prev) => ({ ...prev, ...nextSent }));
+    onUpdatePresensiWaStatus?.(updates);
+    setSuccessMsg(`✓ ${classDirectQueue.length} notifikasi WA kelas ${targetedKelas} ditandai Terkirim.`);
+    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
   return (
@@ -490,6 +666,26 @@ function GuruPanel({
 
             <button
               type="button"
+              id="btn-guru-broadcast-wa"
+              onClick={handleBroadcastClassWa}
+              disabled={classMarkedRecords.length === 0 || isBroadcastingClass}
+              className="bg-[#075E54] hover:bg-[#128C7E] disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
+              title={`Kirim notifikasi WA ke semua orang tua siswa ${targetedKelas} yang sudah tercatat presensinya pada ${targetDate}`}
+            >
+              {isBroadcastingClass ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+              ) : (
+                <Send className="w-3.5 h-3.5 text-emerald-200" />
+              )}
+              <span>
+                {isBroadcastingClass && classBroadcastProgress
+                  ? `Kirim WA (${classBroadcastProgress.current}/${classBroadcastProgress.total})...`
+                  : `📲 Kirim WA Kolektif (${classMarkedRecords.length})`}
+              </span>
+            </button>
+
+            <button
+              type="button"
               id="btn-guru-download-qr-zip"
               onClick={handleDownloadClassQR}
               disabled={classStudents.length === 0 || isDownloadingQR}
@@ -520,6 +716,88 @@ function GuruPanel({
             </div>
           </div>
         </div>
+
+        {/* Sequential Direct Queue Drawer for Homeroom Class WA Broadcast */}
+        {classDirectQueue.length > 0 && classDirectQueue[activeQueueIndex] && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 text-xs text-amber-950 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-black text-amber-900 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-emerald-700" />
+                Antrean Kirim Langsung WA Kelas {targetedKelas} ({classDirectQueue.filter((q) => sentQueueIds[q.id]).length}/{classDirectQueue.length} dikirim)
+              </span>
+              <div className="flex items-center gap-3 text-[11px]">
+                <button
+                  type="button"
+                  onClick={handleMarkAllClassQueueSent}
+                  className="text-emerald-800 hover:text-emerald-950 font-black underline cursor-pointer"
+                >
+                  Tandai Semua Terkirim
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClassDirectQueue([])}
+                  className="text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+            <div className="bg-white border border-amber-200 rounded-xl p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-black text-slate-800 truncate">
+                  #{activeQueueIndex + 1}. {classDirectQueue[activeQueueIndex].presensi.nama} ({classDirectQueue[activeQueueIndex].presensi.status})
+                </p>
+                <p className="font-mono font-bold text-emerald-700 text-[11px]">
+                  Tujuan WA Orang Tua: +{classDirectQueue[activeQueueIndex].phone}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <a
+                  href={classDirectQueue[activeQueueIndex].waUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => handleMarkClassQueueItemSent(classDirectQueue[activeQueueIndex], activeQueueIndex)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Kirim WA ({activeQueueIndex + 1}/{classDirectQueue.length})</span>
+                  <ExternalLink className="w-3 h-3 opacity-80" />
+                </a>
+                {activeQueueIndex + 1 < classDirectQueue.length && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveQueueIndex((prev) => Math.min(classDirectQueue.length - 1, prev + 1))}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1.5 rounded-xl cursor-pointer"
+                  >
+                    Lewati
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+              {classDirectQueue.map((q, qIdx) => {
+                const done = Boolean(sentQueueIds[q.id]);
+                const isActive = qIdx === activeQueueIndex;
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => setActiveQueueIndex(qIdx)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer border ${
+                      done
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : isActive
+                        ? 'bg-amber-600 text-white border-amber-700'
+                        : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100'
+                    }`}
+                  >
+                    {done ? '✓ ' : `${qIdx + 1}. `}{q.presensi.nama.split(' ')[0]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Progress Bar when Teacher is downloading class QR ZIP */}
         {isDownloadingQR && qrProgress && (
@@ -609,9 +887,21 @@ function GuruPanel({
                               <span>👆 Tap Wali Kelas</span>
                             )}
                           </span>
-                          <span className="text-[9px] text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded font-mono font-semibold">
-                            WA: {registered.waStatus || 'Terkirim'}
-                          </span>
+                          {(() => {
+                            const hasPhone = Boolean(formatPhoneForWhatsApp(siswa.waOrangTua));
+                            const waSt = !hasPhone ? 'Kosong' : registered.waStatus === 'Terkirim' ? 'Terkirim' : registered.waStatus === 'Gagal' ? 'Gagal' : 'Pending';
+                            const waCls =
+                              waSt === 'Terkirim'
+                                ? 'text-emerald-700 bg-emerald-100/80 border border-emerald-200'
+                                : waSt === 'Kosong' || waSt === 'Gagal'
+                                ? 'text-rose-700 bg-rose-100/80 border border-rose-200'
+                                : 'text-amber-800 bg-amber-100/80 border border-amber-200';
+                            return (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold ${waCls}`}>
+                                WA: {waSt}
+                              </span>
+                            );
+                          })()}
                         </div>
                         {registered.keterangan && (
                           <p className="text-[10px] text-slate-600 italic truncate" title={registered.keterangan}>
@@ -626,7 +916,7 @@ function GuruPanel({
                     )}
                   </div>
 
-                  {/* Operational status switches & Download QR button */}
+                  {/* Operational status switches & Download QR & Send WA button */}
                   <div className="flex flex-wrap items-center gap-1 self-stretch sm:self-auto justify-end shrink-0">
                     <button
                       type="button"
@@ -637,6 +927,23 @@ function GuruPanel({
                       <Download className="w-3 h-3 text-emerald-600" />
                       <span>QR</span>
                     </button>
+
+                    {registered && formatPhoneForWhatsApp(siswa.waOrangTua) && (
+                      <button
+                        type="button"
+                        disabled={sendingStudentId === siswa.id}
+                        onClick={() => handleSendSingleStudentWa(siswa, registered)}
+                        className="text-[9px] font-black py-1.5 px-2 rounded-lg bg-[#075E54] hover:bg-[#128C7E] disabled:opacity-50 text-white transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                        title={`Kirim notifikasi WA ke Orang Tua ${siswa.nama} (+${formatPhoneForWhatsApp(siswa.waOrangTua)})`}
+                      >
+                        {sendingStudentId === siswa.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Send className="w-3 h-3 text-emerald-200" />
+                        )}
+                        <span>{apiModeActive ? 'Kirim WA' : 'WA Ortu'}</span>
+                      </button>
+                    )}
 
                     {(['Sakit', 'Izin', 'Alfa', 'Hadir', 'Terlambat'] as StatusKehadiran[]).map((st) => {
                       const isCurrent = registered?.status === st;

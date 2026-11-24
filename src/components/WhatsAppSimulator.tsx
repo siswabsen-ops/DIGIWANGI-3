@@ -22,6 +22,8 @@ import {
   SERVER_WA_GATEWAY_NUMBER,
   clearWhatsAppGatewayLogs,
   broadcastAllClassesToParents,
+  sendSingleGatewayNotification,
+  fetchServerGatewayStatus,
   resolveStudentForRecord,
   resolveParentPhoneForRecord,
   getDirectWhatsAppUrl,
@@ -66,11 +68,15 @@ function WhatsAppSimulator({
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('Semua Kelas');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>(() => getLocalDateString());
+  const [waStatusFilter, setWaStatusFilter] = useState<'semua' | 'belum' | 'terkirim' | 'gagal'>('semua');
+  const [broadcastOnlyPending, setBroadcastOnlyPending] = useState<boolean>(false);
   const [displayLimit, setDisplayLimit] = useState<number>(30);
+  const [sendingSingleId, setSendingSingleId] = useState<string | null>(null);
+  const [serverApiStatus, setServerApiStatus] = useState<{ apiConfigured: boolean; serverWaNumber: string } | null>(null);
 
   // Server WA Number and Reset State
-  const serverWaNumber = settings?.serverWaNumber || SERVER_WA_GATEWAY_NUMBER;
-  const apiModeActive = isGatewayApiConfigured(settings);
+  const serverWaNumber = settings?.serverWaNumber || serverApiStatus?.serverWaNumber || SERVER_WA_GATEWAY_NUMBER;
+  const apiModeActive = isGatewayApiConfigured(settings) || Boolean(serverApiStatus?.apiConfigured);
   const [lastResetTimestamp, setLastResetTimestamp] = useState<number>(() => {
     try {
       const stored = localStorage.getItem('karapres3_wa_reset_ts');
@@ -89,6 +95,13 @@ function WhatsAppSimulator({
   const [directQueue, setDirectQueue] = useState<DirectQueueItem[]>([]);
   const [sentQueueIds, setSentQueueIds] = useState<Record<string, boolean>>({});
   const [activeQueueIndex, setActiveQueueIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchServerGatewayStatus().then((st) => {
+      setServerApiStatus({ apiConfigured: st.apiConfigured, serverWaNumber: st.serverWaNumber });
+    }).catch(() => {});
+  }, [isOpen]);
 
   // Collision-safe phone resolver using siswaId -> nama+kelas -> unique NIK/NIS (returns '' if missing)
   const resolveParentPhone = useCallback((p: Presensi): string => {
@@ -156,14 +169,14 @@ function WhatsAppSimulator({
     if (!selectedDateFilter) setSelectedDateFilter(todayStr);
   }, [selectedDateFilter]);
 
-  // Filter logs specifically for selectedDate + class + search + manual reset
+  // Filter & urutkan log terbaru di atas (perbaikan agar Kelas 1-A..5-A tidak terpotong)
   const filteredLogs = useMemo(() => {
     const search = searchFilter.trim().toLowerCase();
     const hasClassFilter = selectedClassFilter !== 'Semua Kelas';
     const targetDate = normalizeDateKey(selectedDateFilter || getLocalDateString());
     const todayStr = getLocalDateString();
 
-    return logs.filter((p) => {
+    const matched = logs.filter((p) => {
       if (!p) return false;
       const pDate = p.tanggal ? normalizeDateKey(p.tanggal) : todayStr;
       if (pDate !== targetDate) {
@@ -181,11 +194,15 @@ function WhatsAppSimulator({
         return false;
       }
 
+      const parentPhone = resolveParentPhone(p);
+      if (waStatusFilter === 'terkirim' && p.waStatus !== 'Terkirim') return false;
+      if (waStatusFilter === 'belum' && (p.waStatus === 'Terkirim' || !parentPhone)) return false;
+      if (waStatusFilter === 'gagal' && p.waStatus !== 'Gagal' && Boolean(parentPhone)) return false;
+
       if (search) {
         const matchName = p.nama.toLowerCase().includes(search);
         const matchNis = p.nis ? p.nis.toLowerCase().includes(search) : false;
         const matchKelas = p.kelas.toLowerCase().includes(search);
-        const parentPhone = resolveParentPhone(p);
 
         if (!matchName && !matchNis && !matchKelas && !parentPhone.includes(search)) {
           return false;
@@ -193,25 +210,44 @@ function WhatsAppSimulator({
       }
       return true;
     });
-  }, [logs, selectedDateFilter, selectedClassFilter, searchFilter, lastResetTimestamp, resolveParentPhone]);
+
+    return matched.slice().sort((a, b) => {
+      const wDiff = (b.waktu || '').localeCompare(a.waktu || '');
+      if (wDiff !== 0) return wDiff;
+      const uDiff = (b.updatedAt || 0) - (a.updatedAt || 0);
+      if (uDiff !== 0) return uDiff;
+      return (a.kelas || '').localeCompare(b.kelas || '') || (a.nama || '').localeCompare(b.nama || '');
+    });
+  }, [logs, selectedDateFilter, selectedClassFilter, searchFilter, waStatusFilter, lastResetTimestamp, resolveParentPhone]);
 
   // Exact parent phone coverage summary for current filter
   const phoneSummary = useMemo(() => {
     let withPhone = 0;
     let missingPhone = 0;
+    let pendingWithPhone = 0;
+    let sentCount = 0;
     for (let i = 0; i < filteredLogs.length; i++) {
-      if (resolveParentPhone(filteredLogs[i])) {
+      const rec = filteredLogs[i];
+      if (resolveParentPhone(rec)) {
         withPhone++;
+        if (rec.waStatus === 'Terkirim') sentCount++;
+        else pendingWithPhone++;
       } else {
         missingPhone++;
       }
     }
-    return { withPhone, missingPhone };
+    return { withPhone, missingPhone, pendingWithPhone, sentCount };
   }, [filteredLogs, resolveParentPhone]);
+
+  // Broadcast target list (semua atau hanya yang belum terkirim)
+  const broadcastTargets = useMemo(() => {
+    if (!broadcastOnlyPending) return filteredLogs;
+    return filteredLogs.filter((p) => p.waStatus !== 'Terkirim');
+  }, [filteredLogs, broadcastOnlyPending]);
 
   // Broadcast notifikasi semua kelas (atau kelas terpilih) ke WhatsApp masing-masing orang tua siswa
   const handleBroadcastToAllParents = useCallback(async () => {
-    if (isBroadcasting || filteredLogs.length === 0) return;
+    if (isBroadcasting || broadcastTargets.length === 0) return;
     setIsBroadcasting(true);
     setBroadcastNotice(null);
     setDirectQueue([]);
@@ -219,14 +255,14 @@ function WhatsAppSimulator({
     setActiveQueueIndex(0);
     setBroadcastProgress({
       current: 0,
-      total: filteredLogs.length,
+      total: broadcastTargets.length,
       studentName: 'Menyiapkan data siswa...',
       kelas: '',
       phone: ''
     });
 
     try {
-      const res = await broadcastAllClassesToParents(filteredLogs, siswaList, settings, (prog) => {
+      const res = await broadcastAllClassesToParents(broadcastTargets, siswaList, settings, (prog) => {
         setBroadcastProgress(prog);
       });
 
@@ -242,7 +278,7 @@ function WhatsAppSimulator({
       const summaryParts: string[] = [];
       if (res.sentApi > 0) summaryParts.push(`${res.sentApi} Terkirim via API`);
       if (res.queuedDirect > 0) summaryParts.push(`${res.queuedDirect} Siap Antrean WA Langsung`);
-      if (res.failed > 0) summaryParts.push(`${res.failed} Tanpa No WA Valid`);
+      if (res.failed > 0) summaryParts.push(`${res.failed} Tanpa No WA / Gagal`);
       setBroadcastNotice(`✓ Selesai diproses (${selectedClassFilter}): ${summaryParts.join(' • ')}`);
       setTimeout(() => setBroadcastNotice(null), 7000);
     } catch (err: any) {
@@ -253,7 +289,51 @@ function WhatsAppSimulator({
       setIsBroadcasting(false);
       setBroadcastProgress(null);
     }
-  }, [isBroadcasting, filteredLogs, siswaList, settings, onUpdatePresensiWaStatus, selectedClassFilter]);
+  }, [isBroadcasting, broadcastTargets, siswaList, settings, onUpdatePresensiWaStatus, selectedClassFilter]);
+
+  const handleSendSingleApi = useCallback(async (log: Presensi) => {
+    const matchedSiswa = resolveStudentForRecord(log, siswaList);
+    const parentPhone = resolveParentPhoneForRecord(log, matchedSiswa, siswaList);
+    if (!parentPhone) return;
+    const msg = formatWhatsAppAttendanceMessage(log, matchedSiswa, settings);
+    setSendingSingleId(log.id);
+    try {
+      const res = await sendSingleGatewayNotification(
+        log,
+        matchedSiswa,
+        parentPhone,
+        msg,
+        'orang_tua',
+        `Orang Tua / Wali Murid dari ${log.nama}`,
+        settings
+      );
+      const waStatus: 'Pending' | 'Terkirim' | 'Gagal' =
+        res.deliveryStatus === 'DELIVERED' || res.deliveryStatus === 'SENT'
+          ? 'Terkirim'
+          : res.deliveryStatus === 'FAILED'
+          ? 'Gagal'
+          : 'Pending';
+      if (onUpdatePresensiWaStatus) {
+        onUpdatePresensiWaStatus([{
+          id: log.id,
+          siswaId: log.siswaId,
+          tanggal: log.tanggal,
+          waStatus,
+          phone: parentPhone
+        }]);
+      }
+      setBroadcastNotice(
+        waStatus === 'Terkirim'
+          ? `✓ Notifikasi ${log.nama} terkirim via API ke +${parentPhone}`
+          : waStatus === 'Gagal'
+          ? `✕ Gagal kirim API ke +${parentPhone}: ${res.error || 'Periksa token gateway'}`
+          : `ℹ Masuk antrean langsung untuk +${parentPhone}`
+      );
+      setTimeout(() => setBroadcastNotice(null), 4500);
+    } finally {
+      setSendingSingleId(null);
+    }
+  }, [siswaList, settings, onUpdatePresensiWaStatus]);
 
   const handleMarkQueueItemSent = useCallback((item: DirectQueueItem, idx: number) => {
     setSentQueueIds((prev) => ({ ...prev, [item.id]: true }));
@@ -272,6 +352,27 @@ function WhatsAppSimulator({
       setActiveQueueIndex(idx + 1);
     }
   }, [directQueue.length, onUpdatePresensiWaStatus]);
+
+  const handleMarkAllQueueSent = useCallback(() => {
+    if (directQueue.length === 0) return;
+    const nextSent: Record<string, boolean> = {};
+    const updates = directQueue.map((item) => {
+      nextSent[item.id] = true;
+      return {
+        id: item.presensi.id,
+        siswaId: item.presensi.siswaId,
+        tanggal: item.presensi.tanggal,
+        waStatus: 'Terkirim' as const,
+        phone: item.phone
+      };
+    });
+    setSentQueueIds((prev) => ({ ...prev, ...nextSent }));
+    if (onUpdatePresensiWaStatus) {
+      onUpdatePresensiWaStatus(updates);
+    }
+    setBroadcastNotice(`✓ ${directQueue.length} antrean notifikasi orang tua ditandai Terkirim.`);
+    setTimeout(() => setBroadcastNotice(null), 4500);
+  }, [directQueue, onUpdatePresensiWaStatus]);
 
   // Manual Reset Handler - Clears WhatsApp notifications cleanly without touching student attendance records
   const handleManualReset = useCallback(async () => {
@@ -324,9 +425,9 @@ function WhatsAppSimulator({
     }
   }, []);
 
-  // Slice logs for instant, lightweight DOM rendering
+  // Slice logs from top (newest first)
   const visibleLogs = useMemo(() => {
-    return filteredLogs.slice(-displayLimit);
+    return filteredLogs.slice(0, displayLimit);
   }, [filteredLogs, displayLimit]);
 
   const uniqueClasses = useMemo(() => {
@@ -506,7 +607,7 @@ function WhatsAppSimulator({
               type="button"
               id="btn-broadcast-all-parents"
               onClick={handleBroadcastToAllParents}
-              disabled={isBroadcasting || filteredLogs.length === 0}
+              disabled={isBroadcasting || broadcastTargets.length === 0}
               className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-98 disabled:opacity-60 text-white py-2 px-3 rounded-xl font-black text-[11px] flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer border border-emerald-400/50"
               title="Kirim notifikasi presensi sesuai filter tanggal & kelas langsung ke WhatsApp masing-masing orang tua siswa"
             >
@@ -522,22 +623,32 @@ function WhatsAppSimulator({
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5 text-amber-300" />
-                  <span>📲 Kirim Notifikasi Semua Kelas ke Orang Tua</span>
+                  <span>📲 Kirim Kolektif ke WA Orang Tua</span>
                   <span className="text-[9.5px] bg-emerald-950/70 text-emerald-200 px-2 py-0.5 rounded-full font-mono font-bold">
-                    {phoneSummary.withPhone}/{filteredLogs.length} Valid
+                    {broadcastOnlyPending ? `${phoneSummary.pendingWithPhone} Belum` : `${phoneSummary.withPhone}/${filteredLogs.length} Valid`}
                   </span>
                 </>
               )}
             </button>
 
-            {/* Coverage Bar */}
-            <div className="flex items-center justify-between text-[9.5px] bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/70">
-              <span className="text-emerald-200 font-semibold">
-                Tersedia No WA: <b className="text-emerald-300 font-mono">{phoneSummary.withPhone}</b> • Belum Ada No WA: <b className="text-amber-300 font-mono">{phoneSummary.missingPhone}</b>
+            {/* Coverage Bar & Target Mode Toggle */}
+            <div className="flex items-center justify-between text-[9.5px] bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/70 gap-1">
+              <span className="text-emerald-200 font-semibold truncate">
+                Valid: <b className="text-emerald-300 font-mono">{phoneSummary.withPhone}</b> • Terkirim: <b className="text-sky-300 font-mono">{phoneSummary.sentCount}</b> • Kosong: <b className="text-amber-300 font-mono">{phoneSummary.missingPhone}</b>
               </span>
-              <span className={`font-mono font-bold px-1.5 py-0.2 rounded ${apiModeActive ? 'bg-emerald-700 text-white' : 'bg-amber-900/80 text-amber-200'}`}>
-                {apiModeActive ? 'API Auto' : 'WA Direct'}
-              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setBroadcastOnlyPending((prev) => !prev)}
+                  className={`font-bold px-1.5 py-0.2 rounded cursor-pointer border ${broadcastOnlyPending ? 'bg-amber-600 text-white border-amber-400' : 'bg-emerald-900/70 text-emerald-200 border-emerald-700'}`}
+                  title="Pilih kirim hanya yang belum terkirim atau semua siswa valid"
+                >
+                  {broadcastOnlyPending ? 'Hanya Belum' : 'Semua Valid'}
+                </button>
+                <span className={`font-mono font-bold px-1.5 py-0.2 rounded ${apiModeActive ? 'bg-emerald-700 text-white' : 'bg-amber-900/80 text-amber-200'}`}>
+                  {apiModeActive ? 'API Auto' : 'WA Direct'}
+                </span>
+              </div>
             </div>
 
             {/* Date Filter + Quick Search + Class Filter */}
@@ -585,6 +696,32 @@ function WhatsAppSimulator({
                 ))}
               </select>
             </div>
+
+            {/* WA Status Filter Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {([
+                { id: 'semua', label: 'Semua' },
+                { id: 'belum', label: 'Belum Terkirim' },
+                { id: 'terkirim', label: 'Terkirim' },
+                { id: 'gagal', label: 'Gagal / Kosong' }
+              ] as const).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setWaStatusFilter(tab.id);
+                    setDisplayLimit(30);
+                  }}
+                  className={`px-2 py-0.5 rounded-md text-[9px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    waStatusFilter === tab.id
+                      ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                      : 'bg-emerald-950/70 text-emerald-200 hover:bg-emerald-800/70'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Interactive Sequential Direct WhatsApp Queue Drawer (when API token not set) */}
@@ -593,19 +730,31 @@ function WhatsAppSimulator({
               <div className="flex items-center justify-between gap-2">
                 <span className="font-black text-amber-900 uppercase tracking-wide flex items-center gap-1">
                   <Smartphone className="w-3.5 h-3.5 text-emerald-700" />
-                  Antrean Kirim Langsung WA ({sentQueueCount}/{directQueue.length} dikirim)
+                  Antrean Kirim WA ({sentQueueCount}/{directQueue.length} dikirim)
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setDirectQueue([])}
-                  className="text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
-                >
-                  Tutup Antrean
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleMarkAllQueueSent}
+                    className="text-emerald-800 hover:text-emerald-950 font-black underline cursor-pointer"
+                  >
+                    Tandai Semua Terkirim
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDirectQueue([])}
+                    className="text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                </div>
               </div>
-              <p className="text-[9.5px] text-amber-900 leading-snug">
-                Saat ini berjalan di <b>Mode Langsung wa.me</b>. Klik tombol hijau di bawah untuk membuka chat WhatsApp Orang Tua secara berurutan ke masing-masing nomor terdaftar:
-              </p>
+              <div className="w-full bg-amber-200 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-full transition-all duration-150"
+                  style={{ width: `${directQueue.length > 0 ? Math.round((sentQueueCount / directQueue.length) * 100) : 0}%` }}
+                />
+              </div>
               <div className="bg-white border border-amber-200 rounded-xl p-2 flex items-center justify-between gap-2 shadow-2xs">
                 <div className="min-w-0">
                   <p className="font-black text-slate-800 truncate">
@@ -637,11 +786,37 @@ function WhatsAppSimulator({
                   )}
                 </div>
               </div>
+              {/* Quick queue pills to jump to any student directly */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                {directQueue.slice(0, 40).map((q, qIdx) => {
+                  const done = Boolean(sentQueueIds[q.id]);
+                  const isActive = qIdx === activeQueueIndex;
+                  return (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => setActiveQueueIndex(qIdx)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap cursor-pointer border ${
+                        done
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : isActive
+                          ? 'bg-amber-600 text-white border-amber-700'
+                          : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100'
+                      }`}
+                    >
+                      {done ? '✓ ' : `${qIdx + 1}. `}{q.presensi.nama.split(' ')[0]}
+                    </button>
+                  );
+                })}
+                {directQueue.length > 40 && (
+                  <span className="text-[9px] text-amber-800 font-bold px-1">+{directQueue.length - 40} lainnya</span>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Chat Logs Content (Screen Area) - Khusus Notifikasi Orang Tua */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 flex flex-col-reverse justify-start">
+          {/* Chat Logs Content (Screen Area) - Terbaru di atas */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2.5 flex flex-col justify-start">
             {filteredLogs.length === 0 ? (
               <div className="my-auto text-center px-4 py-6 bg-white/75 rounded-2xl border border-dashed border-slate-300">
                 <span className="inline-block p-2.5 bg-emerald-50 rounded-full text-emerald-600 mb-2 shadow-xs">
@@ -656,7 +831,7 @@ function WhatsAppSimulator({
               </div>
             ) : (
               <>
-                {visibleLogs.slice().reverse().map((log) => {
+                {visibleLogs.map((log) => {
                   const formattedTime = log.waktu ? log.waktu.slice(0, 5) : '07:00';
                   const isSent = log.waStatus === 'Terkirim';
                   const isFailed = log.waStatus === 'Gagal';
@@ -664,11 +839,12 @@ function WhatsAppSimulator({
                   const hasPhone = Boolean(parentPhone);
                   const parentMessageText = formatPesanWhatsAppOrangTua(log);
                   const directUrlOrtu = hasPhone ? getDirectWhatsAppUrl(parentPhone, parentMessageText) : '';
+                  const isSendingThis = sendingSingleId === log.id;
 
                   return (
                     <div key={log.id} className="space-y-2">
                       {/* KARTU NOTIFIKASI KHUSUS ORANG TUA SISWA */}
-                      <div className="self-end w-full max-w-[98%] bg-[#DCF8C6] p-2.5 rounded-2xl shadow-xs text-gray-800 relative text-xs border border-emerald-300/80">
+                      <div className="w-full bg-[#DCF8C6] p-2.5 rounded-2xl shadow-xs text-gray-800 relative text-xs border border-emerald-300/80">
                         <div className="text-[9px] font-black tracking-tight text-emerald-900 mb-1 pb-1 border-b border-emerald-300/60 flex items-center justify-between gap-1">
                           <div className="flex items-center gap-1 min-w-0">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
@@ -714,7 +890,20 @@ function WhatsAppSimulator({
                           </div>
                         </div>
 
-                        <div className="mt-2 pt-1.5 border-t border-emerald-300/50 grid grid-cols-2 gap-1.5">
+                        <div className={`mt-2 pt-1.5 border-t border-emerald-300/50 grid gap-1.5 ${apiModeActive && hasPhone ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                          {hasPhone && apiModeActive && (
+                            <button
+                              type="button"
+                              disabled={isSendingThis}
+                              onClick={() => handleSendSingleApi(log)}
+                              className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white py-1.5 px-2 rounded-xl text-center text-[10px] font-black transition-all flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                              title={`Kirim otomatis via Gateway API ke +${parentPhone}`}
+                            >
+                              {isSendingThis ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                              <span>{isSendingThis ? 'Kirim...' : 'Kirim API'}</span>
+                            </button>
+                          )}
+
                           {hasPhone ? (
                             <a
                               href={directUrlOrtu}
@@ -737,7 +926,7 @@ function WhatsAppSimulator({
                               title={`Buka chat WhatsApp ke nomor orang tua (+${parentPhone})`}
                             >
                               <Phone className="w-3 h-3 text-emerald-200" />
-                              <span>Kirim ke WA</span>
+                              <span>{apiModeActive ? 'wa.me' : 'Kirim ke WA'}</span>
                               <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-80" />
                             </a>
                           ) : (
@@ -783,7 +972,7 @@ function WhatsAppSimulator({
                     onClick={() => setDisplayLimit((prev) => prev + 30)}
                     className="w-full py-1.5 bg-white/80 hover:bg-white text-emerald-800 text-[10px] font-bold rounded-xl border border-emerald-200 flex items-center justify-center gap-1 shadow-xs cursor-pointer mb-2"
                   >
-                    <span>Muat 30 Lagi...</span>
+                    <span>Muat 30 Lagi ({filteredLogs.length - displayLimit} tersisa)...</span>
                     <ChevronDown className="w-3.5 h-3.5" />
                   </button>
                 )}

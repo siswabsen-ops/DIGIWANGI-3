@@ -505,6 +505,80 @@ export const savePresensiShardToFirestore = async (presensi: Presensi): Promise<
   }
 };
 
+export const saveBatchPresensiShardsToFirestore = async (records: Presensi[]): Promise<void> => {
+  if (!records || records.length === 0 || getIsWriteQuotaExhausted()) return;
+
+  const groupedByDate = new Map<string, Record<string, Presensi>>();
+  for (const rec of records) {
+    if (!rec || !rec.tanggal || isSyntheticDemoPresensi(rec)) continue;
+    const normDate = normalizeDateKey(rec.tanggal);
+    if (!normDate) continue;
+    const cleaned = cleanPresensiForFirestore(rec);
+    const fieldKey = getShardRecordFieldKey(cleaned.siswaId || cleaned.id);
+    let mapForDay = groupedByDate.get(normDate);
+    if (!mapForDay) {
+      mapForDay = {};
+      groupedByDate.set(normDate, mapForDay);
+    }
+    mapForDay[fieldKey] = cleaned;
+  }
+
+  for (const [normDate, dayMap] of groupedByDate.entries()) {
+    if (getIsWriteQuotaExhausted()) break;
+    const entries = Object.entries(dayMap);
+    if (entries.length === 0) continue;
+
+    const shardId = getDayShardDocId(normDate);
+    const path = `sync/${shardId}`;
+    const nowTs = Date.now();
+    const recordsPayload: Record<string, Presensi> = {};
+    const deletedPayload: Record<string, ReturnType<typeof deleteField>> = {};
+    const mergeFieldsList: Array<string | FieldPath> = ['tanggal', 'updatedAt'];
+
+    for (const [fk, recVal] of entries) {
+      recordsPayload[fk] = recVal;
+      deletedPayload[fk] = deleteField();
+      mergeFieldsList.push(new FieldPath('records', fk));
+      mergeFieldsList.push(new FieldPath('deleted', fk));
+    }
+
+    const ok = await runSafeFirestoreWrite(
+      () =>
+        setDoc(
+          doc(db, 'sync', shardId),
+          {
+            tanggal: normDate,
+            updatedAt: nowTs,
+            records: recordsPayload,
+            deleted: deletedPayload
+          },
+          { mergeFields: mergeFieldsList }
+        ),
+      OperationType.WRITE,
+      path
+    );
+
+    if (ok && !registeredShardDates.has(normDate) && !getIsWriteQuotaExhausted()) {
+      registeredShardDates.add(normDate);
+      await runSafeFirestoreWrite(
+        () =>
+          setDoc(
+            doc(db, 'sync', 'day_index'),
+            {
+              updatedAt: nowTs,
+              dates: { [normDate]: nowTs }
+            },
+            {
+              mergeFields: ['updatedAt', new FieldPath('dates', normDate)]
+            }
+          ),
+        OperationType.WRITE,
+        'sync/day_index'
+      );
+    }
+  }
+};
+
 export const deletePresensiShardFromFirestore = async (
   siswaId: string,
   tanggal: string

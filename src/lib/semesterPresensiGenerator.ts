@@ -272,12 +272,16 @@ export function auditAndSynchronizePresensi(
     const dateKey = normalizeDateKey(rec.tanggal);
 
     // Pertahankan semua rekaman yang ada, termasuk hasil scan presensi hari ini & hari-hari berikutnya
+    // Urutan prioritas anti-benturan NIS ganda: 1. siswaId, 2. nama+kelas, 3. NIK/NIS unik
     let matchedStudent = students.find((s) => s.id === rec.siswaId);
-    if (!matchedStudent && rec.nis) {
-      matchedStudent = students.find((s) => s.nis && s.nis.trim() === rec.nis.trim());
-    }
     if (!matchedStudent) {
       matchedStudent = students.find((s) => isPresensiMatchSiswa(rec, s));
+    }
+    if (!matchedStudent && rec.nis && rec.nis.trim().length >= 4) {
+      const nisMatches = students.filter((s) => s.nis && s.nis.trim() === rec.nis.trim());
+      if (nisMatches.length === 1) {
+        matchedStudent = nisMatches[0];
+      }
     }
 
     if (!matchedStudent) continue;
@@ -289,6 +293,7 @@ export function auditAndSynchronizePresensi(
     const resolvedMetode = rec.metode || (rec.status === 'Hadir' || rec.status === 'Terlambat' ? 'QR_SCAN' : (rec.status === 'Sakit' || rec.status === 'Izin' ? 'MANUAL_TAP' : 'MANUAL_OPERATOR'));
     const resolvedMetodeLabel = rec.metodeLabel || (resolvedMetode === 'QR_SCAN' ? 'Scan QR Code Kartu' : (resolvedMetode === 'MANUAL_TAP' ? 'Manual Tap Wali Kelas' : 'Manual Operator'));
     const resolvedKeterangan = rec.keterangan || (resolvedMetode === 'QR_SCAN' ? 'Tercatat Hadir via Scan QR Code Kartu Siswa' : 'Dicatat manual oleh Wali Kelas');
+    const defaultWaStatus = dateKey <= HISTORICAL_ARCHIVE_END_DATE ? 'Terkirim' : 'Pending';
 
     if (!currentBest) {
       existingMap.set(lookupKey, {
@@ -301,7 +306,7 @@ export function auditAndSynchronizePresensi(
         tanggal: dateKey,
         waktu: rec.waktu || '06:45:00',
         status: rec.status || 'Hadir',
-        waStatus: rec.waStatus || 'Terkirim',
+        waStatus: rec.waStatus || defaultWaStatus,
         operator: rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)',
         metode: resolvedMetode,
         metodeLabel: resolvedMetodeLabel,
@@ -320,7 +325,7 @@ export function auditAndSynchronizePresensi(
           tanggal: dateKey,
           waktu: rec.waktu || '06:45:00',
           status: rec.status || 'Hadir',
-          waStatus: rec.waStatus || 'Terkirim',
+          waStatus: rec.waStatus || defaultWaStatus,
           operator: rec.operator || 'Panji Teguh Amarta S, S.Pd.I (Piket)',
           metode: resolvedMetode,
           metodeLabel: resolvedMetodeLabel,

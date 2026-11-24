@@ -164,7 +164,7 @@ function resolveMetodeDisplay(p: Presensi): string {
 }
 
 function resolveWaDisplay(p: Presensi): string {
-  if (!p.waStatus || p.waStatus === 'Terkirim') return 'Terkirim ke Wali';
+  if (p.waStatus === 'Terkirim') return 'Terkirim ke Wali';
   if (p.waStatus === 'Gagal') return 'Gagal Terkirim';
   return 'Menunggu / Pending';
 }
