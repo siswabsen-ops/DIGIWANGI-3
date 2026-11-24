@@ -1,8 +1,8 @@
-import { Presensi, Siswa, SystemSettings, WaliKelas } from '../types';
-import { getLocalDateString, getLocalTimeString, normalizeDateKey } from './attendanceUtils';
-import { DAFTAR_WALI_KELAS, getWaliKelasObject } from './waliKelasData';
+import { Presensi, Siswa, SystemSettings, WaliKelas, normalizeKelasCode } from '../types';
+import { getLocalDateString, getLocalTimeString, normalizeDateKey, normalizeStudentName } from './attendanceUtils';
 
 export const SERVER_WA_GATEWAY_NUMBER = '08214134551';
+const PLACEHOLDER_API_KEYS = new Set(['', 'KARA3_WS_GATEWAY_v2', 'DEMO_KEY']);
 
 export interface WhatsAppGatewayLog {
   id: string;
@@ -17,6 +17,16 @@ export interface WhatsAppGatewayLog {
   gateway: string;
   timestamp: string;
   error?: string;
+}
+
+export interface DirectQueueItem {
+  id: string;
+  presensi: Presensi;
+  siswa?: Siswa;
+  phone: string;
+  message: string;
+  waUrl: string;
+  sentManually?: boolean;
 }
 
 const LOCAL_WA_LOGS_KEY = 'karapres3_wa_logs_v1';
@@ -100,36 +110,132 @@ export async function clearWhatsAppGatewayLogs(): Promise<boolean> {
 }
 
 /**
- * Standardize Indonesian phone numbers to WhatsApp international format (628...)
+ * Standardize Indonesian phone numbers to WhatsApp international format (628...).
+ * Returns '' if missing, empty, or invalid (< 10 digits).
  */
-export function formatPhoneForWhatsApp(rawPhone: string): string {
-  if (!rawPhone) return '6281234567890';
-  let clean = rawPhone.replace(/\D/g, '');
+export function formatPhoneForWhatsApp(rawPhone?: string): string {
+  if (!rawPhone) return '';
+  const trimmed = String(rawPhone).trim();
+  if (!trimmed || trimmed === '-' || trimmed.toUpperCase() === 'TIDAK TERDAFTAR') return '';
+  let clean = trimmed.replace(/\D/g, '');
+  if (clean.length < 9) return '';
   if (clean.startsWith('0')) {
     clean = '62' + clean.substring(1);
-  } else if (clean.startsWith('+62')) {
-    clean = '62' + clean.substring(3);
   } else if (!clean.startsWith('62')) {
     clean = '62' + clean;
   }
+  if (clean.length < 10 || clean.length > 16) return '';
   return clean;
+}
+
+export function hasValidParentPhone(rawPhone?: string): boolean {
+  return formatPhoneForWhatsApp(rawPhone).length >= 10;
+}
+
+/**
+ * Mencari data siswa yang TEPAT untuk suatu catatan presensi
+ * Urutan ketat anti-benturan NIS ganda:
+ * 1. siswaId persis
+ * 2. nama + kelas persis
+ * 3. NIK unik
+ * 4. NIS (hanya bila unik atau cocok kelasnya)
+ */
+export function resolveStudentForRecord(presensi: Presensi, siswaList: Siswa[]): Siswa | undefined {
+  if (!presensi || !siswaList || siswaList.length === 0) return undefined;
+
+  if (presensi.siswaId) {
+    const byId = siswaList.find((s) => s.id === presensi.siswaId);
+    if (byId) return byId;
+  }
+
+  if (presensi.nama && presensi.kelas) {
+    const targetName = normalizeStudentName(presensi.nama);
+    const targetClass = normalizeKelasCode(presensi.kelas);
+    const byNameClass = siswaList.find(
+      (s) => normalizeStudentName(s.nama) === targetName && normalizeKelasCode(s.kelas) === targetClass
+    );
+    if (byNameClass) return byNameClass;
+  }
+
+  if (presensi.nik && presensi.nik.trim().length >= 8) {
+    const cleanNik = presensi.nik.trim();
+    const matches = siswaList.filter((s) => s.nik && s.nik.trim() === cleanNik);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1 && presensi.kelas) {
+      const targetClass = normalizeKelasCode(presensi.kelas);
+      const classMatch = matches.find((s) => normalizeKelasCode(s.kelas) === targetClass);
+      if (classMatch) return classMatch;
+    }
+  }
+
+  if (presensi.nis && presensi.nis.trim().length >= 4) {
+    const cleanNis = presensi.nis.trim();
+    const matches = siswaList.filter((s) => s.nis && s.nis.trim() === cleanNis);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1 && presensi.kelas) {
+      const targetClass = normalizeKelasCode(presensi.kelas);
+      const classMatch = matches.find((s) => normalizeKelasCode(s.kelas) === targetClass);
+      if (classMatch) return classMatch;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Mengambil nomor WA orang tua resmi (628...) atau '' bila siswa tidak memiliki no WA.
+ * Tidak pernah mengarang nomor palsu.
+ */
+export function resolveParentPhoneForRecord(
+  presensi: Presensi,
+  siswa?: Siswa,
+  siswaList?: Siswa[]
+): string {
+  const resolvedSiswa =
+    (siswa && (!presensi.siswaId || siswa.id === presensi.siswaId) ? siswa : undefined) ||
+    (siswaList ? resolveStudentForRecord(presensi, siswaList) : undefined);
+
+  const candidates = [
+    resolvedSiswa?.waOrangTua,
+    (presensi as any)?.waOrangTua
+  ];
+
+  for (const raw of candidates) {
+    const formatted = formatPhoneForWhatsApp(raw);
+    if (formatted && formatted !== '6281234567890') {
+      return formatted;
+    }
+  }
+
+  return '';
+}
+
+export function isGatewayApiConfigured(settings?: SystemSettings): boolean {
+  if (!settings) return false;
+  const provider = settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct');
+  if (provider === 'direct') return false;
+  const token = (settings.waApiKey || '').trim();
+  const hasRealToken = Boolean(token) && !PLACEHOLDER_API_KEYS.has(token);
+  if (provider === 'webhook') {
+    return Boolean(settings.waGatewayUrl && settings.waGatewayUrl.trim().startsWith('http'));
+  }
+  return hasRealToken;
 }
 
 /**
  * Format readable Indonesian date and time for scan logs and WhatsApp messages
- * Example: "Rabu, 28 Oktober 2026 pukul 07:12 WIB"
  */
 export function formatIndonesianScanDateTime(tanggalStr?: string, waktuStr?: string): string {
   const normDate = tanggalStr ? normalizeDateKey(tanggalStr) : getLocalDateString();
   const time = waktuStr ? waktuStr.slice(0, 5) : getLocalTimeString().slice(0, 5);
-  
+
   const [y, m, d] = normDate.split('-').map(Number);
   const months = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
   ];
   const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  
+
   try {
     const dt = new Date(y, m - 1, d);
     const dayName = days[dt.getDay()] || '';
@@ -140,9 +246,6 @@ export function formatIndonesianScanDateTime(tanggalStr?: string, waktuStr?: str
   }
 }
 
-/**
- * Map status attendance to readable standard for homeroom message (Masuk / Pulang / Terlambat)
- */
 export function mapStatusToDisplay(status?: string): 'Masuk' | 'Pulang' | 'Terlambat' | string {
   if (!status) return 'Masuk';
   const s = status.trim().toLowerCase();
@@ -155,14 +258,6 @@ export function mapStatusToDisplay(status?: string): 'Masuk' | 'Pulang' | 'Terla
   return status;
 }
 
-/**
- * Format pesan otomatis ke WA wali kelas sesuai standar resmi Digiwangi:
- * [NOTIFIKASI ABSENSI DIGIWANGI]
- * Nama Siswa : ………………
- * Kelas : ………………
- * Waktu Scan : (tanggal & jam pemindaian)
- * Status : Masuk / Pulang / Terlambat
- */
 export function formatWhatsAppWaliKelasMessage(presensi: Presensi): string {
   const waktuScan = formatIndonesianScanDateTime(presensi.tanggal, presensi.waktu);
   const statusDisplay = mapStatusToDisplay(presensi.status);
@@ -219,20 +314,100 @@ _SDN 3 Karamatwangi • Cepat, Akurat, Transparansi, Terintegritas_`;
 }
 
 /**
- * Generate a direct wa.me link as fallback or quick manual view
+ * Generate a direct wa.me link using the exact formatted parent number (628...).
+ * Returns '' when phone number is invalid/missing.
  */
 export function getDirectWhatsAppUrl(phone: string, message: string): string {
   const cleanPhone = formatPhoneForWhatsApp(phone);
+  if (!cleanPhone) return '';
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+}
+
+async function dispatchRealExternalGateway(
+  cleanPhone: string,
+  message: string,
+  meta: { studentName: string; kelas: string; status: string; tanggal?: string; waktu?: string },
+  settings?: SystemSettings
+): Promise<{ ok: boolean; provider: string; messageId?: string; error?: string }> {
+  const provider = settings?.waGatewayProvider || (settings?.waGatewayUrl ? 'webhook' : 'direct');
+  const token = (settings?.waApiKey || '').trim();
+  const gatewayUrl = (settings?.waGatewayUrl || '').trim();
+
+  try {
+    if (provider === 'fonnte') {
+      const form = new URLSearchParams();
+      form.set('target', cleanPhone);
+      form.set('message', message);
+      form.set('countryCode', '62');
+      const resp = await fetch(gatewayUrl || 'https://api.fonnte.com/send', {
+        method: 'POST',
+        headers: { Authorization: token },
+        body: form
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (resp.ok && json?.status !== false) {
+        return { ok: true, provider: 'FONNTE_API', messageId: String(json?.id || `fonnte-${Date.now()}`) };
+      }
+      return { ok: false, provider: 'FONNTE_API', error: json?.reason || json?.detail || `HTTP ${resp.status}` };
+    }
+
+    if (provider === 'wablas') {
+      const base = (gatewayUrl || 'https://solo.wablas.com').replace(/\/+$/, '');
+      const endpoint = base.endsWith('/api/send-message') ? base : `${base}/api/send-message`;
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone, message })
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (resp.ok && json?.status !== false) {
+        return { ok: true, provider: 'WABLAS_API', messageId: String(json?.data?.id || `wablas-${Date.now()}`) };
+      }
+      return { ok: false, provider: 'WABLAS_API', error: json?.message || `HTTP ${resp.status}` };
+    }
+
+    if (provider === 'webhook' && gatewayUrl) {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token && !PLACEHOLDER_API_KEYS.has(token)) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const resp = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          phone: cleanPhone,
+          target: cleanPhone,
+          message,
+          studentName: meta.studentName,
+          kelas: meta.kelas,
+          status: meta.status,
+          tanggal: meta.tanggal,
+          waktu: meta.waktu,
+          serverWaNumber: settings?.serverWaNumber || SERVER_WA_GATEWAY_NUMBER
+        })
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (resp.ok) {
+        return { ok: true, provider: 'CUSTOM_WEBHOOK', messageId: String(json?.messageId || `wh-${Date.now()}`) };
+      }
+      return { ok: false, provider: 'CUSTOM_WEBHOOK', error: json?.error || `HTTP ${resp.status}` };
+    }
+
+    return { ok: false, provider: 'DIRECT_WA', error: 'Token Gateway WA belum dikonfigurasi' };
+  } catch (err: any) {
+    return { ok: false, provider: provider.toUpperCase(), error: err?.message || 'Network/CORS gateway error' };
+  }
 }
 
 export interface DispatchRecipientResult {
   success: boolean;
+  deliveryStatus: 'DELIVERED' | 'SENT' | 'PENDING' | 'FAILED';
   phone: string;
   message: string;
   messageId?: string;
   recipientRole: 'wali_kelas' | 'orang_tua';
   recipientName: string;
+  gateway?: string;
   error?: string;
 }
 
@@ -242,7 +417,7 @@ export interface DualDispatchResult {
 }
 
 /**
- * Kirim satu pesan melalui server-side gateway endpoint
+ * Kirim satu pesan ke server gateway (jika aktif) atau langsung dari client (Vercel)
  */
 export async function sendSingleGatewayNotification(
   presensi: Presensi,
@@ -250,9 +425,47 @@ export async function sendSingleGatewayNotification(
   targetPhone: string,
   formattedMessage: string,
   recipientRole: 'wali_kelas' | 'orang_tua',
-  recipientName: string
+  recipientName: string,
+  settings?: SystemSettings
 ): Promise<DispatchRecipientResult> {
-  const cleanPhone = (targetPhone || '').trim();
+  const cleanPhone = formatPhoneForWhatsApp(targetPhone);
+  const studentName = presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi';
+  const studentClass = presensi?.kelas || siswa?.kelas || '-';
+  const studentStatus = presensi?.status || 'Hadir';
+
+  if (!cleanPhone) {
+    const failedId = `wa-fail-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const errMsg = 'Nomor WA Orang Tua belum diisi atau tidak valid';
+    appendLocalWaLog({
+      id: failedId,
+      studentName,
+      kelas: studentClass,
+      status: studentStatus,
+      phone: 'TIDAK TERDAFTAR',
+      message: formattedMessage,
+      deliveryStatus: 'FAILED',
+      recipientRole,
+      recipientName,
+      gateway: 'VALIDATION',
+      timestamp: new Date().toISOString(),
+      error: errMsg
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('karapres:whatsapp_sent', {
+        detail: { presensi, siswa, phone: '', message: formattedMessage, messageId: failedId, recipientRole, recipientName, status: 'FAILED', error: errMsg }
+      }));
+    }
+    return {
+      success: false,
+      deliveryStatus: 'FAILED',
+      phone: '',
+      message: formattedMessage,
+      messageId: failedId,
+      recipientRole,
+      recipientName,
+      error: errMsg
+    };
+  }
 
   try {
     const res = await fetch('/api/whatsapp/send-gateway', {
@@ -264,15 +477,22 @@ export async function sendSingleGatewayNotification(
         phone: cleanPhone,
         message: formattedMessage,
         recipientRole,
-        recipientName
+        recipientName,
+        gatewayConfig: settings
+          ? {
+              provider: settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct'),
+              apiKey: settings.waApiKey,
+              gatewayUrl: settings.waGatewayUrl,
+              serverWaNumber: settings.serverWaNumber
+            }
+          : undefined
       })
     });
 
     const ct = res.headers.get('content-type') || '';
     if (res.ok && ct.toLowerCase().includes('application/json')) {
       const data = await res.json();
-      
-      // Emit in-browser custom event so active UI components react instantly
+      const dStatus: 'DELIVERED' | 'SENT' | 'PENDING' | 'FAILED' = data.deliveryStatus || 'PENDING';
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('karapres:whatsapp_sent', {
           detail: {
@@ -283,38 +503,62 @@ export async function sendSingleGatewayNotification(
             messageId: data.messageId || `msg-${Date.now()}`,
             recipientRole,
             recipientName,
-            status: 'DELIVERED'
+            status: dStatus,
+            gateway: data.gateway
           }
         }));
       }
 
       return {
-        success: true,
+        success: dStatus !== 'FAILED',
+        deliveryStatus: dStatus,
         phone: cleanPhone,
         message: formattedMessage,
         messageId: data.messageId,
         recipientRole,
-        recipientName
+        recipientName,
+        gateway: data.gateway,
+        error: data.error
       };
     } else if (res.status === 404 || !ct.toLowerCase().includes('application/json')) {
-      // Hosting statis (Vercel) tanpa Express server: catat log langsung di client & aktifkan simulator event
-      const isFailed = !cleanPhone || cleanPhone === '-';
-      const fallbackId = `wa-local-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      const entry: WhatsAppGatewayLog = {
-        id: fallbackId,
-        studentName: presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi',
-        kelas: presensi?.kelas || siswa?.kelas || '-',
-        status: presensi?.status || 'Hadir',
-        phone: cleanPhone || 'TIDAK TERDAFTAR',
+      // Hosting statis (Vercel) tanpa server Node
+      let dStatus: 'DELIVERED' | 'PENDING' | 'FAILED' = 'PENDING';
+      let gatewayUsed = 'DIRECT_WA_QUEUE';
+      let gwError: string | undefined;
+      let msgId = `wa-local-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+      if (isGatewayApiConfigured(settings)) {
+        const apiRes = await dispatchRealExternalGateway(
+          cleanPhone,
+          formattedMessage,
+          { studentName, kelas: studentClass, status: studentStatus, tanggal: presensi.tanggal, waktu: presensi.waktu },
+          settings
+        );
+        gatewayUsed = apiRes.provider;
+        if (apiRes.ok) {
+          dStatus = 'DELIVERED';
+          if (apiRes.messageId) msgId = apiRes.messageId;
+        } else {
+          dStatus = 'FAILED';
+          gwError = apiRes.error;
+        }
+      }
+
+      appendLocalWaLog({
+        id: msgId,
+        studentName,
+        kelas: studentClass,
+        status: studentStatus,
+        phone: cleanPhone,
         message: formattedMessage,
-        deliveryStatus: isFailed ? 'FAILED' : 'DELIVERED',
+        deliveryStatus: dStatus,
         recipientRole,
         recipientName,
-        gateway: 'DIGIWANGI3_WA_GATEWAY_CLOUD',
+        gateway: gatewayUsed,
         timestamp: new Date().toISOString(),
-        error: isFailed ? 'Nomor tujuan WhatsApp belum diisi atau tidak valid' : undefined
-      };
-      appendLocalWaLog(entry);
+        error: gwError
+      });
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('karapres:whatsapp_sent', {
           detail: {
@@ -322,27 +566,32 @@ export async function sendSingleGatewayNotification(
             siswa,
             phone: cleanPhone,
             message: formattedMessage,
-            messageId: fallbackId,
+            messageId: msgId,
             recipientRole,
             recipientName,
-            status: entry.deliveryStatus
+            status: dStatus,
+            gateway: gatewayUsed,
+            error: gwError
           }
         }));
       }
+
       return {
-        success: !isFailed,
+        success: dStatus !== 'FAILED',
+        deliveryStatus: dStatus,
         phone: cleanPhone,
         message: formattedMessage,
-        messageId: fallbackId,
+        messageId: msgId,
         recipientRole,
         recipientName,
-        error: entry.error
+        gateway: gatewayUsed,
+        error: gwError
       };
     } else {
       const errData = await res.json().catch(() => ({}));
-      console.warn(`[WA Gateway Error] Gagal kirim ke ${recipientRole} (${cleanPhone}):`, errData);
       return {
         success: false,
+        deliveryStatus: 'FAILED',
         phone: cleanPhone,
         message: formattedMessage,
         error: errData.error || 'Server gateway response not OK',
@@ -351,54 +600,96 @@ export async function sendSingleGatewayNotification(
       };
     }
   } catch (err: any) {
-    console.warn(`[WA Gateway Error] Server gateway unreachable for ${recipientRole}:`, err);
-    
-    // Client-side event trigger for simulator
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('karapres:whatsapp_sent', {
-        detail: {
-          presensi,
-          siswa,
-          phone: cleanPhone,
-          message: formattedMessage,
-          messageId: `local-${Date.now()}`,
-          recipientRole,
-          recipientName,
-          status: 'SENT'
-        }
-      }));
-    }
-
+    const errId = `wa-err-${Date.now()}`;
     return {
-      success: true,
+      success: false,
+      deliveryStatus: 'FAILED',
       phone: cleanPhone,
       message: formattedMessage,
-      messageId: `local-${Date.now()}`,
+      messageId: errId,
       recipientRole,
-      recipientName
+      recipientName,
+      error: err?.message || 'Koneksi gateway terputus'
     };
   }
 }
 
 /**
+ * Uji kirim pesan tes dari halaman Pengaturan WA Gateway Admin
+ */
+export async function sendTestWhatsAppGateway(
+  testPhone: string,
+  settings: SystemSettings
+): Promise<{ success: boolean; deliveryStatus: string; phone: string; message: string; error?: string; gateway?: string }> {
+  const cleanPhone = formatPhoneForWhatsApp(testPhone);
+  if (!cleanPhone) {
+    return {
+      success: false,
+      deliveryStatus: 'FAILED',
+      phone: '',
+      message: '',
+      error: 'Nomor WA tujuan tes tidak valid (gunakan format 08... atau 628...)'
+    };
+  }
+
+  const nowDate = getLocalDateString();
+  const nowTime = getLocalTimeString();
+  const mockPresensi: Presensi = {
+    id: `test-${Date.now()}`,
+    siswaId: 'test',
+    nis: '000000',
+    nama: 'SISWA UJI COBA GATEWAY',
+    kelas: 'Kelas Uji Coba',
+    tanggal: nowDate,
+    waktu: nowTime,
+    status: 'Hadir',
+    waStatus: 'Pending',
+    operator: 'Admin Pengujian'
+  };
+
+  const testMsg = `✅ *UJI KONEKSI WA GATEWAY DIGIWANGI 3 - SDN 3 KARAMATWANGI*
+----------------------------------------
+Halo Bapak/Ibu, pesan ini adalah pengujian koneksi WhatsApp Gateway otomatis pada ${nowDate} pukul ${nowTime.slice(0, 5)} WIB.
+Nomor Tujuan: ${cleanPhone}
+Server Pengirim: ${settings.serverWaNumber || SERVER_WA_GATEWAY_NUMBER}`;
+
+  const res = await sendSingleGatewayNotification(
+    mockPresensi,
+    undefined,
+    cleanPhone,
+    testMsg,
+    'orang_tua',
+    'Pengujian Admin',
+    settings
+  );
+
+  return {
+    success: res.success,
+    deliveryStatus: res.deliveryStatus,
+    phone: res.phone,
+    message: testMsg,
+    error: res.error,
+    gateway: res.gateway
+  };
+}
+
 /**
- * Alur Kerja Otomatis Resmi SDN 3 Karamatwangi:
- * - Setiap siswa selesai absensi scan QR-code, notifikasi presensi langsung dan otomatis dikirimkan ke nomor WhatsApp ORANG TUA siswa masing-masing.
- * - Pengiriman ke wali kelas ditiadakan sehingga murni fokus ke orang tua siswa secara otomatis.
+ * Pengiriman otomatis notifikasi presensi ke nomor WhatsApp ORANG TUA siswa masing-masing.
  */
 export async function sendAutomaticWhatsAppNotification(
   presensi: Presensi,
   siswa?: Siswa,
   settings?: SystemSettings,
   _waliKelasList?: WaliKelas[]
-): Promise<{ success: boolean; phone: string; message: string; messageId: string }> {
-  const parentPhone = (
-    (siswa && siswa.waOrangTua) ||
-    (presensi as any).waOrangTua ||
-    presensi.pesanTerkirim?.match(/\((08\d+|628\d+)\)/)?.[1] ||
-    '081234567890'
-  ).trim();
-
+): Promise<{
+  success: boolean;
+  deliveryStatus: 'DELIVERED' | 'SENT' | 'PENDING' | 'FAILED';
+  phone: string;
+  message: string;
+  messageId: string;
+  error?: string;
+}> {
+  const parentPhone = resolveParentPhoneForRecord(presensi, siswa);
   const parentMessage = formatWhatsAppAttendanceMessage(presensi, siswa, settings);
 
   try {
@@ -408,28 +699,30 @@ export async function sendAutomaticWhatsAppNotification(
       parentPhone,
       parentMessage,
       'orang_tua',
-      `Orang Tua / Wali Murid dari ${presensi.nama}`
+      `Orang Tua / Wali Murid dari ${presensi.nama}`,
+      settings
     );
     return {
       success: parentResult.success,
+      deliveryStatus: parentResult.deliveryStatus,
       phone: parentResult.phone,
       message: parentResult.message,
-      messageId: parentResult.messageId || `msg-${Date.now()}`
+      messageId: parentResult.messageId || `msg-${Date.now()}`,
+      error: parentResult.error
     };
   } catch (err: any) {
     console.error(`[WA Gateway Gagal Kirim Orang Tua]:`, err);
     return {
       success: false,
+      deliveryStatus: 'FAILED',
       phone: parentPhone,
       message: parentMessage,
-      messageId: `err-${Date.now()}`
+      messageId: `err-${Date.now()}`,
+      error: err?.message
     };
   }
 }
 
-/**
- * Backward compatibility dual dispatch - redirected directly to parent notification
- */
 export async function sendDualWhatsAppNotification(
   presensi: Presensi,
   siswa?: Siswa,
@@ -439,15 +732,18 @@ export async function sendDualWhatsAppNotification(
   const autoRes = await sendAutomaticWhatsAppNotification(presensi, siswa, settings);
   const parentResult: DispatchRecipientResult = {
     success: autoRes.success,
+    deliveryStatus: autoRes.deliveryStatus,
     phone: autoRes.phone,
     message: autoRes.message,
     messageId: autoRes.messageId,
     recipientRole: 'orang_tua',
-    recipientName: `Orang Tua ${presensi.nama}`
+    recipientName: `Orang Tua ${presensi.nama}`,
+    error: autoRes.error
   };
 
   const dummyWaliResult: DispatchRecipientResult = {
     success: true,
+    deliveryStatus: 'SENT',
     phone: '',
     message: '',
     recipientRole: 'wali_kelas',
@@ -468,110 +764,233 @@ export interface BroadcastProgress {
   phone: string;
 }
 
+export interface BroadcastResult {
+  total: number;
+  sentApi: number;
+  queuedDirect: number;
+  failed: number;
+  directQueue: DirectQueueItem[];
+  updatedWaStatuses: Array<{ id: string; siswaId: string; tanggal: string; waStatus: 'Pending' | 'Terkirim' | 'Gagal'; phone: string }>;
+}
+
 /**
- * Pengiriman notifikasi massal seluruh kelas (1-A s/d 6-B) ke WhatsApp masing-masing Orang Tua Siswa
+ * Pengiriman notifikasi massal ke WhatsApp masing-masing Orang Tua Siswa.
+ * Mendukung filter tanggal/daftar catatan yang dikirim agar akurat per kelas & per siswa.
  */
 export async function broadcastAllClassesToParents(
-  presensiList: Presensi[],
+  targetRecords: Presensi[],
   siswaList: Siswa[],
   settings?: SystemSettings,
   onProgress?: (progress: BroadcastProgress) => void
-): Promise<{ total: number; sent: number; failed: number }> {
-  const todayStr = getLocalDateString();
-  
-  // Ambil data presensi hari ini
-  let todayRecords = presensiList.filter((p) => p.tanggal === todayStr);
-  if (todayRecords.length === 0) {
-    todayRecords = presensiList.slice(-100);
+): Promise<BroadcastResult> {
+  if (!targetRecords || targetRecords.length === 0) {
+    return { total: 0, sentApi: 0, queuedDirect: 0, failed: 0, directQueue: [], updatedWaStatuses: [] };
   }
 
-  // Buat map pencarian siswa
-  const studentMap = new Map<string, Siswa>();
-  for (let i = 0; i < siswaList.length; i++) {
-    const s = siswaList[i];
-    if (s.id) studentMap.set(s.id, s);
-    if (s.nis) studentMap.set(s.nis.trim(), s);
-    if (s.nama) studentMap.set(s.nama.trim().toLowerCase(), s);
-  }
-
-  const items = todayRecords.map((p) => {
-    let s = p.siswaId ? studentMap.get(p.siswaId) : undefined;
-    if (!s && p.nis) s = studentMap.get(p.nis.trim());
-    if (!s && p.nama) s = studentMap.get(p.nama.trim().toLowerCase());
-
-    const parentPhone = (s?.waOrangTua || (p as any).waOrangTua || '081234567890').trim();
-    const message = formatWhatsAppAttendanceMessage(p, s, settings);
+  const prepared = targetRecords.map((p) => {
+    const matchedSiswa = resolveStudentForRecord(p, siswaList);
+    const parentPhone = resolveParentPhoneForRecord(p, matchedSiswa, siswaList);
+    const message = formatWhatsAppAttendanceMessage(p, matchedSiswa, settings);
     return {
       presensi: p,
-      siswa: s,
+      siswa: matchedSiswa,
       phone: parentPhone,
       message,
       recipientName: `Orang Tua / Wali Murid dari ${p.nama}`
     };
   });
 
-  if (items.length === 0) {
-    return { total: 0, sent: 0, failed: 0 };
-  }
+  const apiConfigured = isGatewayApiConfigured(settings);
+  const directQueue: DirectQueueItem[] = [];
+  const updatedWaStatuses: BroadcastResult['updatedWaStatuses'] = [];
 
-  // Coba kirim via server broadcast batch API
-  try {
-    const res = await fetch('/api/whatsapp/broadcast-parents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('karapres:whatsapp_broadcast_complete', { detail: data }));
+  // Coba kirim via batch API backend dulu jika tersedia dan bukan direct mode (atau server punya env token)
+  if (apiConfigured) {
+    try {
+      const res = await fetch('/api/whatsapp/broadcast-parents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: prepared,
+          gatewayConfig: settings
+            ? {
+                provider: settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct'),
+                apiKey: settings.waApiKey,
+                gatewayUrl: settings.waGatewayUrl,
+                serverWaNumber: settings.serverWaNumber
+              }
+            : undefined
+        })
+      });
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.toLowerCase().includes('application/json')) {
+        const data = await res.json();
+        const serverResults = Array.isArray(data.results) ? data.results : null;
+        if (serverResults) {
+          serverResults.forEach((r: any, idx: number) => {
+            const src = prepared[idx];
+            if (!src) return;
+            const waStatus: 'Pending' | 'Terkirim' | 'Gagal' =
+              r.deliveryStatus === 'DELIVERED' || r.deliveryStatus === 'SENT'
+                ? 'Terkirim'
+                : r.deliveryStatus === 'FAILED'
+                ? 'Gagal'
+                : 'Pending';
+            updatedWaStatuses.push({
+              id: src.presensi.id,
+              siswaId: src.presensi.siswaId,
+              tanggal: src.presensi.tanggal,
+              waStatus,
+              phone: src.phone
+            });
+            if (waStatus === 'Pending' && src.phone) {
+              directQueue.push({
+                id: src.presensi.id,
+                presensi: src.presensi,
+                siswa: src.siswa,
+                phone: src.phone,
+                message: src.message,
+                waUrl: getDirectWhatsAppUrl(src.phone, src.message)
+              });
+            }
+          });
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('karapres:whatsapp_broadcast_complete', { detail: data }));
+        }
+        return {
+          total: data.total ?? prepared.length,
+          sentApi: data.sentApi ?? data.sent ?? 0,
+          queuedDirect: data.queuedDirect ?? directQueue.length,
+          failed: data.failed ?? 0,
+          directQueue,
+          updatedWaStatuses
+        };
       }
-      return {
-        total: data.total || items.length,
-        sent: data.sent || items.length,
-        failed: data.failed || 0
-      };
+    } catch (err) {
+      console.warn('[WA Gateway] Server batch broadcast fallback to sequential:', err);
     }
-  } catch (err) {
-    console.warn('[WA Gateway] Server batch broadcast fallback to sequential:', err);
   }
 
-  // Fallback sequential dispatch
-  let sent = 0;
+  let sentApi = 0;
+  let queuedDirect = 0;
   let failed = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  for (let i = 0; i < prepared.length; i++) {
+    const item = prepared[i];
     if (onProgress) {
       onProgress({
         current: i + 1,
-        total: items.length,
+        total: prepared.length,
         studentName: item.presensi.nama,
         kelas: item.presensi.kelas,
-        phone: item.phone
+        phone: item.phone || 'Belum ada No WA'
       });
     }
 
-    try {
+    if (!item.phone) {
+      failed++;
+      updatedWaStatuses.push({
+        id: item.presensi.id,
+        siswaId: item.presensi.siswaId,
+        tanggal: item.presensi.tanggal,
+        waStatus: 'Gagal',
+        phone: ''
+      });
+      continue;
+    }
+
+    if (!apiConfigured) {
+      // Catat ke log gateway sebagai antrean langsung (PENDING) & masukkan ke directQueue wa.me
+      const msgId = `wa-q-${Date.now()}-${i}`;
+      appendLocalWaLog({
+        id: msgId,
+        studentName: item.presensi.nama,
+        kelas: item.presensi.kelas,
+        status: item.presensi.status,
+        phone: item.phone,
+        message: item.message,
+        deliveryStatus: 'PENDING',
+        recipientRole: 'orang_tua',
+        recipientName: item.recipientName,
+        gateway: 'DIRECT_WA_QUEUE',
+        timestamp: new Date().toISOString()
+      });
+      queuedDirect++;
+      directQueue.push({
+        id: item.presensi.id,
+        presensi: item.presensi,
+        siswa: item.siswa,
+        phone: item.phone,
+        message: item.message,
+        waUrl: getDirectWhatsAppUrl(item.phone, item.message)
+      });
+      updatedWaStatuses.push({
+        id: item.presensi.id,
+        siswaId: item.presensi.siswaId,
+        tanggal: item.presensi.tanggal,
+        waStatus: 'Pending',
+        phone: item.phone
+      });
+    } else {
       const r = await sendSingleGatewayNotification(
         item.presensi,
         item.siswa,
         item.phone,
         item.message,
         'orang_tua',
-        item.recipientName
+        item.recipientName,
+        settings
       );
-      if (r.success) sent++;
-      else failed++;
-    } catch {
-      failed++;
-    }
+      if (r.deliveryStatus === 'DELIVERED' || r.deliveryStatus === 'SENT') {
+        sentApi++;
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Terkirim',
+          phone: item.phone
+        });
+      } else if (r.deliveryStatus === 'PENDING') {
+        queuedDirect++;
+        directQueue.push({
+          id: item.presensi.id,
+          presensi: item.presensi,
+          siswa: item.siswa,
+          phone: item.phone,
+          message: item.message,
+          waUrl: getDirectWhatsAppUrl(item.phone, item.message)
+        });
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Pending',
+          phone: item.phone
+        });
+      } else {
+        failed++;
+        updatedWaStatuses.push({
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Gagal',
+          phone: item.phone
+        });
+      }
 
-    if (i < items.length - 1) {
-      await new Promise((r) => setTimeout(r, 20));
+      if (i < prepared.length - 1) {
+        await new Promise((res) => setTimeout(res, 120));
+      }
     }
   }
 
-  return { total: items.length, sent, failed };
+  return {
+    total: prepared.length,
+    sentApi,
+    queuedDirect,
+    failed,
+    directQueue,
+    updatedWaStatuses
+  };
 }

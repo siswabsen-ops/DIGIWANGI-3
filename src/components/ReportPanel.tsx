@@ -879,73 +879,34 @@ function ReportPanel({
                       onChange={(e) => setHarianDate(e.target.value)}
                       className="font-bold text-xs text-slate-800 bg-slate-50 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate(getLocalDateString())}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer flex items-center gap-1 ${
-                        harianDate === getLocalDateString()
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-                      <span>Hari Ini ({getLocalDateString()})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-30')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-30'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Jumat 30 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-29')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-29'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Kamis 29 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-28')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-28'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Rabu 28 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-27')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-27'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Selasa 27 Okt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHarianDate('2026-10-26')}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
-                        harianDate === '2026-10-26'
-                          ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Senin 26 Okt
-                    </button>
+                    {(() => {
+                      const todayStr = getLocalDateString();
+                      const yestStr = safeAddDays(todayStr, -1);
+                      const day2Str = safeAddDays(todayStr, -2);
+                      const day3Str = safeAddDays(todayStr, -3);
+                      const shortcuts = [
+                        { date: todayStr, label: `Hari Ini (${todayStr})`, live: true },
+                        { date: yestStr, label: `Kemarin (${yestStr})` },
+                        { date: day2Str, label: `${day2Str}` },
+                        { date: day3Str, label: `${day3Str}` },
+                        { date: '2026-10-30', label: 'Arsip 30 Okt' }
+                      ];
+                      return shortcuts.map((sc) => (
+                        <button
+                          key={sc.date}
+                          type="button"
+                          onClick={() => setHarianDate(sc.date)}
+                          className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition cursor-pointer flex items-center gap-1 ${
+                            harianDate === sc.date
+                              ? 'bg-blue-700 text-white border-blue-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {sc.live && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />}
+                          <span>{sc.label}</span>
+                        </button>
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1781,7 +1742,7 @@ function ReportPanel({
                               {row.record ? (
                                 <div className="space-y-0.5">
                                   <p className="font-bold text-slate-700 truncate">{row.record.operator.split(',')[0]}</p>
-                                  <p className="text-[9px] text-[#075E54] truncate">Status WA: {row.record.waStatus || 'Terkirim'}</p>
+                                  <p className="text-[9px] text-[#075E54] truncate">Status WA: {row.record.waStatus || 'Pending'}</p>
                                 </div>
                               ) : (
                                 <span className="text-gray-400 font-light italic">Belum Terekam</span>

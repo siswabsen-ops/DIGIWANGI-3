@@ -339,6 +339,7 @@ async function startServer() {
       version: syncVersion,
       updatedAt: lastUpdatedAt,
       students,
+      studentsCatalogVersion: 26,
       waliKelas,
       presensi,
       deletedKeys,
@@ -575,6 +576,176 @@ async function startServer() {
   });
 
   const SERVER_WA_GATEWAY_NUMBER = "08214134551";
+  const PLACEHOLDER_WA_KEYS = new Set(["", "KARA3_WS_GATEWAY_v2", "DEMO_KEY"]);
+
+  function formatServerWaPhone(raw?: string): string {
+    if (!raw) return "";
+    const trimmed = String(raw).trim();
+    if (!trimmed || trimmed === "-" || trimmed.toUpperCase() === "TIDAK TERDAFTAR") return "";
+    let clean = trimmed.replace(/\D/g, "");
+    if (clean.length < 9) return "";
+    if (clean.startsWith("0")) clean = "62" + clean.slice(1);
+    else if (!clean.startsWith("62")) clean = "62" + clean;
+    if (clean.length < 10 || clean.length > 16 || clean === "6281234567890") return "";
+    return clean;
+  }
+
+  function resolveServerGatewayConfig(clientConfig?: any): {
+    provider: string;
+    apiKey: string;
+    gatewayUrl: string;
+    serverWaNumber: string;
+  } {
+    const savedSettings = readJsonFile<any>(SETTINGS_FILE, {});
+    const envFonnte = (process.env.FONNTE_TOKEN || "").trim();
+    const envWaToken = (process.env.WA_GATEWAY_TOKEN || "").trim();
+    const envWaUrl = (process.env.WA_GATEWAY_URL || "").trim();
+
+    const rawProvider = String(
+      clientConfig?.provider || savedSettings?.waGatewayProvider || (envFonnte ? "fonnte" : (envWaUrl ? "webhook" : "direct"))
+    ).trim().toLowerCase();
+
+    const rawKey = String(
+      (clientConfig?.apiKey && !PLACEHOLDER_WA_KEYS.has(String(clientConfig.apiKey).trim()) ? clientConfig.apiKey : "") ||
+      (savedSettings?.waApiKey && !PLACEHOLDER_WA_KEYS.has(String(savedSettings.waApiKey).trim()) ? savedSettings.waApiKey : "") ||
+      envFonnte ||
+      envWaToken ||
+      ""
+    ).trim();
+
+    const gatewayUrl = String(
+      clientConfig?.gatewayUrl || savedSettings?.waGatewayUrl || envWaUrl || ""
+    ).trim();
+
+    const serverWaNumber = String(
+      clientConfig?.serverWaNumber || savedSettings?.serverWaNumber || SERVER_WA_GATEWAY_NUMBER
+    ).trim();
+
+    return { provider: rawProvider, apiKey: rawKey, gatewayUrl, serverWaNumber };
+  }
+
+  async function dispatchExternalWaFromServer(
+    cleanPhone: string,
+    message: string,
+    meta: { studentName: string; kelas: string; status: string; tanggal?: string; waktu?: string },
+    config: { provider: string; apiKey: string; gatewayUrl: string; serverWaNumber: string }
+  ): Promise<{ delivered: boolean; deliveryStatus: "DELIVERED" | "PENDING" | "FAILED"; gateway: string; messageId?: string; error?: string }> {
+    const hasToken = Boolean(config.apiKey) && !PLACEHOLDER_WA_KEYS.has(config.apiKey);
+    const hasWebhook = config.provider === "webhook" && Boolean(config.gatewayUrl);
+
+    if (config.provider === "direct" || (!hasToken && !hasWebhook)) {
+      return {
+        delivered: false,
+        deliveryStatus: "PENDING",
+        gateway: "DIRECT_WA_QUEUE"
+      };
+    }
+
+    try {
+      if (config.provider === "fonnte" && hasToken) {
+        const form = new URLSearchParams();
+        form.set("target", cleanPhone);
+        form.set("message", message);
+        form.set("countryCode", "62");
+        const resp = await fetch(config.gatewayUrl || "https://api.fonnte.com/send", {
+          method: "POST",
+          headers: { Authorization: config.apiKey },
+          body: form,
+          signal: AbortSignal.timeout(10000)
+        });
+        const json: any = await resp.json().catch(() => ({}));
+        if (resp.ok && json?.status !== false) {
+          return {
+            delivered: true,
+            deliveryStatus: "DELIVERED",
+            gateway: "FONNTE_API",
+            messageId: String(json?.id || `fonnte-${Date.now()}`)
+          };
+        }
+        return {
+          delivered: false,
+          deliveryStatus: "FAILED",
+          gateway: "FONNTE_API",
+          error: json?.reason || json?.detail || `HTTP ${resp.status}`
+        };
+      }
+
+      if (config.provider === "wablas" && hasToken) {
+        const base = (config.gatewayUrl || "https://solo.wablas.com").replace(/\/+$/, "");
+        const endpoint = base.endsWith("/api/send-message") ? base : `${base}/api/send-message`;
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { Authorization: config.apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: cleanPhone, message }),
+          signal: AbortSignal.timeout(10000)
+        });
+        const json: any = await resp.json().catch(() => ({}));
+        if (resp.ok && json?.status !== false) {
+          return {
+            delivered: true,
+            deliveryStatus: "DELIVERED",
+            gateway: "WABLAS_API",
+            messageId: String(json?.data?.id || `wablas-${Date.now()}`)
+          };
+        }
+        return {
+          delivered: false,
+          deliveryStatus: "FAILED",
+          gateway: "WABLAS_API",
+          error: json?.message || `HTTP ${resp.status}`
+        };
+      }
+
+      if (config.provider === "webhook" && config.gatewayUrl) {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (hasToken) headers.Authorization = `Bearer ${config.apiKey}`;
+        const resp = await fetch(config.gatewayUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            phone: cleanPhone,
+            target: cleanPhone,
+            message,
+            studentName: meta.studentName,
+            kelas: meta.kelas,
+            status: meta.status,
+            tanggal: meta.tanggal,
+            waktu: meta.waktu,
+            serverWaNumber: config.serverWaNumber
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+        const json: any = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+          return {
+            delivered: true,
+            deliveryStatus: "DELIVERED",
+            gateway: "CUSTOM_WEBHOOK",
+            messageId: String(json?.messageId || `wh-${Date.now()}`)
+          };
+        }
+        return {
+          delivered: false,
+          deliveryStatus: "FAILED",
+          gateway: "CUSTOM_WEBHOOK",
+          error: json?.error || `HTTP ${resp.status}`
+        };
+      }
+
+      return {
+        delivered: false,
+        deliveryStatus: "PENDING",
+        gateway: "DIRECT_WA_QUEUE"
+      };
+    } catch (err: any) {
+      return {
+        delivered: false,
+        deliveryStatus: "FAILED",
+        gateway: config.provider.toUpperCase(),
+        error: err?.message || "Gateway HTTP request failed"
+      };
+    }
+  }
 
   // Hitung batas waktu cut-off harian pukul 05:00 WIB (Asia/Jakarta)
   function getWibCutoffTimestamp(): number {
@@ -585,7 +756,6 @@ async function startServer() {
     
     let targetDateStr = wibDate;
     if (wibHour < 5) {
-      // Jika sebelum jam 05:00 WIB, hari aktif log adalah sejak kemarin jam 05:00 WIB
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       targetDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(yesterday);
     }
@@ -608,158 +778,205 @@ async function startServer() {
     return freshLogs;
   }
 
-  // Jalankan pembersihan berkala setiap 60 detik
   setInterval(purgeOldWhatsAppLogs, 60000);
 
   // 8. Automatic WhatsApp Gateway notification dispatch
-  app.post("/api/whatsapp/send-gateway", (req, res) => {
+  app.post("/api/whatsapp/send-gateway", async (req, res) => {
     try {
       purgeOldWhatsAppLogs();
-      const { presensi, siswa, phone, message, recipientRole, recipientName } = req.body;
-      const targetPhone = (phone || (siswa && siswa.waOrangTua) || (presensi && presensi.waOrangTua) || '').trim();
-      const studentName = presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi';
-      const studentClass = presensi?.kelas || siswa?.kelas || '-';
-      const studentStatus = presensi?.status || 'Hadir';
+      const { presensi, siswa, phone, message, recipientRole, recipientName, gatewayConfig } = req.body;
+      const cleanPhone = formatServerWaPhone(phone || siswa?.waOrangTua || presensi?.waOrangTua);
+      const studentName = presensi?.nama || siswa?.nama || "Siswa SDN 3 Karamatwangi";
+      const studentClass = presensi?.kelas || siswa?.kelas || "-";
+      const studentStatus = presensi?.status || "Hadir";
+      const config = resolveServerGatewayConfig(gatewayConfig);
 
-      const messageId = `wa-msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       const nowIso = new Date().toISOString();
-      const isFailed = !targetPhone || targetPhone === '-';
+      const msgText = message || `Presensi ${studentName} (${studentClass}): ${studentStatus}`;
 
-      const logEntry = {
-        id: messageId,
-        serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
-        recipientRole: recipientRole || 'orang_tua',
-        recipientName: recipientName || (recipientRole === 'wali_kelas' ? 'Wali Kelas' : 'Orang Tua'),
-        studentName,
-        kelas: studentClass,
-        status: studentStatus,
-        phone: targetPhone || 'TIDAK TERDAFTAR',
-        message: message || `Presensi ${studentName} (${studentClass}): ${studentStatus}`,
-        deliveryStatus: isFailed ? 'FAILED' : 'DELIVERED',
-        gateway: 'DIGIWANGI3_WA_GATEWAY_NODE',
-        timestamp: nowIso,
-        error: isFailed ? 'Nomor tujuan WhatsApp belum diisi atau tidak valid' : undefined
-      };
+      if (!cleanPhone) {
+        const failId = `wa-fail-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        const failLog = {
+          id: failId,
+          serverWaNumber: config.serverWaNumber,
+          recipientRole: recipientRole || "orang_tua",
+          recipientName: recipientName || "Orang Tua",
+          studentName,
+          kelas: studentClass,
+          status: studentStatus,
+          phone: "TIDAK TERDAFTAR",
+          message: msgText,
+          deliveryStatus: "FAILED",
+          gateway: "VALIDATION",
+          timestamp: nowIso,
+          error: "Nomor WA Orang Tua belum diisi atau tidak valid"
+        };
+        const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
+        existingLogs.unshift(failLog);
+        if (existingLogs.length > 400) existingLogs.length = 400;
+        writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
 
-      const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
-      existingLogs.unshift(logEntry);
-      // Keep recent 400 logs
-      if (existingLogs.length > 400) {
-        existingLogs.length = 400;
-      }
-      writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
-
-      if (isFailed) {
-        console.warn(`[WA Gateway Warning] Pengiriman ke [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${studentName} - ${studentClass}) GAGAL: Nomor tidak valid. Dicatat di log.`);
-        res.status(400).json({
+        res.json({
           success: false,
-          serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
-          error: "Nomor WhatsApp tujuan kosong atau tidak valid",
-          logEntry
+          messageId: failId,
+          serverWaNumber: config.serverWaNumber,
+          phone: "",
+          recipientRole: failLog.recipientRole,
+          recipientName: failLog.recipientName,
+          deliveryStatus: "FAILED",
+          gateway: "VALIDATION",
+          error: failLog.error
         });
         return;
       }
 
-      console.log(`[WA Gateway 08214134551] Dispatched notification to [${logEntry.recipientRole.toUpperCase()}] ${logEntry.recipientName} (${targetPhone}) for ${studentName} (${studentClass} - ${studentStatus})`);
+      const dispatchRes = await dispatchExternalWaFromServer(
+        cleanPhone,
+        msgText,
+        { studentName, kelas: studentClass, status: studentStatus, tanggal: presensi?.tanggal, waktu: presensi?.waktu },
+        config
+      );
+
+      const messageId = dispatchRes.messageId || `wa-msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      const logEntry = {
+        id: messageId,
+        serverWaNumber: config.serverWaNumber,
+        recipientRole: recipientRole || "orang_tua",
+        recipientName: recipientName || (recipientRole === "wali_kelas" ? "Wali Kelas" : "Orang Tua"),
+        studentName,
+        kelas: studentClass,
+        status: studentStatus,
+        phone: cleanPhone,
+        message: msgText,
+        deliveryStatus: dispatchRes.deliveryStatus,
+        gateway: dispatchRes.gateway,
+        timestamp: nowIso,
+        error: dispatchRes.error
+      };
+
+      const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
+      existingLogs.unshift(logEntry);
+      if (existingLogs.length > 400) existingLogs.length = 400;
+      writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
 
       res.json({
-        success: true,
+        success: dispatchRes.deliveryStatus !== "FAILED",
         messageId,
-        serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
-        phone: targetPhone,
+        serverWaNumber: config.serverWaNumber,
+        phone: cleanPhone,
         recipientRole: logEntry.recipientRole,
         recipientName: logEntry.recipientName,
-        deliveryStatus: 'DELIVERED',
+        deliveryStatus: dispatchRes.deliveryStatus,
+        gateway: dispatchRes.gateway,
+        error: dispatchRes.error,
         deliveredAt: nowIso
       });
     } catch (err: any) {
       console.error("[WA Gateway Error]:", err);
-      try {
-        const failureLog = {
-          id: `wa-err-${Date.now()}`,
-          serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
-          recipientRole: req.body?.recipientRole || 'unknown',
-          recipientName: req.body?.recipientName || 'Unknown',
-          studentName: req.body?.presensi?.nama || 'Unknown',
-          kelas: req.body?.presensi?.kelas || '-',
-          status: req.body?.presensi?.status || '-',
-          phone: req.body?.phone || '-',
-          message: req.body?.message || '-',
-          deliveryStatus: 'FAILED',
-          gateway: 'DIGIWANGI3_WA_GATEWAY_NODE',
-          timestamp: new Date().toISOString(),
-          error: err.message || 'Server Gateway Error'
-        };
-        const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
-        existingLogs.unshift(failureLog);
-        writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
-      } catch {}
       res.status(500).json({ error: err.message || "Failed to dispatch WhatsApp message" });
     }
   });
 
   // 8b. Batch broadcast notifications for all classes to student parents
-  app.post("/api/whatsapp/broadcast-parents", (req, res) => {
+  app.post("/api/whatsapp/broadcast-parents", async (req, res) => {
     try {
       purgeOldWhatsAppLogs();
-      const { items } = req.body;
+      const { items, gatewayConfig } = req.body;
       if (!Array.isArray(items)) {
         res.status(400).json({ error: "Invalid items array." });
         return;
       }
 
+      const config = resolveServerGatewayConfig(gatewayConfig);
       const existingLogs = readJsonFile<any[]>(WHATSAPP_LOGS_FILE, []);
       const nowIso = new Date().toISOString();
-      let sentCount = 0;
+      let sentApi = 0;
+      let queuedDirect = 0;
       let failedCount = 0;
+      const results: Array<{ phone: string; deliveryStatus: string; gateway: string; error?: string }> = [];
 
-      for (const item of items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
         const { presensi, siswa, phone, message, recipientName } = item;
-        const targetPhone = (phone || (siswa && siswa.waOrangTua) || (presensi && presensi.waOrangTua) || '').trim();
-        const studentName = presensi?.nama || siswa?.nama || 'Siswa SDN 3 Karamatwangi';
-        const studentClass = presensi?.kelas || siswa?.kelas || '-';
-        const studentStatus = presensi?.status || 'Hadir';
-        const isFailed = !targetPhone || targetPhone === '-';
+        const cleanPhone = formatServerWaPhone(phone || siswa?.waOrangTua || presensi?.waOrangTua);
+        const studentName = presensi?.nama || siswa?.nama || "Siswa SDN 3 Karamatwangi";
+        const studentClass = presensi?.kelas || siswa?.kelas || "-";
+        const studentStatus = presensi?.status || "Hadir";
+        const msgText = message || `Presensi ${studentName} (${studentClass}): ${studentStatus}`;
 
-        const messageId = `wa-bcast-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        if (!cleanPhone) {
+          failedCount++;
+          const failEntry = {
+            id: `wa-bcast-fail-${Date.now()}-${i}`,
+            serverWaNumber: config.serverWaNumber,
+            recipientRole: "orang_tua",
+            recipientName: recipientName || `Orang Tua ${studentName}`,
+            studentName,
+            kelas: studentClass,
+            status: studentStatus,
+            phone: "TIDAK TERDAFTAR",
+            message: msgText,
+            deliveryStatus: "FAILED",
+            gateway: "VALIDATION",
+            timestamp: nowIso,
+            error: "Nomor WA Orang Tua belum diisi atau tidak valid"
+          };
+          existingLogs.unshift(failEntry);
+          results.push({ phone: "", deliveryStatus: "FAILED", gateway: "VALIDATION", error: failEntry.error });
+          continue;
+        }
 
+        const dispatchRes = await dispatchExternalWaFromServer(
+          cleanPhone,
+          msgText,
+          { studentName, kelas: studentClass, status: studentStatus, tanggal: presensi?.tanggal, waktu: presensi?.waktu },
+          config
+        );
+
+        const messageId = dispatchRes.messageId || `wa-bcast-${Date.now()}-${i}`;
         const logEntry = {
           id: messageId,
-          serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
-          recipientRole: 'orang_tua',
+          serverWaNumber: config.serverWaNumber,
+          recipientRole: "orang_tua",
           recipientName: recipientName || `Orang Tua ${studentName}`,
           studentName,
           kelas: studentClass,
           status: studentStatus,
-          phone: targetPhone || 'TIDAK TERDAFTAR',
-          message: message || `Presensi ${studentName} (${studentClass}): ${studentStatus}`,
-          deliveryStatus: isFailed ? 'FAILED' : 'DELIVERED',
-          gateway: 'DIGIWANGI3_WA_GATEWAY_NODE',
+          phone: cleanPhone,
+          message: msgText,
+          deliveryStatus: dispatchRes.deliveryStatus,
+          gateway: dispatchRes.gateway,
           timestamp: nowIso,
-          error: isFailed ? 'Nomor tujuan WhatsApp belum diisi atau tidak valid' : undefined
+          error: dispatchRes.error
         };
-
         existingLogs.unshift(logEntry);
-        if (isFailed) {
-          failedCount++;
+        results.push({ phone: cleanPhone, deliveryStatus: dispatchRes.deliveryStatus, gateway: dispatchRes.gateway, error: dispatchRes.error });
+
+        if (dispatchRes.deliveryStatus === "DELIVERED") {
+          sentApi++;
+        } else if (dispatchRes.deliveryStatus === "PENDING") {
+          queuedDirect++;
         } else {
-          sentCount++;
+          failedCount++;
+        }
+
+        if (dispatchRes.deliveryStatus === "DELIVERED" && i < items.length - 1) {
+          await new Promise((r) => setTimeout(r, 120));
         }
       }
 
-      if (existingLogs.length > 500) {
-        existingLogs.length = 500;
-      }
+      if (existingLogs.length > 500) existingLogs.length = 500;
       writeJsonFile(WHATSAPP_LOGS_FILE, existingLogs);
-
-      console.log(`[WA Gateway Broadcast 08214134551] Broadcast sukses ke orang tua semua kelas: ${sentCount} berhasil, ${failedCount} gagal dari total ${items.length} siswa.`);
 
       res.json({
         success: true,
-        serverWaNumber: SERVER_WA_GATEWAY_NUMBER,
+        serverWaNumber: config.serverWaNumber,
         total: items.length,
-        sent: sentCount,
+        sent: sentApi,
+        sentApi,
+        queuedDirect,
         failed: failedCount,
+        results,
         timestamp: nowIso
       });
     } catch (err: any) {
@@ -869,52 +1086,145 @@ async function startServer() {
   };
 
   const hydrateFromFirestoreOnce = async () => {
-    try {
-      const url = "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1/documents/sync/presensi";
-      const resp = await fetch(url, { signal: AbortSignal.timeout(7000) });
-      if (!resp.ok) return;
-      const docJson = await resp.json();
-      const fields = docJson?.fields;
-      if (!fields) return;
+    const baseFirestore = "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1";
+    const decodeDocFields = (fields: any): Record<string, any> => {
+      const out: Record<string, any> = {};
+      if (!fields || typeof fields !== "object") return out;
+      for (const k of Object.keys(fields)) out[k] = fromFirestoreValue(fields[k]);
+      return out;
+    };
 
-      const incomingData = fields.data ? fromFirestoreValue(fields.data) : [];
-      const incomingDeleted = fields.deletedKeys ? fromFirestoreValue(fields.deletedKeys) : [];
-      if (Array.isArray(incomingDeleted)) {
-        for (const dk of incomingDeleted) {
-          if (dk && typeof dk.key === "string" && dk.key.includes("__")) {
-            const [sid, dt] = dk.key.split("__");
-            recordDeletedTombstone({
-              key: dk.key,
-              siswaId: sid,
-              tanggal: dt,
-              deletedAt: typeof dk.ts === "number" ? dk.ts : Date.now()
-            });
+    try {
+      const incomingCloudRecords: any[] = [];
+      const todayWib = getLocalDateString(new Date());
+      const [ty, tm, td] = todayWib.split("-").map(Number);
+      const yDt = new Date(Date.UTC(ty || 2026, (tm || 1) - 1, (td || 1) - 1));
+      const yesterdayWib = `${yDt.getUTCFullYear()}-${String(yDt.getUTCMonth() + 1).padStart(2, "0")}-${String(yDt.getUTCDate()).padStart(2, "0")}`;
+
+      // 1. Fetch sync/presensi + sync/day_index in parallel
+      const [syncPresensiResp, dayIndexResp] = await Promise.all([
+        fetch(`${baseFirestore}/documents/sync/presensi`, { signal: AbortSignal.timeout(7000) }).catch(() => null),
+        fetch(`${baseFirestore}/documents/sync/day_index`, { signal: AbortSignal.timeout(7000) }).catch(() => null)
+      ]);
+
+      if (syncPresensiResp && syncPresensiResp.ok) {
+        const docJson = await syncPresensiResp.json();
+        const fields = docJson?.fields;
+        if (fields) {
+          const incomingData = fields.data ? fromFirestoreValue(fields.data) : [];
+          const incomingDeleted = fields.deletedKeys ? fromFirestoreValue(fields.deletedKeys) : [];
+          if (Array.isArray(incomingDeleted)) {
+            for (const dk of incomingDeleted) {
+              if (dk && typeof dk.key === "string" && dk.key.includes("__")) {
+                const [sid, dt] = dk.key.split("__");
+                recordDeletedTombstone({
+                  key: dk.key,
+                  siswaId: sid,
+                  tanggal: dt,
+                  deletedAt: typeof dk.ts === "number" ? dk.ts : Date.now()
+                });
+              }
+            }
+          }
+          if (Array.isArray(incomingData)) {
+            incomingCloudRecords.push(...incomingData);
           }
         }
       }
 
-      if (Array.isArray(incomingData) && incomingData.length > 0) {
-        const students = readJsonFile<any[]>(STUDENTS_FILE, []);
-        const existing = getCachedPresensi();
-        const merged = mergePresensiLists(existing, incomingData, students, getDeletedTombstoneMap());
-        if (!arePresensiArraysEqual(merged, existing)) {
-          saveCachedPresensi(merged);
-          incrementSyncVersion(`Hydrate Cloud Sync Presensi (${merged.length} records)`);
-          console.log(`[Cloud Presensi] Terhidrasi dari Firestore sync/presensi (${merged.length} rekaman).`);
+      // 2. Fetch all indexed daily shards (sync/day_{YYYY-MM-DD})
+      const shardDatesSet = new Set<string>([todayWib, yesterdayWib]);
+      if (dayIndexResp && dayIndexResp.ok) {
+        const idxJson = await dayIndexResp.json();
+        const datesObj = idxJson?.fields?.dates ? fromFirestoreValue(idxJson.fields.dates) : {};
+        if (datesObj && typeof datesObj === "object") {
+          for (const d of Object.keys(datesObj)) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d >= "2026-11-01") shardDatesSet.add(d);
+          }
         }
       }
 
-      // Also hydrate settings/system when missing locally or when Firestore holds a strictly newer timestamp
-      const settingsUrl = "https://firestore.googleapis.com/v1/projects/ai-studio-applet-webapp-6532a/databases/ai-studio-e7618f40-cac7-45c5-9089-0a61e719ceb1/documents/settings/system";
-      const settingsResp = await fetch(settingsUrl, { signal: AbortSignal.timeout(7000) });
-      if (settingsResp.ok) {
+      const shardDates = Array.from(shardDatesSet).sort().slice(-90);
+      for (let i = 0; i < shardDates.length; i += 8) {
+        const chunk = shardDates.slice(i, i + 8);
+        const shardResps = await Promise.all(
+          chunk.map((d) =>
+            fetch(`${baseFirestore}/documents/sync/day_${d}`, { signal: AbortSignal.timeout(6000) })
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+          )
+        );
+        for (const sJson of shardResps) {
+          const sFields = sJson?.fields;
+          if (!sFields) continue;
+          const shardDate = sFields.tanggal ? fromFirestoreValue(sFields.tanggal) : "";
+          const recsObj = sFields.records ? fromFirestoreValue(sFields.records) : {};
+          const delsObj = sFields.deleted ? fromFirestoreValue(sFields.deleted) : {};
+          if (delsObj && typeof delsObj === "object" && shardDate) {
+            for (const [sid, ts] of Object.entries(delsObj)) {
+              if (typeof ts === "number") {
+                recordDeletedTombstone({ key: `${sid}__${shardDate}`, siswaId: sid, tanggal: shardDate, deletedAt: ts });
+              }
+            }
+          }
+          if (recsObj && typeof recsObj === "object") {
+            for (const rec of Object.values(recsObj)) {
+              if (rec && typeof rec === "object") incomingCloudRecords.push(rec);
+            }
+          }
+        }
+      }
+
+      // 3. Also query recent direct presensi docs for today & yesterday to recover any orphaned gate scans
+      for (const targetD of [todayWib, yesterdayWib]) {
+        const qResp = await fetch(`${baseFirestore}/documents:runQuery`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: "presensi" }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: "tanggal" },
+                  op: "EQUAL",
+                  value: { stringValue: targetD }
+                }
+              },
+              limit: 500
+            }
+          }),
+          signal: AbortSignal.timeout(6000)
+        }).catch(() => null);
+        if (qResp && qResp.ok) {
+          const rows: any = await qResp.json().catch(() => []);
+          if (Array.isArray(rows)) {
+            for (const row of rows) {
+              if (row?.document?.fields) {
+                incomingCloudRecords.push(decodeDocFields(row.document.fields));
+              }
+            }
+          }
+        }
+      }
+
+      if (incomingCloudRecords.length > 0) {
+        const students = readJsonFile<any[]>(STUDENTS_FILE, []);
+        const existing = getCachedPresensi();
+        const merged = mergePresensiLists(existing, incomingCloudRecords, students, getDeletedTombstoneMap());
+        if (!arePresensiArraysEqual(merged, existing)) {
+          saveCachedPresensi(merged);
+          incrementSyncVersion(`Hydrate Cloud Shards & Presensi (${merged.length} records)`);
+          console.log(`[Cloud Presensi] Terhidrasi dari Firestore shards & live docs (${merged.length} rekaman).`);
+        }
+      }
+
+      // 4. Hydrate settings/system when missing locally or when Firestore holds a strictly newer timestamp
+      const settingsResp = await fetch(`${baseFirestore}/documents/settings/system`, { signal: AbortSignal.timeout(7000) }).catch(() => null);
+      if (settingsResp && settingsResp.ok) {
         const settingsJson = await settingsResp.json();
         const sFields = settingsJson?.fields;
         if (sFields) {
-          const remoteSettings: Record<string, any> = {};
-          for (const k of Object.keys(sFields)) {
-            remoteSettings[k] = fromFirestoreValue(sFields[k]);
-          }
+          const remoteSettings = decodeDocFields(sFields);
           const localSettings = readJsonFile<any>(SETTINGS_FILE, null);
           const localTs = typeof localSettings?.updatedAt === "number" ? localSettings.updatedAt : 0;
           const remoteTs = typeof remoteSettings.updatedAt === "number" ? remoteSettings.updatedAt : 0;

@@ -37,6 +37,7 @@ import {
 } from '../lib/attendanceUtils';
 import { getWaliKelasByKelas } from '../lib/demoData';
 import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
+import { formatPhoneForWhatsApp, isGatewayApiConfigured } from '../lib/whatsappGateway';
 
 interface GuruPanelProps {
   siswaList: Siswa[];
@@ -168,6 +169,15 @@ function GuruPanel({
         ? 'Tanpa Keterangan (Alfa) ➔ Di-tap oleh Wali Kelas'
         : `Dicatat ${targetStatus} oleh Wali Kelas (${waliKelasName})`;
 
+    const cleanParentWa = formatPhoneForWhatsApp(siswa.waOrangTua);
+    const hasApiGateway = isGatewayApiConfigured(settings);
+    const initialWaStatus: Presensi['waStatus'] = !cleanParentWa ? 'Gagal' : 'Pending';
+    const initialPesan = !cleanParentWa
+      ? `No WA Orang Tua belum terdaftar ➔ Tap Wali Kelas ${targetedKelas} [${targetStatus}]`
+      : hasApiGateway
+      ? `Mengirim via WA Gateway ke (${cleanParentWa}) ➔ Tap Wali Kelas ${targetedKelas} [${targetStatus}]`
+      : `Siap kirim ke WA Ortu (${cleanParentWa}) ➔ Tap Wali Kelas ${targetedKelas} [${targetStatus}]`;
+
     const newRecord: Presensi = {
       id: overwriteRecordId,
       siswaId: siswa.id,
@@ -179,8 +189,8 @@ function GuruPanel({
       waktu: waktuSekarang,
       status: targetStatus,
       shift: resolvedShift,
-      waStatus: 'Terkirim',
-      pesanTerkirim: `Diproses via Server Utama WA Gateway (08214134551) ➔ Tap Wali Kelas ${targetedKelas} [${targetStatus}] (${siswa.waOrangTua || '-'})`,
+      waStatus: initialWaStatus,
+      pesanTerkirim: initialPesan,
       operator: currentUser.namaLengkap || waliKelasName,
       metode: 'MANUAL_TAP',
       metodeLabel: 'Manual Tap Wali Kelas',

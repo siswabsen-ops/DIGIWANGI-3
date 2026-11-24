@@ -7,26 +7,28 @@ import {
   Check,
   CheckCheck,
   Send,
-  Sparkles,
   Copy,
   ExternalLink,
   Phone,
-  Search,
   CheckCircle2,
   ChevronDown,
-  Users,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { Presensi, Siswa, SystemSettings, WaliKelas } from '../types';
-import { getLocalDateString } from '../lib/attendanceUtils';
+import { getLocalDateString, normalizeDateKey, safeAddDays } from '../lib/attendanceUtils';
 import {
   formatPhoneForWhatsApp,
   SERVER_WA_GATEWAY_NUMBER,
-  fetchWhatsAppGatewayLogs,
   clearWhatsAppGatewayLogs,
   broadcastAllClassesToParents,
+  resolveStudentForRecord,
+  resolveParentPhoneForRecord,
+  getDirectWhatsAppUrl,
+  isGatewayApiConfigured,
+  formatWhatsAppAttendanceMessage,
   BroadcastProgress,
-  WhatsAppGatewayLog
+  DirectQueueItem
 } from '../lib/whatsappGateway';
 
 interface WhatsAppSimulatorProps {
@@ -35,6 +37,9 @@ interface WhatsAppSimulatorProps {
   siswaList?: Siswa[];
   settings?: SystemSettings;
   waliKelasList?: WaliKelas[];
+  onUpdatePresensiWaStatus?: (
+    updates: Array<{ id: string; siswaId: string; tanggal: string; waStatus: 'Pending' | 'Terkirim' | 'Gagal'; phone: string }>
+  ) => void;
 }
 
 interface ToastNotificationInfo {
@@ -44,19 +49,28 @@ interface ToastNotificationInfo {
   phone: string;
   message: string;
   timestamp: string;
+  deliveryStatus?: string;
 }
 
-function WhatsAppSimulator({ logs = [], onClearLogs, siswaList = [], settings }: WhatsAppSimulatorProps) {
+function WhatsAppSimulator({
+  logs = [],
+  onClearLogs,
+  siswaList = [],
+  settings,
+  onUpdatePresensiWaStatus
+}: WhatsAppSimulatorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeToast, setActiveToast] = useState<ToastNotificationInfo | null>(null);
   const [hasNewMessage, setHasNewMessage] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('Semua Kelas');
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>(() => getLocalDateString());
   const [displayLimit, setDisplayLimit] = useState<number>(30);
 
   // Server WA Number and Reset State
   const serverWaNumber = settings?.serverWaNumber || SERVER_WA_GATEWAY_NUMBER;
+  const apiModeActive = isGatewayApiConfigured(settings);
   const [lastResetTimestamp, setLastResetTimestamp] = useState<number>(() => {
     try {
       const stored = localStorage.getItem('karapres3_wa_reset_ts');
@@ -68,79 +82,25 @@ function WhatsAppSimulator({ logs = [], onClearLogs, siswaList = [], settings }:
   const [isResetting, setIsResetting] = useState(false);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
 
-  // Broadcast to all parents state
+  // Broadcast & Direct WA Queue state
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastProgress, setBroadcastProgress] = useState<BroadcastProgress | null>(null);
   const [broadcastNotice, setBroadcastNotice] = useState<string | null>(null);
+  const [directQueue, setDirectQueue] = useState<DirectQueueItem[]>([]);
+  const [sentQueueIds, setSentQueueIds] = useState<Record<string, boolean>>({});
+  const [activeQueueIndex, setActiveQueueIndex] = useState<number>(0);
 
-  // Fast O(1) Lookup Maps for instant rendering
-  const studentMap = useMemo(() => {
-    const map = new Map<string, Siswa>();
-    for (let i = 0; i < siswaList.length; i++) {
-      const s = siswaList[i];
-      if (s.id) map.set(s.id, s);
-      if (s.nis) map.set(s.nis.trim(), s);
-      if (s.nik) map.set(s.nik.trim(), s);
-      if (s.nama) map.set(s.nama.trim().toLowerCase(), s);
-    }
-    return map;
-  }, [siswaList]);
-
-  // Fast phone resolver with O(1) cached lookup
+  // Collision-safe phone resolver using siswaId -> nama+kelas -> unique NIK/NIS (returns '' if missing)
   const resolveParentPhone = useCallback((p: Presensi): string => {
-    if (!p) return '081234567890';
-    let matchedPupil = p.siswaId ? studentMap.get(p.siswaId) : undefined;
-    if (!matchedPupil && p.nis) matchedPupil = studentMap.get(p.nis.trim());
-    if (!matchedPupil && p.nik) matchedPupil = studentMap.get(p.nik.trim());
-    if (!matchedPupil && p.nama) matchedPupil = studentMap.get(p.nama.trim().toLowerCase());
-
-    if (matchedPupil?.waOrangTua && matchedPupil.waOrangTua.trim()) {
-      return matchedPupil.waOrangTua.trim();
-    }
-    if (p.pesanTerkirim) {
-      const matchBracket = p.pesanTerkirim.match(/\((08\d+|628\d+|\+?62\d+)\)/);
-      if (matchBracket) return matchBracket[1];
-      const matchRaw = p.pesanTerkirim.match(/\b(08\d{8,12}|628\d{8,12})\b/);
-      if (matchRaw) return matchRaw[1];
-    }
-    return '081234567890';
-  }, [studentMap]);
+    const matched = resolveStudentForRecord(p, siswaList);
+    return resolveParentPhoneForRecord(p, matched, siswaList);
+  }, [siswaList]);
 
   // Construct message content from template for parents
   const formatPesanWhatsAppOrangTua = useCallback((p: Presensi): string => {
-    const timeFormatted = p.waktu ? p.waktu.slice(0, 5) : '07:00';
-    const statusLabel = p.status ? p.status.toUpperCase() : 'HADIR';
-    const dateFormatted = p.tanggal || getLocalDateString();
-
-    if (settings?.templatePesan && settings.templatePesan.includes('{nama}')) {
-      return settings.templatePesan
-        .replace(/{nama}/g, p.nama)
-        .replace(/{status}/g, statusLabel)
-        .replace(/{waktu}/g, timeFormatted)
-        .replace(/{kelas}/g, p.kelas)
-        .replace(/{tanggal}/g, dateFormatted);
-    }
-
-    return `🔔 *NOTIFIKASI KEHADIRAN SISWA - SDN 3 KARAMATWANGI*
-    
-Yth. Orang Tua / Wali Murid dari:
-👤 *Nama Siswa:* ${p.nama}
-🏷️ *Kelas:* ${p.kelas}
-📌 *NIS / ID:* ${p.nis || p.nik || '-'}
-
-Dengan ini kami menginformasikan bahwa ananda telah tercatat *${statusLabel}* pada presensi sekolah hari ini:
-📅 Tanggal: ${dateFormatted}
-⏰ Pukul: ${timeFormatted} WIB
-👨‍🏫 Petugas/Operator: ${p.operator ? p.operator.split(',')[0] : 'Operator Gerbang'}
-
-Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Terima kasih.`;
-  }, [settings?.templatePesan]);
-
-  // Direct WhatsApp Link
-  const getDirectWhatsAppUrl = useCallback((phone: string, message: string) => {
-    const cleanPhone = formatPhoneForWhatsApp(phone);
-    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-  }, []);
+    const matched = resolveStudentForRecord(p, siswaList);
+    return formatWhatsAppAttendanceMessage(p, matched, settings);
+  }, [siswaList, settings]);
 
   // Handle real-time custom event listener for automatic WhatsApp Gateway dispatch
   useEffect(() => {
@@ -153,9 +113,10 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
             presensi: detail.presensi,
             recipientRole: 'orang_tua',
             recipientName: detail.recipientName || `Orang Tua ${detail.presensi.nama}`,
-            phone: detail.phone || '081234567890',
+            phone: formatPhoneForWhatsApp(detail.phone) || '',
             message: detail.message || '',
-            timestamp: detail.presensi.waktu?.slice(0, 5) || '07:00'
+            timestamp: detail.presensi.waktu?.slice(0, 5) || '07:00',
+            deliveryStatus: detail.status
           };
           setActiveToast(toastData);
           const timer = setTimeout(() => {
@@ -176,34 +137,141 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
     }
   }, [isOpen]);
 
-  // Broadcast notifikasi semua kelas ke WhatsApp masing-masing orang tua siswa
+  // Available dates in logs (always includes Today & Yesterday)
+  const availableDates = useMemo(() => {
+    const todayStr = getLocalDateString();
+    const yesterdayStr = safeAddDays(todayStr, -1);
+    const set = new Set<string>([todayStr, yesterdayStr]);
+    for (let i = 0; i < logs.length; i++) {
+      if (logs[i]?.tanggal) {
+        set.add(normalizeDateKey(logs[i].tanggal));
+      }
+    }
+    return Array.from(set).sort().reverse();
+  }, [logs]);
+
+  // Keep selectedDateFilter valid
+  useEffect(() => {
+    const todayStr = getLocalDateString();
+    if (!selectedDateFilter) setSelectedDateFilter(todayStr);
+  }, [selectedDateFilter]);
+
+  // Filter logs specifically for selectedDate + class + search + manual reset
+  const filteredLogs = useMemo(() => {
+    const search = searchFilter.trim().toLowerCase();
+    const hasClassFilter = selectedClassFilter !== 'Semua Kelas';
+    const targetDate = normalizeDateKey(selectedDateFilter || getLocalDateString());
+    const todayStr = getLocalDateString();
+
+    return logs.filter((p) => {
+      if (!p) return false;
+      const pDate = p.tanggal ? normalizeDateKey(p.tanggal) : todayStr;
+      if (pDate !== targetDate) {
+        return false;
+      }
+
+      if (pDate === todayStr && lastResetTimestamp > 0) {
+        const scanTimestamp = (p as any)._scannedAt || (p as any).createdAt;
+        if (scanTimestamp && scanTimestamp < lastResetTimestamp) {
+          return false;
+        }
+      }
+
+      if (hasClassFilter && p.kelas !== selectedClassFilter) {
+        return false;
+      }
+
+      if (search) {
+        const matchName = p.nama.toLowerCase().includes(search);
+        const matchNis = p.nis ? p.nis.toLowerCase().includes(search) : false;
+        const matchKelas = p.kelas.toLowerCase().includes(search);
+        const parentPhone = resolveParentPhone(p);
+
+        if (!matchName && !matchNis && !matchKelas && !parentPhone.includes(search)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [logs, selectedDateFilter, selectedClassFilter, searchFilter, lastResetTimestamp, resolveParentPhone]);
+
+  // Exact parent phone coverage summary for current filter
+  const phoneSummary = useMemo(() => {
+    let withPhone = 0;
+    let missingPhone = 0;
+    for (let i = 0; i < filteredLogs.length; i++) {
+      if (resolveParentPhone(filteredLogs[i])) {
+        withPhone++;
+      } else {
+        missingPhone++;
+      }
+    }
+    return { withPhone, missingPhone };
+  }, [filteredLogs, resolveParentPhone]);
+
+  // Broadcast notifikasi semua kelas (atau kelas terpilih) ke WhatsApp masing-masing orang tua siswa
   const handleBroadcastToAllParents = useCallback(async () => {
-    if (isBroadcasting) return;
+    if (isBroadcasting || filteredLogs.length === 0) return;
     setIsBroadcasting(true);
     setBroadcastNotice(null);
+    setDirectQueue([]);
+    setSentQueueIds({});
+    setActiveQueueIndex(0);
     setBroadcastProgress({
       current: 0,
-      total: logs.length,
-      studentName: 'Menyiapkan data semua kelas...',
+      total: filteredLogs.length,
+      studentName: 'Menyiapkan data siswa...',
       kelas: '',
       phone: ''
     });
 
     try {
-      const res = await broadcastAllClassesToParents(logs, siswaList, settings, (prog) => {
+      const res = await broadcastAllClassesToParents(filteredLogs, siswaList, settings, (prog) => {
         setBroadcastProgress(prog);
       });
-      setBroadcastNotice(`✓ Berhasil mengirim notifikasi ke ${res.sent} orang tua siswa untuk seluruh kelas (1-A s/d 6-B)!`);
-      setTimeout(() => setBroadcastNotice(null), 5500);
+
+      if (res.updatedWaStatuses.length > 0 && onUpdatePresensiWaStatus) {
+        onUpdatePresensiWaStatus(res.updatedWaStatuses);
+      }
+
+      if (res.directQueue.length > 0) {
+        setDirectQueue(res.directQueue);
+        setActiveQueueIndex(0);
+      }
+
+      const summaryParts: string[] = [];
+      if (res.sentApi > 0) summaryParts.push(`${res.sentApi} Terkirim via API`);
+      if (res.queuedDirect > 0) summaryParts.push(`${res.queuedDirect} Siap Antrean WA Langsung`);
+      if (res.failed > 0) summaryParts.push(`${res.failed} Tanpa No WA Valid`);
+      setBroadcastNotice(`✓ Selesai diproses (${selectedClassFilter}): ${summaryParts.join(' • ')}`);
+      setTimeout(() => setBroadcastNotice(null), 7000);
     } catch (err: any) {
       console.error('Gagal broadcast ke orang tua:', err);
-      setBroadcastNotice('Terjadi kesalahan saat pengiriman massal ke orang tua.');
+      setBroadcastNotice('Terjadi kesalahan saat memproses pengiriman ke orang tua.');
       setTimeout(() => setBroadcastNotice(null), 4000);
     } finally {
       setIsBroadcasting(false);
       setBroadcastProgress(null);
     }
-  }, [isBroadcasting, logs, siswaList, settings]);
+  }, [isBroadcasting, filteredLogs, siswaList, settings, onUpdatePresensiWaStatus, selectedClassFilter]);
+
+  const handleMarkQueueItemSent = useCallback((item: DirectQueueItem, idx: number) => {
+    setSentQueueIds((prev) => ({ ...prev, [item.id]: true }));
+    if (onUpdatePresensiWaStatus) {
+      onUpdatePresensiWaStatus([
+        {
+          id: item.presensi.id,
+          siswaId: item.presensi.siswaId,
+          tanggal: item.presensi.tanggal,
+          waStatus: 'Terkirim',
+          phone: item.phone
+        }
+      ]);
+    }
+    if (idx + 1 < directQueue.length) {
+      setActiveQueueIndex(idx + 1);
+    }
+  }, [directQueue.length, onUpdatePresensiWaStatus]);
 
   // Manual Reset Handler - Clears WhatsApp notifications cleanly without touching student attendance records
   const handleManualReset = useCallback(async () => {
@@ -215,7 +283,8 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
       try {
         localStorage.setItem('karapres3_wa_reset_ts', String(now));
       } catch {}
-      setResetNotice('Semua notifikasi WhatsApp telah dibersihkan bersih!');
+      setDirectQueue([]);
+      setResetNotice('Riwayat tampilan notifikasi WhatsApp dibersihkan!');
       if (onClearLogs) {
         onClearLogs();
       }
@@ -255,47 +324,6 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
     }
   }, []);
 
-  // Filter logs specifically for today (2026-10-29 and current date) and respect manual reset
-  const filteredLogs = useMemo(() => {
-    const search = searchFilter.trim().toLowerCase();
-    const hasClassFilter = selectedClassFilter !== 'Semua Kelas';
-    const todayStr = getLocalDateString();
-
-    return logs.filter((p) => {
-      // 1. Only show attendance logs from today (reset daily at 05:00 WIB)
-      if (p.tanggal && p.tanggal !== todayStr) {
-        return false;
-      }
-
-      // 2. If user manually clicked reset, exclude records scanned prior to reset
-      if (lastResetTimestamp > 0) {
-        // Live scans carry timestamp in id or create time
-        const scanTimestamp = (p as any)._scannedAt || (p as any).createdAt;
-        if (scanTimestamp && scanTimestamp < lastResetTimestamp) {
-          return false;
-        }
-      }
-
-      // 3. Class filter
-      if (hasClassFilter && p.kelas !== selectedClassFilter) {
-        return false;
-      }
-
-      // 4. Search query filter
-      if (search) {
-        const matchName = p.nama.toLowerCase().includes(search);
-        const matchNis = p.nis ? p.nis.toLowerCase().includes(search) : false;
-        const matchKelas = p.kelas.toLowerCase().includes(search);
-        const parentPhone = resolveParentPhone(p);
-
-        if (!matchName && !matchNis && !matchKelas && !parentPhone.includes(search)) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [logs, selectedClassFilter, searchFilter, lastResetTimestamp, resolveParentPhone]);
-
   // Slice logs for instant, lightweight DOM rendering
   const visibleLogs = useMemo(() => {
     return filteredLogs.slice(-displayLimit);
@@ -309,6 +337,17 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
     return Array.from(set).sort();
   }, [logs]);
 
+  const todayCount = useMemo(() => {
+    const todayStr = getLocalDateString();
+    return logs.filter((p) => p && normalizeDateKey(p.tanggal) === todayStr).length;
+  }, [logs]);
+
+  const currentQueueItem = directQueue[activeQueueIndex];
+  const sentQueueCount = useMemo(
+    () => directQueue.filter((item) => sentQueueIds[item.id]).length,
+    [directQueue, sentQueueIds]
+  );
+
   return (
     <>
       {/* Floating mini toast bar when student scans */}
@@ -317,8 +356,8 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
           id="wa-gateway-mini-toast"
           className="fixed bottom-20 right-4 sm:right-6 z-40 max-w-[380px] bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-3 animate-in slide-in-from-bottom-3 fade-in duration-150 pointer-events-auto"
         >
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md bg-emerald-600">
-            <Send className="w-4 h-4 animate-pulse" />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md ${activeToast.phone ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+            {activeToast.phone ? <Send className="w-4 h-4 animate-pulse" /> : <AlertTriangle className="w-4 h-4" />}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1">
@@ -332,20 +371,32 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
               {activeToast.presensi.nama} ({activeToast.presensi.kelas})
             </p>
             <p className="text-[10px] text-slate-300 truncate">
-              Tujuan: <span className="font-bold text-slate-100">{activeToast.recipientName}</span> • <span className="font-mono text-amber-300 font-bold">{activeToast.phone}</span>
+              {activeToast.phone ? (
+                <>
+                  Tujuan: <span className="font-bold text-slate-100">{activeToast.recipientName}</span> • <span className="font-mono text-amber-300 font-bold">+{activeToast.phone}</span>
+                </>
+              ) : (
+                <span className="text-rose-300 font-bold">No WA Orang Tua belum diisi</span>
+              )}
             </p>
           </div>
           <div className="flex flex-col gap-1 shrink-0">
-            <a
-              href={getDirectWhatsAppUrl(activeToast.phone, activeToast.message)}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[9px] font-bold text-white px-2 py-1 rounded-lg transition-colors flex items-center gap-1 shadow-xs bg-emerald-600 hover:bg-emerald-500"
-              title="Buka Chat WhatsApp"
-            >
-              <ExternalLink className="w-3 h-3" />
-              <span>Chat</span>
-            </a>
+            {activeToast.phone ? (
+              <a
+                href={getDirectWhatsAppUrl(activeToast.phone, activeToast.message)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[9px] font-bold text-white px-2 py-1 rounded-lg transition-colors flex items-center gap-1 shadow-xs bg-emerald-600 hover:bg-emerald-500"
+                title="Buka Chat WhatsApp"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Chat</span>
+              </a>
+            ) : (
+              <span className="text-[9px] font-bold text-rose-300 px-1.5 py-0.5 rounded bg-rose-950/60 text-center">
+                Kosong
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setIsOpen(true)}
@@ -372,7 +423,7 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
         </div>
         <span className="font-bold text-xs tracking-wide">WA Gateway (Orang Tua Siswa)</span>
         <span className="text-[10px] bg-emerald-900/70 px-2 py-0.5 rounded-full font-mono font-bold">
-          {logs.length}
+          {todayCount}
         </span>
       </button>
 
@@ -380,32 +431,32 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
       {isOpen && (
         <div
           id="wa-simulator-modal"
-          className="fixed bottom-22 right-4 sm:right-6 z-50 w-[440px] max-w-[calc(100vw-2rem)] bg-[#E5DDD5] rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-800 flex flex-col h-[580px] max-h-[calc(100vh-7rem)] animate-in slide-in-from-bottom-4 duration-150"
+          className="fixed bottom-22 right-4 sm:right-6 z-50 w-[460px] max-w-[calc(100vw-2rem)] bg-[#E5DDD5] rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-800 flex flex-col h-[620px] max-h-[calc(100vh-7rem)] animate-in slide-in-from-bottom-4 duration-150"
         >
           {/* Virtual Phone Header */}
           <div className="bg-[#075E54] text-white p-3 flex items-center justify-between border-b border-[#128C7E] shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold shadow-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold shadow-xs shrink-0">
                 <Smartphone className="w-4 h-4 text-emerald-800" />
               </div>
-              <div>
-                <h4 className="font-bold text-xs tracking-wide flex items-center gap-1.5">
+              <div className="min-w-0">
+                <h4 className="font-bold text-xs tracking-wide flex items-center gap-1.5 truncate">
                   Server WA: <span className="font-mono text-amber-300 font-black">{serverWaNumber}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Live Online" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Live Online" />
                 </h4>
-                <p className="text-[9.5px] text-emerald-100 opacity-90 font-mono">
-                  Otomatis: Notifikasi Presensi Langsung ke Orang Tua Siswa
+                <p className="text-[9.5px] text-emerald-100 opacity-90 font-mono truncate">
+                  {apiModeActive ? 'API Gateway Otomatis Aktif' : 'Mode Langsung WA (wa.me) • Antrean per Orang Tua'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 id="btn-wa-clear-logs"
                 onClick={handleManualReset}
                 disabled={isResetting}
                 className="text-[9px] bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-emerald-100 px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer border border-emerald-600/50 flex items-center gap-1 shadow-xs"
-                title="Hapus riwayat notifikasi WhatsApp hari ini (Rekap absensi siswa tetap tersimpan aman)"
+                title="Bersihkan tampilan log WhatsApp hari ini (Rekap absensi tetap aman)"
               >
                 {isResetting ? 'Membersihkan...' : 'Reset WA'}
               </button>
@@ -423,7 +474,7 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
 
           {/* Reset & Broadcast Feedback Notifications */}
           {resetNotice && (
-            <div className="bg-emerald-800 text-white text-[10px] py-1.5 px-3 flex items-center justify-between border-b border-emerald-700 animate-in fade-in duration-150">
+            <div className="bg-emerald-800 text-white text-[10px] py-1.5 px-3 flex items-center justify-between border-b border-emerald-700 animate-in fade-in duration-150 shrink-0">
               <div className="flex items-center gap-1.5 font-bold">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                 <span>{resetNotice}</span>
@@ -433,7 +484,7 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
           )}
 
           {broadcastNotice && (
-            <div className="bg-teal-800 text-white text-[10px] py-2 px-3 flex items-center justify-between border-b border-teal-700 animate-in fade-in duration-150">
+            <div className="bg-teal-800 text-white text-[10px] py-2 px-3 flex items-center justify-between border-b border-teal-700 animate-in fade-in duration-150 shrink-0">
               <div className="flex items-center gap-1.5 font-bold">
                 <CheckCircle2 className="w-4 h-4 text-teal-300 shrink-0" />
                 <span>{broadcastNotice}</span>
@@ -441,7 +492,7 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
               <button
                 type="button"
                 onClick={() => setBroadcastNotice(null)}
-                className="text-white hover:text-teal-200 text-[10px] underline ml-2 cursor-pointer"
+                className="text-white hover:text-teal-200 text-[10px] underline ml-2 cursor-pointer shrink-0"
               >
                 Tutup
               </button>
@@ -455,17 +506,17 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
               type="button"
               id="btn-broadcast-all-parents"
               onClick={handleBroadcastToAllParents}
-              disabled={isBroadcasting}
+              disabled={isBroadcasting || filteredLogs.length === 0}
               className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-98 disabled:opacity-60 text-white py-2 px-3 rounded-xl font-black text-[11px] flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer border border-emerald-400/50"
-              title="Kirim notifikasi presensi hari ini untuk semua kelas (1-A s/d 6-B) langsung ke WhatsApp orang tua siswa"
+              title="Kirim notifikasi presensi sesuai filter tanggal & kelas langsung ke WhatsApp masing-masing orang tua siswa"
             >
               {isBroadcasting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-amber-300" />
                   <span className="truncate">
                     {broadcastProgress
-                      ? `Mengirim: ${broadcastProgress.current}/${broadcastProgress.total} (${broadcastProgress.studentName} - ${broadcastProgress.kelas})`
-                      : 'Memproses broadcast ke orang tua...'}
+                      ? `Memproses: ${broadcastProgress.current}/${broadcastProgress.total} (${broadcastProgress.studentName})`
+                      : 'Memproses notifikasi orang tua...'}
                   </span>
                 </>
               ) : (
@@ -473,37 +524,121 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
                   <Send className="w-3.5 h-3.5 text-amber-300" />
                   <span>📲 Kirim Notifikasi Semua Kelas ke Orang Tua</span>
                   <span className="text-[9.5px] bg-emerald-950/70 text-emerald-200 px-2 py-0.5 rounded-full font-mono font-bold">
-                    {filteredLogs.length} Siswa
+                    {phoneSummary.withPhone}/{filteredLogs.length} Valid
                   </span>
                 </>
               )}
             </button>
 
-            {/* Quick Search and Class Filter */}
-            <div className="flex items-center gap-1.5">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  placeholder="Cari siswa atau no WA orang tua..."
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  className="w-full bg-emerald-950/90 text-white placeholder-emerald-400/60 text-[10px] py-1 px-2 rounded-lg border border-emerald-700/60 focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium"
-                />
-              </div>
-              {uniqueClasses.length > 0 && (
-                <select
-                  value={selectedClassFilter}
-                  onChange={(e) => setSelectedClassFilter(e.target.value)}
-                  className="bg-emerald-950/90 text-white text-[9px] py-1 px-1.5 rounded-lg border border-emerald-700/60 focus:outline-none"
-                >
-                  <option value="Semua Kelas">Semua Kelas</option>
-                  {uniqueClasses.map((cls) => (
-                    <option key={cls} value={cls}>{cls}</option>
-                  ))}
-                </select>
-              )}
+            {/* Coverage Bar */}
+            <div className="flex items-center justify-between text-[9.5px] bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/70">
+              <span className="text-emerald-200 font-semibold">
+                Tersedia No WA: <b className="text-emerald-300 font-mono">{phoneSummary.withPhone}</b> • Belum Ada No WA: <b className="text-amber-300 font-mono">{phoneSummary.missingPhone}</b>
+              </span>
+              <span className={`font-mono font-bold px-1.5 py-0.2 rounded ${apiModeActive ? 'bg-emerald-700 text-white' : 'bg-amber-900/80 text-amber-200'}`}>
+                {apiModeActive ? 'API Auto' : 'WA Direct'}
+              </span>
+            </div>
+
+            {/* Date Filter + Quick Search + Class Filter */}
+            <div className="grid grid-cols-12 gap-1.5">
+              <select
+                value={selectedDateFilter}
+                onChange={(e) => {
+                  setSelectedDateFilter(e.target.value);
+                  setDisplayLimit(30);
+                }}
+                aria-label="Pilih Tanggal Notifikasi WA"
+                className="col-span-4 bg-emerald-950/90 text-white text-[9.5px] py-1 px-1.5 rounded-lg border border-emerald-700/60 focus:outline-none font-bold"
+              >
+                {availableDates.map((dt) => {
+                  const todayStr = getLocalDateString();
+                  const yestStr = safeAddDays(todayStr, -1);
+                  const label =
+                    dt === todayStr
+                      ? `Hari Ini (${dt})`
+                      : dt === yestStr
+                      ? `Kemarin (${dt})`
+                      : dt;
+                  return (
+                    <option key={dt} value={dt}>{label}</option>
+                  );
+                })}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Cari siswa / No WA..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                className="col-span-5 bg-emerald-950/90 text-white placeholder-emerald-400/60 text-[10px] py-1 px-2 rounded-lg border border-emerald-700/60 focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium"
+              />
+
+              <select
+                value={selectedClassFilter}
+                onChange={(e) => setSelectedClassFilter(e.target.value)}
+                className="col-span-3 bg-emerald-950/90 text-white text-[9.5px] py-1 px-1 rounded-lg border border-emerald-700/60 focus:outline-none"
+              >
+                <option value="Semua Kelas">Semua Kelas</option>
+                {uniqueClasses.map((cls) => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
+              </select>
             </div>
           </div>
+
+          {/* Interactive Sequential Direct WhatsApp Queue Drawer (when API token not set) */}
+          {directQueue.length > 0 && currentQueueItem && (
+            <div className="bg-amber-50 border-b border-amber-300 px-3 py-2.5 text-[10px] text-amber-950 shrink-0 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-black text-amber-900 uppercase tracking-wide flex items-center gap-1">
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-700" />
+                  Antrean Kirim Langsung WA ({sentQueueCount}/{directQueue.length} dikirim)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDirectQueue([])}
+                  className="text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
+                >
+                  Tutup Antrean
+                </button>
+              </div>
+              <p className="text-[9.5px] text-amber-900 leading-snug">
+                Saat ini berjalan di <b>Mode Langsung wa.me</b>. Klik tombol hijau di bawah untuk membuka chat WhatsApp Orang Tua secara berurutan ke masing-masing nomor terdaftar:
+              </p>
+              <div className="bg-white border border-amber-200 rounded-xl p-2 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="min-w-0">
+                  <p className="font-black text-slate-800 truncate">
+                    #{activeQueueIndex + 1}. {currentQueueItem.presensi.nama} ({currentQueueItem.presensi.kelas})
+                  </p>
+                  <p className="font-mono font-bold text-emerald-700">
+                    Tujuan WA Ortu: +{currentQueueItem.phone}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <a
+                    href={currentQueueItem.waUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => handleMarkQueueItemSent(currentQueueItem, activeQueueIndex)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-xs"
+                  >
+                    <Send className="w-3 h-3" />
+                    <span>Kirim ({activeQueueIndex + 1}/{directQueue.length})</span>
+                  </a>
+                  {activeQueueIndex + 1 < directQueue.length && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveQueueIndex((prev) => Math.min(directQueue.length - 1, prev + 1))}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1.5 rounded-lg cursor-pointer"
+                    >
+                      Lewati
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Chat Logs Content (Screen Area) - Khusus Notifikasi Orang Tua */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3 flex flex-col-reverse justify-start">
@@ -512,9 +647,11 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
                 <span className="inline-block p-2.5 bg-emerald-50 rounded-full text-emerald-600 mb-2 shadow-xs">
                   <Bell className="w-5 h-5 animate-pulse" />
                 </span>
-                <p className="text-gray-800 font-extrabold text-xs">Belum Ada Presensi Masuk Hari Ini</p>
+                <p className="text-gray-800 font-extrabold text-xs">
+                  Belum Ada Data Presensi ({selectedDateFilter})
+                </p>
                 <p className="text-gray-600 text-[11px] mt-1 leading-relaxed">
-                  Saat siswa absensi scan QR Code, sistem otomatis langsung mengirimkan notifikasi presensi ke nomor WhatsApp Orang Tua masing-masing siswa per kelasnya.
+                  Saat siswa absensi scan QR Code atau di-tap Wali Kelas, notifikasi diarahkan otomatis ke nomor WhatsApp Orang Tua masing-masing siswa sesuai data profil.
                 </p>
               </div>
             ) : (
@@ -522,22 +659,30 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
                 {visibleLogs.slice().reverse().map((log) => {
                   const formattedTime = log.waktu ? log.waktu.slice(0, 5) : '07:00';
                   const isSent = log.waStatus === 'Terkirim';
+                  const isFailed = log.waStatus === 'Gagal';
                   const parentPhone = resolveParentPhone(log);
+                  const hasPhone = Boolean(parentPhone);
                   const parentMessageText = formatPesanWhatsAppOrangTua(log);
-                  const directUrlOrtu = getDirectWhatsAppUrl(parentPhone, parentMessageText);
+                  const directUrlOrtu = hasPhone ? getDirectWhatsAppUrl(parentPhone, parentMessageText) : '';
 
                   return (
                     <div key={log.id} className="space-y-2">
                       {/* KARTU NOTIFIKASI KHUSUS ORANG TUA SISWA */}
                       <div className="self-end w-full max-w-[98%] bg-[#DCF8C6] p-2.5 rounded-2xl shadow-xs text-gray-800 relative text-xs border border-emerald-300/80">
-                        <div className="text-[9px] font-black tracking-tight text-emerald-900 mb-1 pb-1 border-b border-emerald-300/60 flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                            <span className="uppercase text-emerald-900 font-bold">NOTIFIKASI KE ORANG TUA SISWA</span>
+                        <div className="text-[9px] font-black tracking-tight text-emerald-900 mb-1 pb-1 border-b border-emerald-300/60 flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                            <span className="uppercase text-emerald-900 font-bold truncate">NOTIFIKASI KE ORANG TUA</span>
                           </div>
-                          <span className="font-mono text-emerald-950 font-black bg-emerald-200/90 px-1.5 py-0.2 rounded border border-emerald-300">
-                            {parentPhone}
-                          </span>
+                          {hasPhone ? (
+                            <span className="font-mono text-emerald-950 font-black bg-emerald-200/90 px-1.5 py-0.2 rounded border border-emerald-300 shrink-0">
+                              +{parentPhone}
+                            </span>
+                          ) : (
+                            <span className="font-mono text-rose-800 font-black bg-rose-100 px-1.5 py-0.2 rounded border border-rose-300 shrink-0">
+                              No WA Belum Diisi
+                            </span>
+                          )}
                         </div>
 
                         <div className="font-sans text-[11px] text-gray-800 leading-relaxed bg-white/85 p-2 rounded-xl border border-white/80 shadow-2xs space-y-0.5">
@@ -552,9 +697,14 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between text-[9px] text-gray-500 mt-1.5">
-                          <span className="text-slate-600 font-medium">Petugas: {log.operator ? log.operator.split(',')[0] : 'Sistem Gerbang'}</span>
-                          <div className="flex items-center gap-1 font-mono font-bold">
+                        <div className="flex items-center justify-between text-[9px] text-gray-600 mt-1.5 gap-1">
+                          <span className="text-slate-600 font-medium truncate">
+                            {log.operator ? log.operator.split(',')[0] : 'Sistem Gerbang'} •{' '}
+                            <span className={`font-bold ${isSent ? 'text-emerald-700' : isFailed || !hasPhone ? 'text-rose-600' : 'text-amber-700'}`}>
+                              {!hasPhone ? 'No WA Kosong' : isSent ? 'Terkirim' : isFailed ? 'Gagal' : 'Siap Kirim'}
+                            </span>
+                          </span>
+                          <div className="flex items-center gap-1 font-mono font-bold shrink-0">
                             <span>{formattedTime}</span>
                             {isSent ? (
                               <CheckCheck className="w-3.5 h-3.5 text-blue-600" />
@@ -565,17 +715,40 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
                         </div>
 
                         <div className="mt-2 pt-1.5 border-t border-emerald-300/50 grid grid-cols-2 gap-1.5">
-                          <a
-                            href={directUrlOrtu}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="bg-[#075E54] hover:bg-[#128C7E] active:scale-98 text-white py-1.5 px-2 rounded-xl text-center text-[10px] font-black transition-transform flex items-center justify-center gap-1 shadow-xs"
-                            title={`Buka chat WhatsApp ke nomor orang tua (${parentPhone})`}
-                          >
-                            <Phone className="w-3 h-3 text-emerald-200" />
-                            <span>Kirim ke WA</span>
-                            <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-80" />
-                          </a>
+                          {hasPhone ? (
+                            <a
+                              href={directUrlOrtu}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={() => {
+                                if (onUpdatePresensiWaStatus) {
+                                  onUpdatePresensiWaStatus([
+                                    {
+                                      id: log.id,
+                                      siswaId: log.siswaId,
+                                      tanggal: log.tanggal,
+                                      waStatus: 'Terkirim',
+                                      phone: parentPhone
+                                    }
+                                  ]);
+                                }
+                              }}
+                              className="bg-[#075E54] hover:bg-[#128C7E] active:scale-98 text-white py-1.5 px-2 rounded-xl text-center text-[10px] font-black transition-transform flex items-center justify-center gap-1 shadow-xs"
+                              title={`Buka chat WhatsApp ke nomor orang tua (+${parentPhone})`}
+                            >
+                              <Phone className="w-3 h-3 text-emerald-200" />
+                              <span>Kirim ke WA</span>
+                              <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-80" />
+                            </a>
+                          ) : (
+                            <span
+                              className="bg-slate-200 text-slate-500 py-1.5 px-2 rounded-xl text-center text-[10px] font-bold flex items-center justify-center gap-1 cursor-not-allowed"
+                              title="Isi nomor WA Orang Tua terlebih dahulu di Data Siswa Admin"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-rose-500" />
+                              <span>No WA Kosong</span>
+                            </span>
+                          )}
 
                           <button
                             type="button"
@@ -624,3 +797,4 @@ Pesan ini dikirimkan otomatis melalui Layanan WA Gateway SDN 3 Karamatwangi. Ter
 }
 
 export default memo(WhatsAppSimulator);
+

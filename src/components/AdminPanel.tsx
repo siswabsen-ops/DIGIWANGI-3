@@ -52,6 +52,11 @@ import { APP_LOGO_STORAGE_KEY, safeSetItem, safeRemoveItem } from '../lib/storag
 import QRCodeRenderer from './QRCodeRenderer';
 import BatchQRPrintModal from './BatchQRPrintModal';
 import { downloadClassQRZip, downloadSingleStudentQR } from '../lib/qrCodeExport';
+import {
+  sendTestWhatsAppGateway,
+  isGatewayApiConfigured,
+  getDirectWhatsAppUrl
+} from '../lib/whatsappGateway';
 
 interface AdminPanelProps {
   siswaList: Siswa[];
@@ -141,6 +146,17 @@ function AdminPanel({
   const [jamToleransi, setJamToleransi] = useState(settings.jamToleransi);
   const [templatePesan, setTemplatePesan] = useState(settings.templatePesan);
   const [serverWaNumber, setServerWaNumber] = useState(settings.serverWaNumber || '08214134551');
+  const [waGatewayProvider, setWaGatewayProvider] = useState<'direct' | 'fonnte' | 'wablas' | 'webhook'>(
+    settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct')
+  );
+  const [waApiKey, setWaApiKey] = useState(
+    settings.waApiKey && settings.waApiKey !== 'KARA3_WS_GATEWAY_v2' ? settings.waApiKey : ''
+  );
+  const [waGatewayUrl, setWaGatewayUrl] = useState(settings.waGatewayUrl || '');
+  const [showWaApiKey, setShowWaApiKey] = useState(false);
+  const [testWaPhone, setTestWaPhone] = useState('');
+  const [isTestingWa, setIsTestingWa] = useState(false);
+  const [testWaResult, setTestWaResult] = useState<{ ok: boolean; msg: string; directUrl?: string } | null>(null);
   const [spreadsheetId, setSpreadsheetId] = useState(settings.googleSpreadsheetId);
   const [driveFolderId, setDriveFolderId] = useState(settings.googleDriveFolderId);
 
@@ -175,6 +191,9 @@ function AdminPanel({
     setJamToleransi(settings.jamToleransi || '07:15');
     setTemplatePesan(settings.templatePesan || '');
     setServerWaNumber(settings.serverWaNumber || '08214134551');
+    setWaGatewayProvider(settings.waGatewayProvider || (settings.waGatewayUrl ? 'webhook' : 'direct'));
+    setWaApiKey(settings.waApiKey && settings.waApiKey !== 'KARA3_WS_GATEWAY_v2' ? settings.waApiKey : '');
+    setWaGatewayUrl(settings.waGatewayUrl || '');
     setSpreadsheetId(settings.googleSpreadsheetId || '');
     setDriveFolderId(settings.googleDriveFolderId || '');
     if (settings.appLogoUrl !== undefined) {
@@ -572,6 +591,7 @@ function AdminPanel({
   const handleSaveAllSettings = (e?: React.FormEvent, customJadwal?: JadwalPresensi[]) => {
     if (e) e.preventDefault();
     const listToSave = customJadwal || jadwalList;
+    const cleanToken = waApiKey.trim().slice(0, 256);
     const updated: SystemSettings = {
       ...settings,
       jamMasuk,
@@ -580,11 +600,50 @@ function AdminPanel({
       jadwalList: listToSave,
       templatePesan,
       serverWaNumber: serverWaNumber.trim() || '08214134551',
+      waGatewayProvider,
+      waApiKey: cleanToken || 'KARA3_WS_GATEWAY_v2',
+      waGatewayUrl: waGatewayUrl.trim(),
       googleSpreadsheetId: spreadsheetId,
       googleDriveFolderId: driveFolderId,
     };
     onSaveSettings(updated);
-    displayNotice('success', 'Seluruh konfigurasi sistem & jadwal presensi berhasil disimpan.');
+    displayNotice('success', 'Seluruh konfigurasi sistem, WA Gateway & jadwal presensi berhasil disimpan.');
+  };
+
+  const handleTestWaGateway = async () => {
+    if (isTestingWa) return;
+    setIsTestingWa(true);
+    setTestWaResult(null);
+    const draftSettings: SystemSettings = {
+      ...settings,
+      serverWaNumber: serverWaNumber.trim() || '08214134551',
+      waGatewayProvider,
+      waApiKey: waApiKey.trim().slice(0, 256) || 'KARA3_WS_GATEWAY_v2',
+      waGatewayUrl: waGatewayUrl.trim()
+    };
+    try {
+      const res = await sendTestWhatsAppGateway(testWaPhone, draftSettings);
+      if (res.deliveryStatus === 'DELIVERED' || res.deliveryStatus === 'SENT') {
+        setTestWaResult({
+          ok: true,
+          msg: `Pesan uji BERHASIL terkirim otomatis ke +${res.phone} via ${res.gateway || waGatewayProvider}.`
+        });
+      } else if (res.deliveryStatus === 'PENDING') {
+        const directUrl = getDirectWhatsAppUrl(res.phone, res.message);
+        setTestWaResult({
+          ok: true,
+          msg: `Siap dikirim dalam Mode Langsung (wa.me) ke +${res.phone}. Isi token API jika ingin terkirim otomatis tanpa klik.`,
+          directUrl
+        });
+      } else {
+        setTestWaResult({
+          ok: false,
+          msg: res.error || 'Gagal mengirim pesan uji coba.'
+        });
+      }
+    } finally {
+      setIsTestingWa(false);
+    }
   };
 
   // Jadwal Presensi Actions
@@ -2154,13 +2213,20 @@ function AdminPanel({
                     PENGATURAN WHATSAPP GATEWAY KE ORANG TUA SISWA
                   </h3>
                   <p className="text-xs text-gray-500 mt-1 leading-normal font-sans">
-                    Notifikasi otomatis terkirim langsung ke nomor WhatsApp orang tua/wali murid yang terdaftar setiap kali siswa melakukan absensi di gerbang maupun kelas.
+                    Setiap presensi QR maupun manual diarahkan ke nomor WhatsApp orang tua (<code className="font-mono font-bold">waOrangTua</code>) masing-masing siswa yang terdaftar.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-2xl text-xs font-bold shrink-0">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span>Otomatis Aktif & Terhubung</span>
-                </div>
+                {isGatewayApiConfigured({ ...settings, waGatewayProvider, waApiKey, waGatewayUrl }) ? (
+                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-2xl text-xs font-bold shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span>API Otomatis Terhubung ({waGatewayProvider.toUpperCase()})</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-amber-50 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-2xl text-xs font-bold shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span>Mode Antrean Langsung (wa.me)</span>
+                  </div>
+                )}
               </div>
 
               {/* Info Box */}
@@ -2169,36 +2235,133 @@ function AdminPanel({
                   WA
                 </div>
                 <div className="space-y-1">
-                  <h4 className="font-extrabold text-emerald-900 text-xs">Pengiriman Otomatis Tanpa Perlu Ketik Manual</h4>
+                  <h4 className="font-extrabold text-emerald-900 text-xs">Pengiriman Otomatis API & Antrean Langsung ke Nomor Ortu</h4>
                   <p className="text-[11px] leading-relaxed text-emerald-800">
-                    Sistem secara otomatis membaca nomor WhatsApp orang tua (<code className="font-bold bg-emerald-100 px-1 py-0.2 rounded">waOrangTua</code>) dari data profil masing-masing siswa dan menyusun pesan kehadiran secara instan saat absensi tercatat.
+                    Pilih <b>Fonnte / Wablas / Custom Webhook</b> lalu masukkan token API agar pesan langsung terkirim di latar belakang tanpa membuka WhatsApp. Jika belum memakai token API, pilih <b>Mode Langsung (wa.me)</b> agar operator dapat mengirim satu per satu ke nomor ortu masing-masing dari panel WA Gateway.
                   </p>
                 </div>
               </div>
 
               <form onSubmit={handleSaveAllSettings} className="space-y-4">
-                {/* Nomor Server WhatsApp Gateway Terpadu */}
-                <div className="space-y-1.5 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Nomor Server WhatsApp Gateway Sekolah:</span>
+                {/* Provider Gateway & API Token */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-black text-slate-800 uppercase">
+                      Provider WhatsApp Gateway:
                     </label>
-                    <span className="text-[10px] text-emerald-800 bg-emerald-100 font-bold px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Live Auto-Reset 05:00 WIB
-                    </span>
+                    <select
+                      value={waGatewayProvider}
+                      onChange={(e) => setWaGatewayProvider(e.target.value as any)}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                    >
+                      <option value="direct">Mode Langsung WhatsApp (wa.me Tanpa Token)</option>
+                      <option value="fonnte">Fonnte WA Gateway API (Otomatis Penuh)</option>
+                      <option value="wablas">Wablas WA Gateway API (Otomatis Penuh)</option>
+                      <option value="webhook">Custom Webhook URL Sekolah</option>
+                    </select>
                   </div>
-                  <input
-                    type="text"
-                    value={serverWaNumber}
-                    onChange={(e) => setServerWaNumber(e.target.value)}
-                    placeholder="08214134551"
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-emerald-950"
-                  />
-                  <p className="text-[10px] text-slate-500">
-                    Nomor WhatsApp pengirim resmi gateway Digiwangi (default: <b className="font-mono text-emerald-800">08214134551</b>). Pesan kehadiran otomatis dikirimkan langsung ke nomor WhatsApp Orang Tua siswa per kelasnya.
-                  </p>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Nomor Server WA Pengirim:</span>
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={serverWaNumber}
+                      onChange={(e) => setServerWaNumber(e.target.value)}
+                      placeholder="08214134551"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-emerald-950"
+                    />
+                  </div>
+
+                  {waGatewayProvider !== 'direct' && (
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-black text-slate-800 uppercase">
+                          Token / API Key Gateway ({waGatewayProvider.toUpperCase()}):
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type={showWaApiKey ? 'text' : 'password'}
+                            value={waApiKey}
+                            onChange={(e) => setWaApiKey(e.target.value)}
+                            maxLength={256}
+                            placeholder="Tempel Token API Fonnte / Wablas..."
+                            className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowWaApiKey((prev) => !prev)}
+                            className="bg-white border border-slate-300 px-3 rounded-xl text-[11px] font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                          >
+                            {showWaApiKey ? 'Sembunyi' : 'Lihat'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {(waGatewayProvider === 'wablas' || waGatewayProvider === 'webhook') && (
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-black text-slate-800 uppercase">
+                            Endpoint URL Gateway:
+                          </label>
+                          <input
+                            type="url"
+                            value={waGatewayUrl}
+                            onChange={(e) => setWaGatewayUrl(e.target.value)}
+                            placeholder={waGatewayProvider === 'wablas' ? 'https://solo.wablas.com/api/send-message' : 'https://domain-gateway.id/send-wa'}
+                            className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Uji Kirim Pesan Test */}
+                <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-black text-emerald-950 uppercase block">Uji Kirim Pesan Test WA Gateway</span>
+                      <span className="text-[10px] text-emerald-800">Pastikan pesan masuk ke nomor WA pengujian sebelum broadcast ke seluruh orang tua.</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={testWaPhone}
+                        onChange={(e) => setTestWaPhone(e.target.value)}
+                        placeholder="08xxxxxxxxxx"
+                        className="bg-white border border-emerald-300 rounded-xl py-2 px-3 text-xs font-mono font-bold w-40 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleTestWaGateway}
+                        disabled={isTestingWa || !testWaPhone.trim()}
+                        className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition cursor-pointer shrink-0"
+                      >
+                        {isTestingWa ? 'Menguji...' : 'Uji Kirim Tes'}
+                      </button>
+                    </div>
+                  </div>
+                  {testWaResult && (
+                    <div className={`text-[11px] font-bold px-3 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
+                      testWaResult.ok ? 'bg-white text-emerald-900 border-emerald-300' : 'bg-rose-50 text-rose-800 border-rose-300'
+                    }`}>
+                      <span>{testWaResult.msg}</span>
+                      {testWaResult.directUrl && (
+                        <a
+                          href={testWaResult.directUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-black"
+                        >
+                          Buka WA Test
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -2229,9 +2392,9 @@ function AdminPanel({
                   <button
                     type="submit"
                     id="btn-save-whatsapp-settings"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 px-6 font-bold text-xs transition-all shadow cursor-pointer font-sans"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2.5 px-6 font-bold text-xs transition-all shadow cursor-pointer font-sans"
                   >
-                    Simpan Template Pesan WA Gateway
+                    Simpan Pengaturan & Template WA Gateway
                   </button>
                 </div>
               </form>

@@ -281,6 +281,7 @@ export const mergePresensiLists = (
 ): Presensi[] => {
   const bySiswaId = new Map<string, Siswa>();
   const byNis = new Map<string, Siswa>();
+  const dupNis = new Set<string>();
   const byNisNoZero = new Map<string, Siswa>();
   const byNik = new Map<string, Siswa>();
   const byNameClass = new Map<string, Siswa>();
@@ -291,9 +292,13 @@ export const mergePresensiLists = (
       if (s.id) bySiswaId.set(s.id, s);
       if (s.nis && s.nis.trim().length >= 4) {
         const clean = s.nis.trim();
-        byNis.set(clean, s);
+        if (byNis.has(clean)) {
+          dupNis.add(clean);
+        } else {
+          byNis.set(clean, s);
+        }
         const nz = clean.replace(/^0+/, '');
-        if (nz.length >= 4) byNisNoZero.set(nz, s);
+        if (nz.length >= 4 && !byNisNoZero.has(nz)) byNisNoZero.set(nz, s);
       }
       if (s.nik && s.nik.trim().length >= 8) {
         byNik.set(s.nik.trim(), s);
@@ -301,6 +306,10 @@ export const mergePresensiLists = (
       if (s.nama && s.kelas) {
         byNameClass.set(`${normalizeStudentName(s.nama)}__${normalizeKelasCode(s.kelas)}`, s);
       }
+    }
+    for (const dNis of dupNis) {
+      byNis.delete(dNis);
+      byNisNoZero.delete(dNis.replace(/^0+/, ''));
     }
   }
 
@@ -330,15 +339,15 @@ export const mergePresensiLists = (
     }
 
     let matchedSiswa = raw.siswaId ? bySiswaId.get(raw.siswaId) : undefined;
+    if (!matchedSiswa && raw.nama && raw.kelas) {
+      matchedSiswa = byNameClass.get(`${normalizeStudentName(raw.nama)}__${normalizeKelasCode(raw.kelas)}`);
+    }
     if (!matchedSiswa && raw.nis && raw.nis.trim().length >= 4) {
       const clean = raw.nis.trim();
       matchedSiswa = byNis.get(clean) || byNisNoZero.get(clean.replace(/^0+/, ''));
     }
     if (!matchedSiswa && raw.nik && raw.nik.trim().length >= 8) {
       matchedSiswa = byNik.get(raw.nik.trim());
-    }
-    if (!matchedSiswa && raw.nama && raw.kelas) {
-      matchedSiswa = byNameClass.get(`${normalizeStudentName(raw.nama)}__${normalizeKelasCode(raw.kelas)}`);
     }
 
     const canonicalSid = matchedSiswa
@@ -464,6 +473,8 @@ export const getAttendanceFromIndex = (
   const canUseFallback = (rec?: Presensi): rec is Presensi => {
     if (!rec) return false;
     if (rec.siswaId && siswa.id && rec.siswaId !== siswa.id) return false;
+    if (rec.kelas && siswa.kelas && !isSameClass(rec.kelas, siswa.kelas)) return false;
+    if (rec.nama && siswa.nama && normalizeStudentName(rec.nama) !== normalizeStudentName(siswa.nama)) return false;
     return true;
   };
   if (siswa.nis && siswa.nis.trim().length >= 4) {

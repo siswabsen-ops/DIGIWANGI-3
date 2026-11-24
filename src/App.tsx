@@ -11,7 +11,7 @@ import {
 import { HISTORICAL_ARCHIVE_END_DATE } from './lib/semesterPresensiGenerator';
 import { safeGetItem, safeSetItem, safeRemoveItem, APP_LOGO_STORAGE_KEY } from './lib/storage';
 import { Siswa, Presensi, SystemSettings, ActivityLog, User, WaliKelas } from './types';
-import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normalizeDateKey, isSyntheticDemoPresensi, isRecordNewer, mergePresensiLists } from './lib/attendanceUtils';
+import { isPresensiDateMatch, isPresensiMatchSiswa, getLocalDateString, normalizeDateKey, isSyntheticDemoPresensi, isRecordNewer, mergePresensiLists, safeAddDays } from './lib/attendanceUtils';
 import Header from './components/Header';
 import {
   fetchCloudMasterData,
@@ -27,7 +27,11 @@ import {
   forceSyncNow,
   auditAndSyncSemesterPresensi
 } from './lib/cloudSync';
-import { sendDualWhatsAppNotification, sendAutomaticWhatsAppNotification } from './lib/whatsappGateway';
+import {
+  sendDualWhatsAppNotification,
+  sendAutomaticWhatsAppNotification,
+  resolveStudentForRecord
+} from './lib/whatsappGateway';
 import { 
   ensureAuthenticated, 
   validateFirestoreConnection,
@@ -40,14 +44,11 @@ import {
   clearPresensiInFirestore, 
   saveAccountToFirestore, 
   deleteAccountFromFirestore, 
-  saveSettingsToFirestore, 
-  saveActivityLogToFirestore, 
   clearActivityLogsInFirestore,
   syncAllStudentsToFirestore,
   syncMasterStudentsToCloud,
   syncMasterWaliKelasToCloud,
   syncMasterPresensiToCloud,
-  syncMasterAccountsToCloud,
   fetchCloudSyncPresensiOnce,
   fetchAllLivePresensiShardsOnce,
   fetchSettingsFromFirestoreOnce,
@@ -308,11 +309,20 @@ export default function App() {
     };
   }, []);
 
-  // Lightweight slice of recent records for instant ScanScreen and live WhatsApp Simulator
+  // Lightweight slice of recent records for instant ScanScreen and live WhatsApp Simulator (Today + Yesterday + latest history)
   const recentPresensiSlice = useMemo(() => {
-    const todayRecs = presensiList.filter(p => p && p.tanggal && normalizeDateKey(p.tanggal) === todayKey);
-    const otherRecs = presensiList.filter(p => !p || !p.tanggal || normalizeDateKey(p.tanggal) !== todayKey);
-    return [...otherRecs.slice(-400), ...todayRecs];
+    const yesterdayKey = safeAddDays(todayKey, -1);
+    const activeDatesRecs = presensiList.filter((p) => {
+      if (!p || !p.tanggal) return false;
+      const norm = normalizeDateKey(p.tanggal);
+      return norm === todayKey || norm === yesterdayKey;
+    });
+    const otherRecs = presensiList.filter((p) => {
+      if (!p || !p.tanggal) return true;
+      const norm = normalizeDateKey(p.tanggal);
+      return norm !== todayKey && norm !== yesterdayKey;
+    });
+    return [...otherRecs.slice(-400), ...activeDatesRecs];
   }, [presensiList, todayKey]);
 
   // Trigger sync state variables
@@ -416,7 +426,9 @@ export default function App() {
       }
 
       if (
-        (cloudCatalogVer < STUDENT_CATALOG_VERSION || !cloudStudents || cloudStudents.length < SISWA_INITIAL.length) &&
+        !serverData &&
+        Array.isArray(cloudStudents) &&
+        (cloudCatalogVer < STUDENT_CATALOG_VERSION || cloudStudents.length < SISWA_INITIAL.length) &&
         !safeGetItem('karapres3_students_429_synced_v26')
       ) {
         syncMasterStudentsToCloud(activeStudents, 'Sync Katalog PDF 429 Siswa')
@@ -433,12 +445,8 @@ export default function App() {
       if (isWaliKelasValid) {
         setWaliKelasList(incomingWaliKelas!);
         safeSetItem('karapres3_wali_kelas_v1', JSON.stringify(incomingWaliKelas));
-      } else if (!safeGetItem('karapres3_wali_kelas_12_synced')) {
-        const wkToPush =
-          serverData?.waliKelas && serverData.waliKelas.length >= 12
-            ? serverData.waliKelas
-            : DAFTAR_WALI_KELAS;
-        syncMasterWaliKelasToCloud(wkToPush, 'Sync 12 Wali Kelas Resmi')
+      } else if (!serverData && Array.isArray(incomingWaliKelas) && !safeGetItem('karapres3_wali_kelas_12_synced')) {
+        syncMasterWaliKelasToCloud(DAFTAR_WALI_KELAS, 'Sync 12 Wali Kelas Resmi')
           .then(() => safeSetItem('karapres3_wali_kelas_12_synced', '1'))
           .catch(() => {});
       }
@@ -471,7 +479,15 @@ export default function App() {
         (firestorePresensi.length > 0 || shardRecords.length > 0) &&
         !arePresensiListsEqual(merged, serverPresensi);
       if (serverHasMissingCloud) {
-        syncPresensiToCloud(merged, 'Cloud Merge Sync', toTombstoneArray(deletedTombstonesRef.current)).catch(() => {});
+        fetch('/api/sync/presensi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            data: merged,
+            updatedBy: 'Cloud Merge Sync',
+            deletedKeys: toTombstoneArray(deletedTombstonesRef.current)
+          })
+        }).catch(() => {});
       }
 
       // Timestamp-based arbitration for System Settings & Shift Schedules (works cleanly with or without Express server)
@@ -498,7 +514,11 @@ export default function App() {
         setSettings(mergedRemote);
         safeSetItem('karapres3_settings', JSON.stringify(mergedRemote));
         if (serverData) {
-          syncSettingsToCloud(mergedRemote, 'Cloud Settings Recovery').catch(() => {});
+          fetch('/api/sync/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: mergedRemote, updatedBy: 'Cloud Settings Recovery' })
+          }).catch(() => {});
         }
       } else if (serverSettings && serverTs >= firestoreTs && (serverTs >= localTs || localTs === 0)) {
         const mergedServer: SystemSettings = {
@@ -509,13 +529,6 @@ export default function App() {
         latestSettingsRef.current = mergedServer;
         setSettings(mergedServer);
         safeSetItem('karapres3_settings', JSON.stringify(mergedServer));
-        if (serverTs > firestoreTs && !safeGetItem(`karapres3_settings_synced_ts_${serverTs}`)) {
-          saveSettingsToFirestore(mergedServer)
-            .then(() => safeSetItem(`karapres3_settings_synced_ts_${serverTs}`, '1'))
-            .catch(() => {});
-        }
-      } else if (localTs > serverTs && localTs > firestoreTs && localCurrent) {
-        syncSettingsToCloud(localCurrent, 'Local Settings Push').catch(() => {});
       }
 
       if (data?.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
@@ -638,7 +651,7 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Activity logger helper
+  // Activity logger helper (kept local to conserve cloud write quota)
   const addActivityLog = useCallback((tindakan: string, detail: string) => {
     const newLog: ActivityLog = {
       id: `log-${Date.now()}`,
@@ -649,7 +662,6 @@ export default function App() {
       detail,
     };
     setActivityLogs(prev => [newLog, ...prev.slice(0, 499)]);
-    saveActivityLogToFirestore(newLog);
   }, [currentUser]);
 
   const handleUpdateAccount = useCallback((userId: string, updatedUser: Partial<User>, newPin?: string) => {
@@ -661,7 +673,6 @@ export default function App() {
       setAccountsList(newList);
       safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
       saveAccountToFirestore({ user: mergedUser, pin: mergedPin });
-      syncMasterAccountsToCloud(newList);
       syncAccountsToCloud(newList, 'Admin');
       addActivityLog('Update Akun', `Merubah detail profil akun: ${updatedUser.namaLengkap || userId}`);
       triggerNotice('Akun berhasil diperbarui & disinkronkan ke seluruh perangkat.', 'success');
@@ -673,7 +684,6 @@ export default function App() {
     setAccountsList(newList);
     safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
     saveAccountToFirestore({ user, pin });
-    syncMasterAccountsToCloud(newList);
     syncAccountsToCloud(newList, 'Admin');
     addActivityLog('Tambah Akun Baru', `Membuat akun operator baru: ${user.namaLengkap} [${user.role.toUpperCase()}]`);
     triggerNotice('Akun baru berhasil ditambahkan & disinkronkan.', 'success');
@@ -688,7 +698,6 @@ export default function App() {
     setAccountsList(newList);
     safeSetItem('karapres3_accounts_v4', JSON.stringify(newList));
     deleteAccountFromFirestore(userId);
-    syncMasterAccountsToCloud(newList);
     syncAccountsToCloud(newList, 'Admin');
     addActivityLog('Hapus Akun', `Menghapus akun operator ID: ${userId}`);
     triggerNotice('Akun berhasil dihapus & disinkronkan.', 'success');
@@ -1022,7 +1031,6 @@ export default function App() {
     setSiswaList(prev => {
       const updated = [newSiswa, ...prev.filter(s => s.id !== newSiswa.id)];
       safeSetItem('karapres3_siswa_v5', JSON.stringify(updated));
-      syncMasterStudentsToCloud(updated, 'Admin');
       syncStudentsToCloud(updated, 'Admin');
       return updated;
     });
@@ -1035,7 +1043,6 @@ export default function App() {
     setSiswaList(prev => {
       const newList = prev.map(s => s.id === updated.id ? updated : s);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
-      syncMasterStudentsToCloud(newList, 'Admin');
       syncStudentsToCloud(newList, 'Admin');
       return newList;
     });
@@ -1052,7 +1059,6 @@ export default function App() {
       }
       const newList = prev.filter(s => s.id !== id);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
-      syncMasterStudentsToCloud(newList, 'Admin');
       syncStudentsToCloud(newList, 'Admin');
       return newList;
     });
@@ -1075,7 +1081,6 @@ export default function App() {
       const map = new Map(updates.map(u => [u.id, u.waOrangTua]));
       const newList = prev.map(s => map.has(s.id) ? { ...s, waOrangTua: map.get(s.id)! } : s);
       safeSetItem('karapres3_siswa_v5', JSON.stringify(newList));
-      syncMasterStudentsToCloud(newList, 'Admin');
       syncStudentsToCloud(newList, 'Admin');
       return newList;
     });
@@ -1095,28 +1100,68 @@ export default function App() {
     latestSettingsRef.current = stampedSettings;
     setSettings(stampedSettings);
     safeSetItem('karapres3_settings', JSON.stringify(stampedSettings));
-    saveSettingsToFirestore(stampedSettings);
     syncSettingsToCloud(stampedSettings, 'Admin');
     addActivityLog('Konfigurasi Diperbarui', 'Mengubah konfigurasi jam masuk, jadwal shift, template WA, logo resmi, atau ID integrasi Google.');
     triggerNotice('Pengaturan sistem & jadwal presensi berhasil disimpan paten ke seluruh perangkat.', 'success');
   }, [addActivityLog]);
+
+  const handleUpdatePresensiWaStatus = useCallback((
+    updates: Array<{ id: string; siswaId: string; tanggal: string; waStatus: 'Pending' | 'Terkirim' | 'Gagal'; phone: string }>
+  ) => {
+    if (!updates || updates.length === 0) return;
+    const byId = new Map<string, { waStatus: 'Pending' | 'Terkirim' | 'Gagal'; phone: string }>();
+    const byKey = new Map<string, { waStatus: 'Pending' | 'Terkirim' | 'Gagal'; phone: string }>();
+    updates.forEach((u) => {
+      if (u.id) byId.set(u.id, { waStatus: u.waStatus, phone: u.phone });
+      if (u.siswaId && u.tanggal) {
+        byKey.set(`${u.siswaId}__${normalizeDateKey(u.tanggal)}`, { waStatus: u.waStatus, phone: u.phone });
+      }
+    });
+
+    const nowTs = Date.now();
+    const changedRecords: Presensi[] = [];
+    const nextList = latestPresensiRef.current.map((p) => {
+      const hit = byId.get(p.id) || byKey.get(`${p.siswaId}__${normalizeDateKey(p.tanggal)}`);
+      if (!hit) return p;
+      const nextPesan =
+        hit.waStatus === 'Terkirim'
+          ? `Terkirim ke WA Ortu (${hit.phone})`
+          : hit.waStatus === 'Gagal'
+          ? (hit.phone ? `Gagal kirim ke (${hit.phone})` : 'No WA Orang Tua belum diisi')
+          : `Antrean WA Ortu (${hit.phone})`;
+      if (p.waStatus === hit.waStatus && p.pesanTerkirim === nextPesan) return p;
+      const updatedRec: Presensi = {
+        ...p,
+        waStatus: hit.waStatus,
+        pesanTerkirim: nextPesan,
+        updatedAt: nowTs
+      };
+      changedRecords.push(updatedRec);
+      return updatedRec;
+    });
+
+    if (changedRecords.length === 0) return;
+    latestPresensiRef.current = nextList;
+    persistPresensiToStorage(nextList);
+    setPresensiList(nextList);
+
+    const operatorName = currentUser?.namaLengkap || 'Operator WA Gateway';
+    const tombstones = toTombstoneArray(deletedTombstonesRef.current);
+    changedRecords.slice(0, 60).forEach((rec) => {
+      savePresensiToFirestore(rec).catch(() => {});
+      savePresensiShardToFirestore(rec).catch(() => {});
+      recordSinglePresensiToCloud(rec, operatorName).catch(() => {});
+    });
+    syncMasterPresensiToCloud(nextList, operatorName, tombstones).catch(() => {});
+  }, [currentUser]);
 
   // Record a scanned or manually marked attendance (100% atomic, side-effect-free state update)
   const handleAddPresensi = useCallback((newPresensi: Presensi) => {
     const targetNormDate = normalizeDateKey(newPresensi.tanggal);
     const activeStudents = latestSiswaRef.current;
 
-    // Sequential student resolution: prioritize explicit siswaId FIRST (prevents duplicate-NIS collisions like sis-362/sis-429 & sis-401/sis-409)
-    const matchedSiswa =
-      (newPresensi.siswaId ? activeStudents.find((s) => s.id === newPresensi.siswaId) : undefined) ||
-      (newPresensi.nis && newPresensi.nis.trim().length >= 4
-        ? activeStudents.find((s) => s.nis && s.nis.trim() === newPresensi.nis.trim())
-        : undefined) ||
-      activeStudents.find(
-        (s) =>
-          s.nama.trim().toLowerCase() === newPresensi.nama.trim().toLowerCase() &&
-          s.kelas === newPresensi.kelas
-      );
+    // Sequential student resolution: prioritize explicit siswaId & nama+kelas FIRST (prevents duplicate-NIS collisions)
+    const matchedSiswa = resolveStudentForRecord(newPresensi, activeStudents);
 
     const canonicalSiswaId = matchedSiswa?.id || newPresensi.siswaId;
     const canonicalId = newPresensi.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(newPresensi.id)
@@ -1163,13 +1208,49 @@ export default function App() {
     recordSinglePresensiToCloud(enrichedPresensi, operatorName).catch(() => {});
     syncMasterPresensiToCloud(updatedList, operatorName, tombstones).catch(() => {});
 
-    // Automatically dispatch WhatsApp notification directly & exclusively to Parents
-    sendAutomaticWhatsAppNotification(enrichedPresensi, matchedSiswa, settings).catch((err) => {
-      console.warn('[WA Gateway Warning]:', err);
-    });
+    // Automatically dispatch WhatsApp notification directly & exclusively to Parents and sync honest delivery status
+    sendAutomaticWhatsAppNotification(enrichedPresensi, matchedSiswa, settings)
+      .then((waRes) => {
+        const mappedStatus: 'Pending' | 'Terkirim' | 'Gagal' =
+          waRes.deliveryStatus === 'DELIVERED' || waRes.deliveryStatus === 'SENT'
+            ? 'Terkirim'
+            : waRes.deliveryStatus === 'FAILED'
+            ? 'Gagal'
+            : 'Pending';
+        const statusMsg =
+          mappedStatus === 'Terkirim'
+            ? `Terkirim ke WA Ortu (${waRes.phone})`
+            : mappedStatus === 'Gagal'
+            ? (waRes.error || (waRes.phone ? `Gagal kirim ke (${waRes.phone})` : 'No WA Orang Tua belum diisi'))
+            : `Siap kirim ke WA Ortu (${waRes.phone})`;
+
+        if (mappedStatus !== enrichedPresensi.waStatus || statusMsg !== enrichedPresensi.pesanTerkirim) {
+          const syncedRecord: Presensi = {
+            ...enrichedPresensi,
+            waStatus: mappedStatus,
+            pesanTerkirim: statusMsg,
+            updatedAt: Date.now()
+          };
+          const syncedList = mergePresensiLists(
+            latestPresensiRef.current,
+            [syncedRecord],
+            latestSiswaRef.current,
+            deletedTombstonesRef.current
+          );
+          latestPresensiRef.current = syncedList;
+          persistPresensiToStorage(syncedList);
+          setPresensiList(syncedList);
+          savePresensiToFirestore(syncedRecord).catch(() => {});
+          savePresensiShardToFirestore(syncedRecord).catch(() => {});
+          recordSinglePresensiToCloud(syncedRecord, operatorName).catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn('[WA Gateway Warning]:', err);
+      });
 
     const metodeInfo = enrichedPresensi.metode === 'QR_SCAN' ? 'Scan Barcode QR' : (enrichedPresensi.metode === 'MANUAL_TAP' ? 'Tap Wali Kelas' : 'Input Manual');
-    addActivityLog('Presensi Berhasil', `Mencatat status [${enrichedPresensi.status}] (${metodeInfo}) untuk ${enrichedPresensi.nama} (${enrichedPresensi.kelas}) ➔ Notifikasi otomatis terkirim ke WA Orang Tua`);
+    addActivityLog('Presensi Berhasil', `Mencatat status [${enrichedPresensi.status}] (${metodeInfo}) untuk ${enrichedPresensi.nama} (${enrichedPresensi.kelas}) ➔ Diproses ke WA Orang Tua`);
   }, [currentUser, settings, addActivityLog]);
 
   // Reset / batalkan satu presensi siswa pada tanggal tertentu (oleh Wali Kelas)
@@ -1610,6 +1691,7 @@ export default function App() {
         siswaList={siswaList}
         settings={settings}
         waliKelasList={waliKelasList}
+        onUpdatePresensiWaStatus={handleUpdatePresensiWaStatus}
       />
 
       {/* Floating Mascot Promo Companion Assistant */}
@@ -1691,7 +1773,6 @@ export default function App() {
 
                   clearPresensiInFirestore(todayRemoved, targetToday).catch(() => {});
                   const tombstones = toTombstoneArray(deletedTombstonesRef.current);
-                  syncMasterPresensiToCloud(remaining, currentUser?.namaLengkap || 'Admin', tombstones).catch(() => {});
                   syncPresensiToCloud(remaining, currentUser?.namaLengkap || 'Admin', tombstones).catch(() => {});
 
                   addActivityLog('Reset Presensi', `Melakukan pembersihan riwayat presensi tanggal ${targetToday}.`);

@@ -16,7 +16,9 @@ import {
   getDocs,
   query,
   where,
-  limit
+  limit,
+  disableNetwork,
+  enableNetwork
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Siswa, Presensi, User, SystemSettings, ActivityLog, WaliKelas } from '../types';
@@ -113,19 +115,23 @@ export const getFirestoreDatabaseConsoleUrl = (): string => {
   return `https://console.firebase.google.com/project/${projectId}/firestore/databases/${dbId}/data?openUpgradeDialog=true`;
 };
 
-let inMemoryReadQuotaExhausted = false;
-let inMemoryWriteQuotaExhausted = false;
+let inMemoryReadQuotaExhaustedUntil = 0;
+let inMemoryWriteQuotaExhaustedUntil = 0;
+const QUOTA_COOLDOWN_MS = 10 * 60 * 1000;
 
 export const getIsReadQuotaExhausted = (): boolean => {
-  if (inMemoryReadQuotaExhausted) return true;
+  const now = Date.now();
+  if (inMemoryReadQuotaExhaustedUntil > now) return true;
+  inMemoryReadQuotaExhaustedUntil = 0;
   if (typeof window === 'undefined') return false;
   try {
     const raw = localStorage.getItem(READ_QUOTA_STORAGE_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
     const today = getLocalDateString();
-    if (parsed.date === today && parsed.exhausted) {
-      inMemoryReadQuotaExhausted = true;
+    const until = typeof parsed.untilTs === 'number' ? parsed.untilTs : 0;
+    if (parsed.date === today && parsed.exhausted && (!until || until > now)) {
+      inMemoryReadQuotaExhaustedUntil = until || now + QUOTA_COOLDOWN_MS;
       return true;
     }
     return false;
@@ -135,24 +141,31 @@ export const getIsReadQuotaExhausted = (): boolean => {
 };
 
 export const setReadQuotaExhausted = (exhausted: boolean = true) => {
-  inMemoryReadQuotaExhausted = exhausted;
+  const untilTs = exhausted ? Date.now() + QUOTA_COOLDOWN_MS : 0;
+  inMemoryReadQuotaExhaustedUntil = untilTs;
+  if (exhausted) {
+    disableNetwork(db).catch(() => {});
+  }
   if (typeof window === 'undefined') return;
   try {
     const today = getLocalDateString();
-    localStorage.setItem(READ_QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted }));
+    localStorage.setItem(READ_QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted, untilTs }));
   } catch {}
 };
 
 export const getIsWriteQuotaExhausted = (): boolean => {
-  if (inMemoryWriteQuotaExhausted) return true;
+  const now = Date.now();
+  if (inMemoryWriteQuotaExhaustedUntil > now) return true;
+  inMemoryWriteQuotaExhaustedUntil = 0;
   if (typeof window === 'undefined') return false;
   try {
     const raw = localStorage.getItem(WRITE_QUOTA_STORAGE_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
     const today = getLocalDateString();
-    if (parsed.date === today && parsed.exhausted) {
-      inMemoryWriteQuotaExhausted = true;
+    const until = typeof parsed.untilTs === 'number' ? parsed.untilTs : 0;
+    if (parsed.date === today && parsed.exhausted && (!until || until > now)) {
+      inMemoryWriteQuotaExhaustedUntil = until || now + QUOTA_COOLDOWN_MS;
       return true;
     }
     return false;
@@ -162,16 +175,35 @@ export const getIsWriteQuotaExhausted = (): boolean => {
 };
 
 export const setWriteQuotaExhausted = (exhausted: boolean = true) => {
-  inMemoryWriteQuotaExhausted = exhausted;
+  const untilTs = exhausted ? Date.now() + QUOTA_COOLDOWN_MS : 0;
+  inMemoryWriteQuotaExhaustedUntil = untilTs;
+  if (exhausted) {
+    disableNetwork(db).catch(() => {});
+  }
   if (typeof window === 'undefined') return;
   try {
     const today = getLocalDateString();
-    localStorage.setItem(WRITE_QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted }));
+    localStorage.setItem(WRITE_QUOTA_STORAGE_KEY, JSON.stringify({ date: today, exhausted, untilTs }));
+  } catch {}
+};
+
+export const resetFirestoreQuotaFlags = () => {
+  inMemoryReadQuotaExhaustedUntil = 0;
+  inMemoryWriteQuotaExhaustedUntil = 0;
+  enableNetwork(db).catch(() => {});
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(READ_QUOTA_STORAGE_KEY);
+    localStorage.removeItem(WRITE_QUOTA_STORAGE_KEY);
   } catch {}
 };
 
 export const getIsQuotaExhausted = getIsWriteQuotaExhausted;
 export const setQuotaExhausted = setWriteQuotaExhausted;
+
+if (typeof window !== 'undefined' && (getIsReadQuotaExhausted() || getIsWriteQuotaExhausted())) {
+  disableNetwork(db).catch(() => {});
+}
 
 export const isPermissionError = (error: unknown): boolean => {
   const errStr = (error instanceof Error ? error.message : String(error)).toLowerCase();
@@ -221,13 +253,58 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   }
 }
 
+// Guard Firestore writes against SDK WriteStream infinite backoff on resource-exhausted
+const FIRESTORE_WRITE_TIMEOUT_MS = 4000;
+async function runSafeFirestoreWrite(
+  writeFn: () => Promise<void>,
+  operationType: OperationType,
+  path: string
+): Promise<boolean> {
+  if (getIsWriteQuotaExhausted()) return false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+  try {
+    await Promise.race([
+      writeFn(),
+      new Promise<void>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          reject(new Error('resource-exhausted: Firestore write stream timed out in backoff'));
+        }, FIRESTORE_WRITE_TIMEOUT_MS);
+      })
+    ]);
+    return true;
+  } catch (err) {
+    if (timedOut || isQuotaError(err)) {
+      setWriteQuotaExhausted(true);
+      if (timedOut) {
+        console.warn(`[Firestore Quota Guard] Write stream timeout on ${path}; pausing Firestore network to prevent retry spam.`);
+        return false;
+      }
+    }
+    handleFirestoreError(err, operationType, path);
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // Connection validator per skill instructions
 export async function validateFirestoreConnection(): Promise<boolean> {
+  if (getIsReadQuotaExhausted() && getIsWriteQuotaExhausted()) {
+    disableNetwork(db).catch(() => {});
+    return false;
+  }
   try {
     await getDocFromServer(doc(db, 'sync', 'students'));
     console.log('[Firestore] Successfully verified live connection to Cloud Firestore.');
     return true;
   } catch (error) {
+    if (isQuotaError(error)) {
+      setReadQuotaExhausted(true);
+      console.warn('[Firestore Quota Guard] Read quota reached during startup probe. Switching to offline/server sync.');
+      return false;
+    }
     if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('unavailable'))) {
       console.warn('[Firestore] Operating smoothly in offline & server sync fallback mode.');
     }
@@ -304,19 +381,21 @@ export const cleanPresensiForFirestore = (p: Presensi): Presensi => {
 
 export const cleanSettingsForFirestore = (s: SystemSettings) => {
   const payload: Record<string, any> = {
-    jamMasuk: s.jamMasuk || '07:00',
-    jamToleransi: s.jamToleransi || '07:15',
-    templatePesan: s.templatePesan || '',
-    googleSpreadsheetId: s.googleSpreadsheetId || '',
-    googleDriveFolderId: s.googleDriveFolderId || '',
+    jamMasuk: String(s.jamMasuk || '07:00').slice(0, 10),
+    jamToleransi: String(s.jamToleransi || '07:15').slice(0, 10),
+    templatePesan: String(s.templatePesan || '').slice(0, 2000),
+    googleSpreadsheetId: String(s.googleSpreadsheetId || '').slice(0, 200),
+    googleDriveFolderId: String(s.googleDriveFolderId || '').slice(0, 200),
     isGoogleConnected: Boolean(s.isGoogleConnected),
     isWhatsAppConnected: Boolean(s.isWhatsAppConnected),
-    waApiKey: s.waApiKey || '',
+    waApiKey: String(s.waApiKey || '').slice(0, 256),
   };
-  if (s.jamPulang) payload.jamPulang = s.jamPulang;
-  if (s.activeJadwalId) payload.activeJadwalId = s.activeJadwalId;
-  if (s.templatePesanPulang) payload.templatePesanPulang = s.templatePesanPulang;
-  if (s.serverWaNumber) payload.serverWaNumber = s.serverWaNumber;
+  if (s.jamPulang) payload.jamPulang = String(s.jamPulang).slice(0, 10);
+  if (s.activeJadwalId) payload.activeJadwalId = String(s.activeJadwalId).slice(0, 64);
+  if (s.templatePesanPulang) payload.templatePesanPulang = String(s.templatePesanPulang).slice(0, 2000);
+  if (s.serverWaNumber) payload.serverWaNumber = String(s.serverWaNumber).slice(0, 32);
+  if (s.waGatewayProvider) payload.waGatewayProvider = String(s.waGatewayProvider).slice(0, 32);
+  if (s.waGatewayUrl) payload.waGatewayUrl = String(s.waGatewayUrl).slice(0, 300);
   if (s.namaSekolah) payload.namaSekolah = s.namaSekolah;
   if (s.alamatSekolah) payload.alamatSekolah = s.alamatSekolah;
   if (s.npsn) payload.npsn = s.npsn;
@@ -347,23 +426,19 @@ export const cleanSettingsForFirestore = (s: SystemSettings) => {
 
 // Siswa CRUD
 export const saveSiswaToFirestore = async (siswa: Siswa) => {
-  if (getIsQuotaExhausted()) return;
-  const path = `siswa/${siswa.id}`;
-  try {
-    await setDoc(doc(db, 'siswa', siswa.id), cleanSiswaForFirestore(siswa));
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  await runSafeFirestoreWrite(
+    () => setDoc(doc(db, 'siswa', siswa.id), cleanSiswaForFirestore(siswa)),
+    OperationType.WRITE,
+    `siswa/${siswa.id}`
+  );
 };
 
 export const deleteSiswaFromFirestore = async (siswaId: string) => {
-  if (getIsQuotaExhausted()) return;
-  const path = `siswa/${siswaId}`;
-  try {
-    await deleteDoc(doc(db, 'siswa', siswaId));
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, path);
-  }
+  await runSafeFirestoreWrite(
+    () => deleteDoc(doc(db, 'siswa', siswaId)),
+    OperationType.DELETE,
+    `siswa/${siswaId}`
+  );
 };
 
 // Presensi CRUD (Atomic per-record doc + Atomic daily shard for zero-collision multi-device sync)
@@ -383,44 +458,50 @@ export const savePresensiShardToFirestore = async (presensi: Presensi): Promise<
   const normDate = normalizeDateKey(presensi.tanggal) || getLocalDateString();
   const shardId = getDayShardDocId(normDate);
   const path = `sync/${shardId}`;
-  try {
-    const cleaned = cleanPresensiForFirestore(presensi);
-    const fieldKey = getShardRecordFieldKey(cleaned.siswaId || cleaned.id);
-    const nowTs = Date.now();
+  const cleaned = cleanPresensiForFirestore(presensi);
+  const fieldKey = getShardRecordFieldKey(cleaned.siswaId || cleaned.id);
+  const nowTs = Date.now();
 
-    await setDoc(
-      doc(db, 'sync', shardId),
-      {
-        tanggal: normDate,
-        updatedAt: nowTs,
-        records: { [fieldKey]: cleaned },
-        deleted: { [fieldKey]: deleteField() }
-      },
-      {
-        mergeFields: [
-          'tanggal',
-          'updatedAt',
-          new FieldPath('records', fieldKey),
-          new FieldPath('deleted', fieldKey)
-        ]
-      }
-    );
-
-    if (!registeredShardDates.has(normDate)) {
-      registeredShardDates.add(normDate);
-      await setDoc(
-        doc(db, 'sync', 'day_index'),
+  const ok = await runSafeFirestoreWrite(
+    () =>
+      setDoc(
+        doc(db, 'sync', shardId),
         {
+          tanggal: normDate,
           updatedAt: nowTs,
-          dates: { [normDate]: nowTs }
+          records: { [fieldKey]: cleaned },
+          deleted: { [fieldKey]: deleteField() }
         },
         {
-          mergeFields: ['updatedAt', new FieldPath('dates', normDate)]
+          mergeFields: [
+            'tanggal',
+            'updatedAt',
+            new FieldPath('records', fieldKey),
+            new FieldPath('deleted', fieldKey)
+          ]
         }
-      );
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
+      ),
+    OperationType.WRITE,
+    path
+  );
+
+  if (ok && !registeredShardDates.has(normDate) && !getIsWriteQuotaExhausted()) {
+    registeredShardDates.add(normDate);
+    await runSafeFirestoreWrite(
+      () =>
+        setDoc(
+          doc(db, 'sync', 'day_index'),
+          {
+            updatedAt: nowTs,
+            dates: { [normDate]: nowTs }
+          },
+          {
+            mergeFields: ['updatedAt', new FieldPath('dates', normDate)]
+          }
+        ),
+      OperationType.WRITE,
+      'sync/day_index'
+    );
   }
 };
 
@@ -433,29 +514,30 @@ export const deletePresensiShardFromFirestore = async (
   if (!normDate || !siswaId) return;
   const shardId = getDayShardDocId(normDate);
   const path = `sync/${shardId}`;
-  try {
-    const fieldKey = getShardRecordFieldKey(siswaId);
-    const nowTs = Date.now();
-    await setDoc(
-      doc(db, 'sync', shardId),
-      {
-        tanggal: normDate,
-        updatedAt: nowTs,
-        records: { [fieldKey]: deleteField() },
-        deleted: { [fieldKey]: nowTs }
-      },
-      {
-        mergeFields: [
-          'tanggal',
-          'updatedAt',
-          new FieldPath('records', fieldKey),
-          new FieldPath('deleted', fieldKey)
-        ]
-      }
-    );
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, path);
-  }
+  const fieldKey = getShardRecordFieldKey(siswaId);
+  const nowTs = Date.now();
+  await runSafeFirestoreWrite(
+    () =>
+      setDoc(
+        doc(db, 'sync', shardId),
+        {
+          tanggal: normDate,
+          updatedAt: nowTs,
+          records: { [fieldKey]: deleteField() },
+          deleted: { [fieldKey]: nowTs }
+        },
+        {
+          mergeFields: [
+            'tanggal',
+            'updatedAt',
+            new FieldPath('records', fieldKey),
+            new FieldPath('deleted', fieldKey)
+          ]
+        }
+      ),
+    OperationType.DELETE,
+    path
+  );
 };
 
 export interface DayShardPayload {
@@ -491,7 +573,7 @@ const parseDayShardData = (
   return { records, deletedKeys };
 };
 
-// Fetch all live presensi shards + today's direct presensi collection docs (recovering any offline/concurrent scans)
+// Fetch all live presensi shards + today's direct presensi collection docs (strict quota-safe: avoids scanning thousands of older docs per load)
 export const fetchAllLivePresensiShardsOnce = async (
   todayDate: string = getLocalDateString(),
   liveSinceDate: string = '2026-11-01'
@@ -501,18 +583,30 @@ export const fetchAllLivePresensiShardsOnce = async (
   if (getIsReadQuotaExhausted()) return { records: allRecords, deletedKeys: allDeletedKeys };
 
   const normToday = normalizeDateKey(todayDate) || getLocalDateString();
+  const [ty, tm, td] = normToday.split('-').map(Number);
+  const yDt = new Date(Date.UTC(ty || 2026, (tm || 1) - 1, (td || 1) - 1));
+  const normYesterday = `${yDt.getUTCFullYear()}-${String(yDt.getUTCMonth() + 1).padStart(2, '0')}-${String(yDt.getUTCDate()).padStart(2, '0')}`;
 
   try {
-    const [indexSnap, todayShardSnap, liveCollectionSnap] = await Promise.all([
-      getDoc(doc(db, 'sync', 'day_index')).catch(() => null),
-      getDoc(doc(db, 'sync', getDayShardDocId(normToday))).catch(() => null),
+    const [indexSnap, todayShardSnap, todayCollectionSnap] = await Promise.all([
+      getDoc(doc(db, 'sync', 'day_index')).catch((err) => {
+        if (isQuotaError(err)) setReadQuotaExhausted(true);
+        return null;
+      }),
+      getDoc(doc(db, 'sync', getDayShardDocId(normToday))).catch((err) => {
+        if (isQuotaError(err)) setReadQuotaExhausted(true);
+        return null;
+      }),
       getDocs(
         query(
           collection(db, 'presensi'),
-          where('tanggal', '>=', liveSinceDate),
-          limit(3000)
+          where('tanggal', '==', normToday),
+          limit(500)
         )
-      ).catch(() => null)
+      ).catch((err) => {
+        if (isQuotaError(err)) setReadQuotaExhausted(true);
+        return null;
+      })
     ]);
 
     const todayShardKeys = new Set<string>();
@@ -525,11 +619,13 @@ export const fetchAllLivePresensiShardsOnce = async (
       Object.assign(allDeletedKeys, parsed.deletedKeys);
     }
 
-    // Fetch any other active live dates indexed in day_index (recent 90 dates)
+    // Fetch all other active live dates indexed in day_index (~1 read per active day instead of 2000+ collection reads)
     const datesToFetch: string[] = [];
+    let hasYesterdayInIndex = false;
     if (indexSnap && indexSnap.exists()) {
       const datesMap = (indexSnap.data() as { dates?: Record<string, number> })?.dates;
       if (datesMap && typeof datesMap === 'object') {
+        hasYesterdayInIndex = Boolean(datesMap[normYesterday]);
         Object.keys(datesMap)
           .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d !== normToday && d >= liveSinceDate)
           .sort()
@@ -538,7 +634,7 @@ export const fetchAllLivePresensiShardsOnce = async (
       }
     }
 
-    if (datesToFetch.length > 0) {
+    if (datesToFetch.length > 0 && !getIsReadQuotaExhausted()) {
       const otherSnaps = await Promise.all(
         datesToFetch.map((d) =>
           getDoc(doc(db, 'sync', getDayShardDocId(d)))
@@ -555,10 +651,18 @@ export const fetchAllLivePresensiShardsOnce = async (
       }
     }
 
-    // Merge recovered direct presensi/{id} collection documents (handles any scans written before shard adoption)
-    if (liveCollectionSnap && !liveCollectionSnap.empty) {
+    // Fallback: only query yesterday from collection('presensi') if its shard wasn't indexed yet
+    let yesterdayCollectionSnap: Awaited<ReturnType<typeof getDocs>> | null = null;
+    if (!hasYesterdayInIndex && normYesterday >= liveSinceDate && !getIsReadQuotaExhausted()) {
+      yesterdayCollectionSnap = await getDocs(
+        query(collection(db, 'presensi'), where('tanggal', '==', normYesterday), limit(500))
+      ).catch(() => null);
+    }
+
+    const collectDirectDocs = (snap: Awaited<ReturnType<typeof getDocs>> | null) => {
+      if (!snap || snap.empty) return;
       const recoveredForToday: Record<string, Presensi> = {};
-      liveCollectionSnap.forEach((d) => {
+      snap.forEach((d) => {
         const rec = d.data() as Presensi;
         if (!rec || !rec.tanggal || isSyntheticDemoPresensi(rec)) return;
         const recDate = normalizeDateKey(rec.tanggal);
@@ -573,7 +677,6 @@ export const fetchAllLivePresensiShardsOnce = async (
         }
       });
 
-      // Lazily backfill orphaned today docs into sync/day_{today} so other devices see them in real time
       const missingEntries = Object.entries(recoveredForToday);
       if (missingEntries.length > 0 && !getIsWriteQuotaExhausted()) {
         const shardId = getDayShardDocId(normToday);
@@ -596,7 +699,10 @@ export const fetchAllLivePresensiShardsOnce = async (
           ).catch(() => {});
         }
       }
-    }
+    };
+
+    collectDirectDocs(todayCollectionSnap);
+    collectDirectDocs(yesterdayCollectionSnap);
   } catch (err) {
     handleFirestoreError(err, OperationType.GET, 'sync/day_index');
   }
@@ -605,18 +711,18 @@ export const fetchAllLivePresensiShardsOnce = async (
 };
 
 export const savePresensiToFirestore = async (presensi: Presensi) => {
-  if (getIsWriteQuotaExhausted()) return;
   const cleaned = cleanPresensiForFirestore(presensi);
-  const path = `presensi/${cleaned.id}`;
-  try {
-    await setDoc(doc(db, 'presensi', cleaned.id), cleaned);
+  const ok = await runSafeFirestoreWrite(
+    () => setDoc(doc(db, 'presensi', cleaned.id), cleaned),
+    OperationType.WRITE,
+    `presensi/${cleaned.id}`
+  );
+  if (ok) {
     const normDate = normalizeDateKey(cleaned.tanggal);
     const legacyId = sanitizeFirestoreDocId(`pr-${normDate}-${cleaned.siswaId}`, 'pr');
-    if (cleaned.siswaId && normDate && cleaned.id !== legacyId) {
+    if (cleaned.siswaId && normDate && cleaned.id !== legacyId && !getIsWriteQuotaExhausted()) {
       deleteDoc(doc(db, 'presensi', legacyId)).catch(() => {});
     }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
   }
 };
 
@@ -635,55 +741,64 @@ export const deletePresensiFromFirestore = async (
   }
   if (candidateIds.size === 0) return;
 
-  try {
-    const batch = writeBatch(db);
-    candidateIds.forEach((cid) => {
-      batch.delete(doc(db, 'presensi', cid));
-    });
-    await batch.commit();
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, `presensi/${Array.from(candidateIds)[0]}`);
-  }
+  await runSafeFirestoreWrite(
+    async () => {
+      const batch = writeBatch(db);
+      candidateIds.forEach((cid) => {
+        batch.delete(doc(db, 'presensi', cid));
+      });
+      await batch.commit();
+    },
+    OperationType.DELETE,
+    `presensi/${Array.from(candidateIds)[0]}`
+  );
 };
 
 export const clearPresensiInFirestore = async (presensiList: Presensi[], targetDate?: string) => {
   if (getIsWriteQuotaExhausted()) return;
-  try {
-    const normTarget = targetDate ? normalizeDateKey(targetDate) : '';
-    const toDelete = presensiList.filter((p) => {
-      if (!p || isSyntheticDemoPresensi(p)) return false;
-      if (normTarget) return normalizeDateKey(p.tanggal) === normTarget;
-      return true;
-    });
+  const normTarget = targetDate ? normalizeDateKey(targetDate) : '';
+  const toDelete = presensiList.filter((p) => {
+    if (!p || isSyntheticDemoPresensi(p)) return false;
+    if (normTarget) return normalizeDateKey(p.tanggal) === normTarget;
+    return true;
+  });
 
-    const chunkSize = 400;
-    for (let i = 0; i < toDelete.length; i += chunkSize) {
-      const chunk = toDelete.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      chunk.forEach((p) => {
-        if (p.id) batch.delete(doc(db, 'presensi', sanitizeFirestoreDocId(p.id, 'pr')));
-      });
-      await batch.commit();
-    }
+  const chunkSize = 400;
+  for (let i = 0; i < toDelete.length; i += chunkSize) {
+    if (getIsWriteQuotaExhausted()) return;
+    const chunk = toDelete.slice(i, i + chunkSize);
+    const ok = await runSafeFirestoreWrite(
+      async () => {
+        const batch = writeBatch(db);
+        chunk.forEach((p) => {
+          if (p.id) batch.delete(doc(db, 'presensi', sanitizeFirestoreDocId(p.id, 'pr')));
+        });
+        await batch.commit();
+      },
+      OperationType.DELETE,
+      'presensi/*'
+    );
+    if (!ok) return;
+  }
 
-    if (normTarget) {
-      const shardId = getDayShardDocId(normTarget);
-      await setDoc(doc(db, 'sync', shardId), {
-        tanggal: normTarget,
-        updatedAt: Date.now(),
-        records: {},
-        deleted: {}
-      }).catch(() => {});
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, 'presensi/*');
+  if (normTarget && !getIsWriteQuotaExhausted()) {
+    const shardId = getDayShardDocId(normTarget);
+    await runSafeFirestoreWrite(
+      () =>
+        setDoc(doc(db, 'sync', shardId), {
+          tanggal: normTarget,
+          updatedAt: Date.now(),
+          records: {},
+          deleted: {}
+        }),
+      OperationType.DELETE,
+      `sync/${shardId}`
+    );
   }
 };
 
 // Accounts CRUD
 export const saveAccountToFirestore = async (account: { user: User; pin: string }) => {
-  if (getIsQuotaExhausted()) return;
-  const path = `accounts/${account.user.id}`;
   const payload = {
     id: account.user.id,
     username: account.user.username,
@@ -692,32 +807,28 @@ export const saveAccountToFirestore = async (account: { user: User; pin: string 
     kelasSpesifik: account.user.kelasSpesifik || '',
     pin: account.pin
   };
-  try {
-    await setDoc(doc(db, 'accounts', account.user.id), payload);
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  await runSafeFirestoreWrite(
+    () => setDoc(doc(db, 'accounts', account.user.id), payload),
+    OperationType.WRITE,
+    `accounts/${account.user.id}`
+  );
 };
 
 export const deleteAccountFromFirestore = async (userId: string) => {
-  if (getIsQuotaExhausted()) return;
-  const path = `accounts/${userId}`;
-  try {
-    await deleteDoc(doc(db, 'accounts', userId));
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, path);
-  }
+  await runSafeFirestoreWrite(
+    () => deleteDoc(doc(db, 'accounts', userId)),
+    OperationType.DELETE,
+    `accounts/${userId}`
+  );
 };
 
 // Settings CRUD
 export const saveSettingsToFirestore = async (settings: SystemSettings) => {
-  if (getIsWriteQuotaExhausted()) return;
-  const path = 'settings/system';
-  try {
-    await setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settings));
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  await runSafeFirestoreWrite(
+    () => setDoc(doc(db, 'settings', 'system'), cleanSettingsForFirestore(settings)),
+    OperationType.WRITE,
+    'settings/system'
+  );
 };
 
 export const fetchSettingsFromFirestoreOnce = async (): Promise<SystemSettings | null> => {
@@ -734,26 +845,25 @@ export const fetchSettingsFromFirestoreOnce = async (): Promise<SystemSettings |
 
 // Activity Logs CRUD
 export const saveActivityLogToFirestore = async (log: ActivityLog) => {
-  if (getIsQuotaExhausted()) return;
-  const path = `activityLogs/${log.id}`;
-  try {
-    await setDoc(doc(db, 'activityLogs', log.id), log);
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  await runSafeFirestoreWrite(
+    () => setDoc(doc(db, 'activityLogs', log.id), log),
+    OperationType.WRITE,
+    `activityLogs/${log.id}`
+  );
 };
 
 export const clearActivityLogsInFirestore = async (logs: ActivityLog[]) => {
-  if (getIsQuotaExhausted()) return;
-  try {
-    const batch = writeBatch(db);
-    logs.forEach((log) => {
-      batch.delete(doc(db, 'activityLogs', log.id));
-    });
-    await batch.commit();
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, 'activityLogs/*');
-  }
+  await runSafeFirestoreWrite(
+    async () => {
+      const batch = writeBatch(db);
+      logs.forEach((log) => {
+        batch.delete(doc(db, 'activityLogs', log.id));
+      });
+      await batch.commit();
+    },
+    OperationType.DELETE,
+    'activityLogs/*'
+  );
 };
 
 export interface DeletedTombstone {
@@ -773,24 +883,24 @@ export interface CloudSyncPayload<T> {
 // Push master students dataset to Cloud Sync doc (Syncs to PC, Android, etc. in 1 atomic read/write)
 export const syncMasterStudentsToCloud = async (students: Siswa[], updatedBy?: string) => {
   if (getIsWriteQuotaExhausted()) return;
-  const path = 'sync/students';
-  try {
-    const cleaned = students.map(cleanSiswaForFirestore);
-    await setDoc(doc(db, 'sync', 'students'), {
-      data: cleaned,
-      updatedAt: Date.now(),
-      updatedBy: updatedBy || 'Client Device',
-      total: cleaned.length,
-      catalogVersion: 26
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  const cleaned = students.map(cleanSiswaForFirestore);
+  await runSafeFirestoreWrite(
+    () =>
+      setDoc(doc(db, 'sync', 'students'), {
+        data: cleaned,
+        updatedAt: Date.now(),
+        updatedBy: updatedBy || 'Client Device',
+        total: cleaned.length,
+        catalogVersion: 26
+      }),
+    OperationType.WRITE,
+    'sync/students'
+  );
 };
 
 let presensiSyncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Push master presensi dataset to Cloud Sync doc (2000 chronological records with <850KB size guard + deletedKeys)
+// Push compact recent master presensi dataset to Cloud Sync doc (batched debounce 2500ms; permanent archive lives in sync/day_*)
 export const syncMasterPresensiToCloud = async (
   presensiList: Presensi[],
   updatedBy?: string,
@@ -809,39 +919,36 @@ export const syncMasterPresensiToCloud = async (
         resolve();
         return;
       }
-      const path = 'sync/presensi';
-      try {
-        // Sort chronologically so latest 2,000 records always include 100% of live records
-        const validSorted = presensiList
-          .filter((p) => p && p.tanggal && !isSyntheticDemoPresensi(p))
-          .slice()
-          .sort((a, b) => normalizeDateKey(a.tanggal).localeCompare(normalizeDateKey(b.tanggal)));
+      const validSorted = presensiList
+        .filter((p) => p && p.tanggal && !isSyntheticDemoPresensi(p))
+        .slice()
+        .sort((a, b) => normalizeDateKey(a.tanggal).localeCompare(normalizeDateKey(b.tanggal)));
 
-        let windowRecords = validSorted.length > 2000 ? validSorted.slice(-2000) : validSorted;
-        let cleaned = windowRecords.map(cleanPresensiForFirestore);
+      // Keep recent 1,000 live records (older live dates remain intact in sync/day_{YYYY-MM-DD})
+      const windowRecords = validSorted.length > 1000 ? validSorted.slice(-1000) : validSorted;
+      let cleaned = windowRecords.map(cleanPresensiForFirestore);
 
-        // Enforce strict < 850KB payload size guard (well under Firestore's 1 MiB document limit)
-        while (cleaned.length > 450 && JSON.stringify(cleaned).length > 850000) {
-          cleaned = cleaned.slice(Math.max(1, Math.floor(cleaned.length * 0.15)));
-        }
-
-        const payload: Record<string, any> = {
-          data: cleaned,
-          updatedAt: Date.now(),
-          updatedBy: updatedBy || 'Client Device',
-          total: presensiList.length
-        };
-        if (deletedKeys && deletedKeys.length > 0) {
-          payload.deletedKeys = deletedKeys.slice(-250);
-        }
-
-        await setDoc(doc(db, 'sync', 'presensi'), payload);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, path);
-      } finally {
-        resolve();
+      while (cleaned.length > 300 && JSON.stringify(cleaned).length > 750000) {
+        cleaned = cleaned.slice(Math.max(1, Math.floor(cleaned.length * 0.15)));
       }
-    }, 300);
+
+      const payload: Record<string, any> = {
+        data: cleaned,
+        updatedAt: Date.now(),
+        updatedBy: updatedBy || 'Client Device',
+        total: presensiList.length
+      };
+      if (deletedKeys && deletedKeys.length > 0) {
+        payload.deletedKeys = deletedKeys.slice(-250);
+      }
+
+      await runSafeFirestoreWrite(
+        () => setDoc(doc(db, 'sync', 'presensi'), payload),
+        OperationType.WRITE,
+        'sync/presensi'
+      );
+      resolve();
+    }, 2500);
   });
 };
 
@@ -907,33 +1014,31 @@ export const fetchCloudSyncAccountsOnce = async (): Promise<CloudSyncPayload<{ u
 
 // Push master accounts dataset to Cloud Sync doc
 export const syncMasterAccountsToCloud = async (accounts: { user: User; pin: string }[]) => {
-  if (getIsWriteQuotaExhausted()) return;
-  const path = 'sync/accounts';
-  try {
-    await setDoc(doc(db, 'sync', 'accounts'), {
-      data: accounts,
-      updatedAt: Date.now(),
-      total: accounts.length
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  await runSafeFirestoreWrite(
+    () =>
+      setDoc(doc(db, 'sync', 'accounts'), {
+        data: accounts,
+        updatedAt: Date.now(),
+        total: accounts.length
+      }),
+    OperationType.WRITE,
+    'sync/accounts'
+  );
 };
 
 // Push master wali kelas dataset to Cloud Sync doc
 export const syncMasterWaliKelasToCloud = async (waliKelasList: WaliKelas[], updatedBy?: string) => {
-  if (getIsWriteQuotaExhausted()) return;
-  const path = 'sync/wali_kelas';
-  try {
-    await setDoc(doc(db, 'sync', 'wali_kelas'), {
-      data: waliKelasList,
-      updatedAt: Date.now(),
-      updatedBy: updatedBy || 'Client Device',
-      total: waliKelasList.length
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
-  }
+  await runSafeFirestoreWrite(
+    () =>
+      setDoc(doc(db, 'sync', 'wali_kelas'), {
+        data: waliKelasList,
+        updatedAt: Date.now(),
+        updatedBy: updatedBy || 'Client Device',
+        total: waliKelasList.length
+      }),
+    OperationType.WRITE,
+    'sync/wali_kelas'
+  );
 };
 
 // Real-time multi-device subscription (atomic daily shard + day_index + sync/presensi; master docs when no Express backend)

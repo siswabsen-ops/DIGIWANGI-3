@@ -4,7 +4,7 @@ import { Siswa, Presensi, SystemSettings, StatusKehadiran, findStudentByCode, ge
 import { getLocalDateString, getLocalTimeString, getLatestAttendanceForStudent, buildDailyAttendanceIndex, getAttendanceFromIndex, isPresensiDateMatch, getAttendanceShift } from '../lib/attendanceUtils';
 import { getWaliKelasObject } from '../lib/waliKelasData';
 import QRCodeRenderer from './QRCodeRenderer';
-import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl } from '../lib/whatsappGateway';
+import { sendAutomaticWhatsAppNotification, getDirectWhatsAppUrl, formatPhoneForWhatsApp, isGatewayApiConfigured } from '../lib/whatsappGateway';
 import { recordQRErrorToCloud } from '../lib/cloudSync';
 // @ts-ignore
 import jsQR from 'jsqr';
@@ -456,7 +456,9 @@ function ScanScreen({
       alreadyScanned && alreadyScanned.id && !/^pr-\d{4}-\d{2}-\d{2}-sis-/.test(alreadyScanned.id)
         ? alreadyScanned.id
         : `pr-${matchedSiswa.id}-${todayDate}`;
-    const parentPhone = matchedSiswa.waOrangTua || '081234567890';
+    const rawParentPhone = matchedSiswa.waOrangTua || '';
+    const cleanParentPhone = formatPhoneForWhatsApp(rawParentPhone);
+    const hasApiGateway = isGatewayApiConfigured(settings);
     const resolvedMetodeLabel = methodType === 'QR_SCAN' 
       ? 'Scan QR Code Kartu' 
       : (methodType === 'MANUAL_TAP' ? 'Manual Tap Wali Kelas' : 'Input Manual NIS');
@@ -467,6 +469,13 @@ function ScanScreen({
     const resolvedShift: 'Pagi' | 'Siang' = applicableJadwal
       ? ((applicableJadwal.tipe === 'Siang' || parseInt((applicableJadwal.jamMasuk || '07:00').slice(0, 2), 10) >= 11) ? 'Siang' : 'Pagi')
       : getAttendanceShift(null, matchedSiswa.kelas, waktuSekarang, settings);
+
+    const initialWaStatus: Presensi['waStatus'] = !cleanParentPhone ? 'Gagal' : 'Pending';
+    const initialPesanTerkirim = !cleanParentPhone
+      ? `No WA Orang Tua belum terdaftar di profil siswa [Shift ${resolvedShift}]`
+      : hasApiGateway
+      ? `Mengirim otomatis via WA Gateway ke (${cleanParentPhone}) [Shift ${resolvedShift}]`
+      : `Siap kirim ke WA Ortu (${cleanParentPhone}) [Shift ${resolvedShift}]`;
 
     const newRecord: Presensi = {
       id: newPresensiId,
@@ -479,8 +488,8 @@ function ScanScreen({
       waktu: waktuSekarang,
       status: determinedStatus,
       shift: resolvedShift,
-      waStatus: 'Terkirim',
-      pesanTerkirim: `Terkirim otomatis via WA Gateway ke No HP Ortu (${parentPhone}) [Shift ${resolvedShift}]`,
+      waStatus: initialWaStatus,
+      pesanTerkirim: initialPesanTerkirim,
       operator: currentUser.namaLengkap,
       metode: methodType,
       metodeLabel: resolvedMetodeLabel,

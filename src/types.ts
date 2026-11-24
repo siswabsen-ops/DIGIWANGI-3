@@ -119,6 +119,8 @@ export interface SystemSettings {
   nipKepsek?: string; // NIP Kepala Sekolah
   waliKelasList?: WaliKelas[]; // Data Wali Kelas per rombel & nomor WhatsApp
   serverWaNumber?: string; // Nomor Server Gateway WhatsApp (misal: 08214134551)
+  waGatewayProvider?: 'direct' | 'fonnte' | 'wablas' | 'webhook'; // Provider pengiriman otomatis latar belakang
+  waGatewayUrl?: string; // Endpoint URL khusus Wablas / Custom Webhook
   updatedAt?: number; // Epoch ms saat konfigurasi/jadwal terakhir disimpan
 }
 

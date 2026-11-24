@@ -12,6 +12,7 @@ import {
   fetchSettingsFromFirestoreOnce,
   fetchCloudSyncWaliKelasOnce,
   fetchCloudSyncAccountsOnce,
+  resetFirestoreQuotaFlags,
   DeletedTombstone
 } from './firebase';
 import { getLocalDateString, mergePresensiLists } from './attendanceUtils';
@@ -432,9 +433,7 @@ export function subscribeToMultiDeviceSync(
     }
   };
 
-  // Start with presensi listener; expand to all master docs immediately if server /api/sync/version is unavailable (Vercel)
-  attachFirestore(false);
-
+  // Probe /api/sync/version first; only attach full Firestore real-time listeners when Express backend is unavailable (e.g. Vercel static host)
   const checkVersionAndSync = async () => {
     if (isChecking || !isSubscribed || hasServerBackend === false) return;
     isChecking = true;
@@ -527,6 +526,7 @@ export function subscribeToMultiDeviceSync(
  */
 export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
   try {
+    resetFirestoreQuotaFlags();
     const fullData = await fetchCloudMasterData();
     if (fullData) {
       localSyncVersion = fullData.version;
@@ -549,7 +549,7 @@ export async function forceSyncNow(callbacks: SyncCallbacks): Promise<boolean> {
     }
 
     // Vercel / static host fallback via Firestore
-    const firestoreData = await fetchFirestoreMasterFallback();
+    const firestoreData = await fetchFirestoreMasterFallback(getLocalDateString());
     if (firestoreData) {
       if (firestoreData.students && callbacks.onStudentsChange) {
         callbacks.onStudentsChange(firestoreData.students, firestoreData.studentsCatalogVersion);
